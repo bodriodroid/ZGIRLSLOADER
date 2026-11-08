@@ -40,6 +40,7 @@
 #include "gamedata.h"
 #include "gbs.h"
 #include "gbs_anim.h"
+#include "gbs_arc.h"
 #include "menu_list_anim.h"
 #include "gbs_scene.h"
 #include "gbs_text.h"
@@ -742,6 +743,157 @@ static GbsFont mkTextFont() {
     add('B', 10, 20, 22, 12, 1);
     std::sort(f.glyphs.begin(), f.glyphs.end(), [](const GbsGlyph& a, const GbsGlyph& b) { return a.cp < b.cp; });
     return f;
+}
+
+// ---- arc nodes ("CCRA"): the band's geometry, the key layout and the animation-as-value trick the HUD uses
+static bool near(float a, float b, float eps = 0.01f) { return std::fabs(a - b) <= eps; }
+
+static void testGbsArc() {
+    std::printf("[gbs arc nodes: geometry + seek]\n");
+    GbsArcStyle s;
+    s.segments = 20;
+    s.radius = 80;
+    s.thickness = 18;
+    s.sweep = 90;
+    s.start = 0;
+    s.clockwise = true;
+    // clockwise from 3 o'clock on a y-down screen: the start is east, a quarter turn later it is south
+    GbsArcPoint p = gbsArcPoint(s, 0.0f, 10);
+    CHECK(near(p.x, 10) && near(p.y, 0));
+    p = gbsArcPoint(s, 1.0f, 10);
+    CHECK(near(p.x, 0) && near(p.y, 10));
+    // the other direction starts at the opposite end of the circle (west) and runs counter-clockwise on the screen: west -> south
+    s.clockwise = false;
+    p = gbsArcPoint(s, 0.0f, 10);
+    CHECK(near(p.x, -10) && near(p.y, 0));
+    p = gbsArcPoint(s, 1.0f, 10);
+    CHECK(near(p.x, 0) && near(p.y, 10));
+    // the two directions of the HUD's P1 pair cover the same stretch: groove (start 44, clockwise) = full ring (start 19, the other way, 155)
+    GbsArcStyle g;
+    g.segments = 20; g.radius = 80; g.thickness = 18; g.sweep = 155; g.start = 44; g.clockwise = true;
+    GbsArcStyle b = g;
+    b.start = 19; b.clockwise = false;
+    const GbsArcPoint g0 = gbsArcPoint(g, 0.0f, 80), g1 = gbsArcPoint(g, 1.0f, 80);
+    const GbsArcPoint b0 = gbsArcPoint(b, 0.0f, 80), b1 = gbsArcPoint(b, 1.0f, 80);
+    CHECK(near(g0.x, b1.x, 0.5f) && near(g0.y, b1.y, 0.5f));   // the groove begins where the ring ends ...
+    CHECK(near(g1.x, b0.x, 0.5f) && near(g1.y, b0.y, 0.5f));   // ... and ends where the ring begins
+    // the band: 6 points per segment, all on the inner or the outer circle
+    const std::vector<GbsArcPoint> tris = gbsArcTriangles(g);
+    CHECK_EQ(tris.size(), static_cast<size_t>(20 * 6));
+    for (const GbsArcPoint& q : tris) {
+        const float d = std::sqrt(q.x * q.x + q.y * q.y);
+        CHECK(near(d, 89, 0.05f) || near(d, 71, 0.05f));
+    }
+    // nothing to draw: no sweep, no thickness, fewer than 2 segments
+    GbsArcStyle z = g;
+    z.sweep = 0;
+    CHECK(gbsArcTriangles(z).empty());
+    z = g; z.thickness = 0;
+    CHECK(gbsArcTriangles(z).empty());
+    z = g; z.segments = 1;
+    CHECK(gbsArcTriangles(z).empty());
+
+    // seek: the animation's time is the value (a ring animation runs from the full sweep at tick 0 to none at its last tick)
+    auto ringKey = [](int t, float sweep) {
+        GbsKey k;
+        k.t = t;
+        k.kind = 'R';
+        k.arcRadius = 80; k.arcThickness = 18; k.arcSweep = sweep; k.arcStart = 19;
+        k.argb = 0xFF00A016u;
+        return k;
+    };
+    GbsSceneView v;
+    GbsAnim ring;
+    ring.name = "Ring";
+    ring.length = 1000;
+    GbsChannel ch;
+    ch.nodeId = 9;
+    ch.keys = {ringKey(0, 155), ringKey(999, 0)};
+    ring.channels.push_back(ch);
+    GbsAnim other;
+    other.name = "Other";
+    other.length = 10;
+    GbsChannel och;
+    och.nodeId = 9;
+    och.keys = {ringKey(0, 77)};
+    other.channels.push_back(och);
+    v.anims = {ring, other};
+    GbsAnimPlayer pl;
+    pl.bind(&v);
+    CHECK(!pl.seek("Missing", 5));
+    CHECK(pl.seek("Ring", 1));
+    const GbsPose* ps = pl.pose(9);
+    CHECK(ps != nullptr);
+    if (ps) {
+        CHECK_EQ(ps->kind, 'R');
+        CHECK(near(ps->arcSweep, 155.0f * (1.0f - 1.0f / 999.0f), 0.01f));
+        CHECK_EQ(ps->arcStart, 19.0f);
+        CHECK_EQ(ps->argb, 0xFF00A016u);
+    }
+    for (int i = 0; i < 30; ++i) pl.tick();   // a sought animation stays where it was put
+    CHECK_EQ(pl.tickOf("Ring"), 1);
+    CHECK(pl.seek("Ring", 1000));              // past the end: the last tick (nothing left of the sweep)
+    CHECK_EQ(pl.tickOf("Ring"), 999);
+    ps = pl.pose(9);
+    CHECK(ps && near(ps->arcSweep, 0.0f));
+    // a node two animations share goes to the one that started later; seeking again does not change that order
+    CHECK(pl.play("Other"));
+    CHECK(near(pl.pose(9)->arcSweep, 77.0f));
+    CHECK(pl.seek("Ring", 500));
+    CHECK(near(pl.pose(9)->arcSweep, 77.0f));
+}
+
+static void testGbsArcReal(const std::vector<std::string>& dirs) {
+    std::printf("[gbs arc nodes on the real InGame.gbs]\n");
+    GameData gd;
+    for (const std::string& d : dirs) gd.mount(d);
+    std::vector<uint8_t> data;
+    for (const std::string& f : gd.vfs().listByExt(".gbs"))
+        if (f.substr(f.find_last_of("/\\") + 1) == "InGame.gbs" && readFile(f, data)) break;
+    if (data.empty()) { skip("InGame.gbs not mounted"); return; }
+    GbsScene sc;
+    CHECK(parseGbsScene(data.data(), data.size(), sc));
+    size_t arcs = 0;
+    struct W { static void go(const GbsNode& n, size_t& c) { if (n.type == GbsNode::Type::Arc) ++c; for (const GbsNode& k : n.kids) go(k, c); } };
+    for (const GbsSceneView& v : sc.views) for (const GbsNode& n : v.nodes) W::go(n, arcs);
+    CHECK_EQ(arcs, static_cast<size_t>(28));   // 2 players x (groove + 5 stocks + flash), twice
+    const GbsSceneView* hud = sc.view("HUD");
+    CHECK(hud != nullptr);
+    if (!hud) return;
+    const GbsNode* g1 = hud->find("P1_SuperBar_0");
+    const GbsNode* b1 = hud->find("P1_SuperBar_1");
+    const GbsNode* g2 = hud->find("P2_SuperBar_0");
+    const GbsNode* b2 = hud->find("P2_SuperBar_1");
+    CHECK(g1 && b1 && g2 && b2);
+    if (!(g1 && b1 && g2 && b2)) return;
+    CHECK(g1->type == GbsNode::Type::Arc);
+    CHECK_EQ(g1->arcSegments, 20);
+    CHECK_EQ(g1->arcRadius, 80.0f);
+    CHECK_EQ(g1->arcThickness, 18.0f);
+    CHECK_EQ(g1->arcSweep, 155.0f);
+    CHECK_EQ(g1->arcStart, 44.0f);
+    CHECK_EQ(g1->colour, 0xFF000000u);
+    CHECK(g1->arcClockwise);
+    CHECK(!b1->arcClockwise);                  // the rings run against the groove ...
+    CHECK(g2->arcStart == 316.0f && !g2->arcClockwise && b2->arcClockwise);   // ... and player 2 is the mirror image
+    CHECK_EQ(b1->colour, 0xFF008000u);
+    // the stock-1 ring's own animation: full sweep at tick 0, none at tick 999, brighter green than at rest
+    const GbsAnim* an = hud->anim("P1_SuperBar1_Anim");
+    CHECK(an != nullptr);
+    if (an) {
+        CHECK_EQ(an->length, 1000);
+        const GbsChannel* ch = nullptr;
+        for (const GbsChannel& c : an->channels) if (c.nodeId == b1->id) ch = &c;
+        CHECK(ch != nullptr);
+        if (ch) {
+            const GbsPose mid = sampleChannel(*ch, 500, an->length);
+            CHECK_EQ(mid.kind, 'R');
+            CHECK(near(mid.arcSweep, 155.0f * (1.0f - 500.0f / 999.0f), 0.2f));
+            CHECK_EQ(mid.arcStart, 19.0f);
+            CHECK_EQ(mid.argb, 0xFF00A016u);
+            CHECK_EQ(sampleChannel(*ch, 999, an->length).arcSweep, 0.0f);
+        }
+    }
 }
 
 static void testGbsTextLayout() {
@@ -4821,6 +4973,7 @@ int main() {
     testGbsSynthetic();
     testGbsAnimSynthetic();
     testGbsTextLayout();
+    testGbsArc();
     testMenuListAnimSynthetic();
     testMenuData();
     testRle();
@@ -4832,7 +4985,7 @@ int main() {
     if (const char* o = std::getenv("ZDROID_TEST_ORACLE"); o && *o) testOracle(o);
     else { std::printf("[art decoder vs oracle]\n"); skip("set ZDROID_TEST_ORACLE (run tests/oracle/gen_oracle.py)"); }
 
-    if (const char* d = std::getenv("ZDROID_TEST_DATA"); d && *d) { testRealData(splitColon(d)); testMenuDataReal(splitColon(d)); testGbsSceneReal(splitColon(d)); testGbsAnimReal(splitColon(d)); testMenuListAnimReal(splitColon(d)); testStoryReal(splitColon(d)); testRealMoveSets(splitColon(d)); testRealStages(splitColon(d)); }
+    if (const char* d = std::getenv("ZDROID_TEST_DATA"); d && *d) { testRealData(splitColon(d)); testMenuDataReal(splitColon(d)); testGbsSceneReal(splitColon(d)); testGbsAnimReal(splitColon(d)); testGbsArcReal(splitColon(d)); testMenuListAnimReal(splitColon(d)); testStoryReal(splitColon(d)); testRealMoveSets(splitColon(d)); testRealStages(splitColon(d)); }
     else { std::printf("[real game data]\n"); skip("set ZDROID_TEST_DATA=<core dir>:<Win dir>:<ui dir>"); }
 
     if (const char* fd = std::getenv("ZDROID_TEST_FOIT"); fd && *fd) testFoitRuntimeReal(splitColon(fd));

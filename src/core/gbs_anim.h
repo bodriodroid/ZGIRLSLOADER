@@ -31,7 +31,8 @@ struct GbsPose {
     float scaleX = 1, scaleY = 1; // labels
     float skew = 0;               // labels / sprites: degrees
     int dropShadow = 0;           // labels: px
-    uint32_t raw[12] = {};        // ring keys: the stored words (arc data), taken from the earlier key
+    float arcRadius = 0, arcThickness = 0, arcSweep = 0, arcStart = 0;  // rings: the arc's values (angles in degrees)
+    uint32_t raw[12] = {};        // the key's stored words, taken from the earlier key
     float alpha() const { return static_cast<float>(argb >> 24) / 255.0f; }
 };
 
@@ -51,6 +52,9 @@ public:
     bool play(const std::string& name);
     // Starts `name` at tick `startTick` (clamped into the animation).
     bool playFrom(const std::string& name, int startTick);
+    // Puts `name` on `tick` and keeps it there (the game drives a meter this way: the animation's time is the value).  A copy that
+    // already exists keeps its place in the start order, so only the first call decides which animation wins a node shared with another.
+    bool seek(const std::string& name, int tick);
     // Drops the animation: the nodes it held go back to what an earlier animation / the resting pose says.
     void stop(const std::string& name);
     // Freezes / releases a running animation (tick() leaves it where it is while held): the cutscene runner holds the "legacy" animation at its pause cues.

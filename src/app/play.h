@@ -421,6 +421,8 @@ private:
     bool hudFlash_[2] = {false, false};   // the fighter's super flash is running: its filmstrip is on screen
     bool hudSuperOn_[2] = {false, false}; // Super_Anim_In has started and Super_Anim_Out has not finished yet
     void hudAnimStart();                  // (re)starts the HUD view's animations from the round's opening poses
+    void hudMeter(int i, int& stocks, float& frac) const;   // stocks (0..5) and how far the next one is (0..1) of player i's super meter
+    void hudSeekRings();                  // puts the P?_SuperBar<N>_Anim animations on the tick that matches the super meters
     bool hudDemo_ = false;            // ZDROID_PLAY_HUDDEMO: fixed mid-fight values on the HUD (screenshots)
     bool showFps_ = true;
     bool f2Prev_ = false;

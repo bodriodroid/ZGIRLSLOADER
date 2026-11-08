@@ -7,8 +7,10 @@
 //
 //   health bar   energy bar cropped to the health, red "recent damage" trail behind it that waits and then
 //                drains, black cover over the empty part; bars empty towards the timer (outer end stays put)
-//   super ring   the green ring around the coin is an arc of 155 degrees (the CCRA nodes of the scene: one
-//                colour per stock - green, turquoise, violet, coral, orange); it fills from the badge side
+//   super ring   the arc nodes (CCRA) of the scene, drawn by GameUi like any other node: a dark groove, then one ring per stock (green,
+//                turquoise, violet, coral, orange).  The game shows the ring of the stock the player has and the one that is filling, and
+//                it fills by putting that ring's P?_SuperBar<N>_Anim animation on the tick that matches the value (the sweep runs from
+//                155 degrees at tick 1 to 0 at tick 1000), so nothing about the ring is drawn by hand here
 //   timer        Timer_Number_Overlay_<d> + Timer_Number_Glow_<d> for the tens and the ones
 //   names        Textures/HUD/name_<char>.png, coin symbol Textures/HUD/character_symbol_<char>01.png, big
 //                portrait Textures/HUD/character_<char>01.png (names the exe builds with "%s")
@@ -28,11 +30,6 @@ namespace play {
 
 namespace {
 
-constexpr float kRingSweep = 155.0f;  // degrees of the super ring (CCRA "sweep" field)
-// colours of CCRA P1_SuperBar_0..5 in InGame.gbs: empty groove, then one colour per stock
-const Col kStockCol[6] = {{0, 0, 0, 255},       {0, 128, 0, 255},   {64, 224, 208, 255},
-                          {138, 43, 226, 255}, {240, 128, 128, 255}, {255, 165, 0, 255}};
-
 bool startsWith(const std::string& s, const char* p) { return s.rfind(p, 0) == 0; }
 bool has(const std::string& s, const char* p) { return s.find(p) != std::string::npos; }
 
@@ -40,11 +37,6 @@ bool has(const std::string& s, const char* p) { return s.find(p) != std::string:
 int playerOf(const std::string& s) {
     if (s.size() > 3 && s[0] == 'P' && (s[1] == '1' || s[1] == '2') && (s[2] == '_' || s[2] == ' ')) return s[1] - '1';
     return -1;
-}
-
-Col scaleCol(Col c, float k) {
-    auto f = [&](uint8_t v) { return static_cast<uint8_t>(std::clamp(v * k, 0.0f, 255.0f)); };
-    return Col{f(c.r), f(c.g), f(c.b), c.a};
 }
 
 // Crops a bar sprite to the fraction range [a, b] measured from the outer end (the end next to the coin).
@@ -121,8 +113,38 @@ void PlayScreen::hudAnimStart() {
     hudAnim_.tick();
     hudAnim_.tick();
     if (!hudAnim_.finished("P2_OneFighterAnim")) hudAnim_.tick();
+    hudSeekRings();
     for (int p = 0; p < 2; ++p)
         if (hudStocks_[p] >= 5) hudAnim_.play(p == 0 ? "P1_SuperMeter_FullGlow" : "P2_SuperMeter_FullGlow");
+}
+
+// stocks (0..5) and how far the next one is (0..1); ZDROID_PLAY_HUDDEMO fakes a mid-fight meter for screenshots
+void PlayScreen::hudMeter(int i, int& stocks, float& frac) const {
+    const int meter = std::clamp(st_.p[i].meter, 0, 5000);
+    stocks = meter / 1000;
+    frac = stocks >= 5 ? 0.0f : static_cast<float>(meter % 1000) / 1000.0f;
+    if (hudDemo_) {
+        stocks = i == 0 ? 2 : 5;
+        frac = i == 0 ? 0.35f : 0.0f;
+    }
+}
+
+// The game keeps one ring animation per stock ("P1_SuperBar3_Anim" ...), 1000 ticks long, whose sweep goes from the full arc (tick 1) down to
+// nothing (tick 1000).  A stock the player already has sits on tick 1 (full) - only the highest of them is visible - and the one that is
+// filling is put on tick 1000 - floor(fraction * 1000), clamped to 1..1000; stocks beyond that rest on tick 1000 (nothing to draw).
+void PlayScreen::hudSeekRings() {
+    if (!hudAnimView_) return;
+    for (int i = 0; i < 2; ++i) {
+        int stocks = 0;
+        float frac = 0;
+        hudMeter(i, stocks, frac);
+        for (int k = 1; k <= 5; ++k) {
+            int tick = 1000;
+            if (k <= stocks) tick = 1;
+            else if (k == stocks + 1) tick = std::clamp(1000 - static_cast<int>(frac * 1000.0f), 1, 1000);
+            hudAnim_.seek("P" + std::to_string(i + 1) + "_SuperBar" + std::to_string(k) + "_Anim", tick);
+        }
+    }
 }
 
 void PlayScreen::hudTick() {
@@ -192,6 +214,7 @@ void PlayScreen::hudTick() {
             hudStocks_[i] = stocks;
         }
     }
+    hudSeekRings();
     hudAnim_.tick();
 }
 
@@ -279,16 +302,13 @@ bool PlayScreen::drawHudScene(SDL_Renderer* r) {
     for (int i = 0; i < 2; ++i) {
         hp[i] = static_cast<float>(std::clamp(st_.p[i].health, 0, 1000)) / 1000.0f;
         tr[i] = std::max(hp[i], trail_[i] / 1000.0f);
-        const int meter = std::clamp(st_.p[i].meter, 0, 5000);
-        stocks[i] = meter / 1000;
-        stockFrac[i] = stocks[i] >= 5 ? 0.0f : static_cast<float>(meter % 1000) / 1000.0f;
+        hudMeter(i, stocks[i], stockFrac[i]);
         key[i] = hudKey(i);
         nameKey[i] = key[i];
         if (!hud_.texture("Textures/HUD/name_" + key[i] + ".png")) nameKey[i] = "unknown";
     }
     if (hudDemo_) {  // ZDROID_PLAY_HUDDEMO: show a mid-fight HUD (health, trail, meter, combo, round pips) for screenshots
         hp[0] = 0.72f; tr[0] = 0.72f; hp[1] = 0.38f; tr[1] = 0.62f;
-        stocks[0] = 2; stockFrac[0] = 0.35f; stocks[1] = 5; stockFrac[1] = 0.0f;
     }
     float bx[2] = {-5, 723}, by[2] = {0, 0};
     if (const GbsNode* b = v->find("P1_Bar")) { bx[0] = b->x; by[0] = b->y; }
@@ -297,25 +317,6 @@ bool PlayScreen::drawHudScene(SDL_Renderer* r) {
     if (const GbsNode* t = v->find("Timer")) { tx = t->x; ty = t->y; }
     const GbsFont* hudFont = hud_.fontNamed("RityRemix Ingame Hud");
     const GbsFont* nameFont = hud_.fontNamed("Guilded Header");
-
-    // the CCRA ring: centre of the node's box, outer radius = half its width
-    auto drawRing = [&](int p) {
-        const float cx = bx[p] + (p == 0 ? 9.38f : 374.11f) + 89.4f, cy = by[p] - 8.86f + 90.5f;
-        const float ro = 89.0f, ri = 79.0f;
-        // P1: from the badge (bottom right, 136 deg) clockwise round the bottom to the left; P2 is the mirror image
-        const float a0 = p == 0 ? 136.0f : 224.0f - kRingSweep;
-        auto arc = [&](float frac, Col c) {
-            if (frac <= 0) return;
-            const float sw = kRingSweep * std::min(1.0f, frac);
-            const float s = p == 0 ? a0 : 224.0f - sw;  // P2 grows counter-clockwise from 224 deg
-            const float e = s + sw;
-            hud_.drawArc(cx, cy, ro + 1.5f, ri - 1.5f, s, e, scaleCol(c, 0.35f));  // dark rim
-            hud_.drawArc(cx, cy, ro - 0.5f, ri + 1.0f, s, e, scaleCol(c, std::max({c.r, c.g, c.b}) < 200 ? 1.45f : 1.0f));
-        };
-        hud_.drawArc(cx, cy, ro + 1.5f, ri - 1.5f, a0, a0 + kRingSweep, Col{0, 0, 0, 150});  // the empty groove
-        if (stocks[p] >= 1) arc(1.0f, kStockCol[stocks[p]]);
-        if (stocks[p] < 5) arc(stockFrac[p], kStockCol[stocks[p] + 1]);
-    };
 
     // the last key a named animation of this view gives a node: where the game's code leaves it
     auto restKey = [&](const char* animName, uint32_t id) -> const GbsKey* {
@@ -373,12 +374,13 @@ bool PlayScreen::drawHudScene(SDL_Renderer* r) {
         const std::string pk = key[p];
 
         if (suf == "Hammer" || startsWith(suf, "F2_") || startsWith(suf, "F3_") || suf == "F1_bloodbar2" || suf == "F1_HealthDivide" ||
-            suf == "Two_Fighters" || suf == "Gauge" || suf == "Stun_Glow" || suf == "SuperBarFlash" || suf == "Black_Cover") {
+            suf == "Two_Fighters" || suf == "Gauge" || suf == "Stun_Glow" || suf == "Black_Cover") {
             st.hide = true;
             return;
         }
-        if (startsWith(suf, "SuperBar_")) {  // opaque ring nodes: one draw call for the whole ring
-            if (suf == "SuperBar_0") drawRing(p);
+        if (startsWith(suf, "SuperBar_") && suf.size() == 10) {  // the ring of one stock (SuperBar_0 is the groove, always there)
+            const int k = suf[9] - '0';
+            if (k > 0 && k != stocks[p] && k != stocks[p] + 1) st.hide = true;   // the game shows the stock the player has and the one that fills
             return;
         }
         if (suf == "SuperBallFull") {  // the glow over the coin: its alpha comes from SuperBar_Complete / SuperMeter_FullGlow

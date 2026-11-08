@@ -29,7 +29,10 @@
 //             "LBLG" label   +112 font id, +120 +124 scale x/y, +136 horizontal alignment (0 left 1 centre 2 right),
 //                            +140 vertical-centre flag.  The text itself is not stored: the game sets it.
 //             "PRGG" group   +112 child count, then that many child nodes inline.
-//             other tags ("CCRA", "KSMG") keep the generic header and are skipped as opaque nodes.
+//             "CCRA" arc     +112 segment count, +116 centre-line radius, +120 thickness, +124 colour 0xAARRGGBB, +128 sweep (degrees),
+//                            +132 start angle (degrees), +136 direction flag (1 = clockwise, otherwise the other way).  A ring of the
+//                            HUD's super meter is one of these; see gbs_arc.h for the geometry.
+//             other tags ("KSMG") keep the generic header and are skipped as opaque nodes.
 //
 //   section 2 (count2 rows of 264 bytes: [id u32][name char[260]]) is the scene's SOUND table: "UISound/menu.select.wav".
 //
@@ -40,14 +43,15 @@
 //     MRFK    [MRFK][size] [tick][ease type][ease amount] + 8 floats of layout anchors (not needed to play) + a block
 //               [kind tag][block size][payload]:   payload words (pivotX pivotY x y w h rotation ...)
 //               TLPG group   7 words    TLPS sprite  9 words (+ colour 0xAARRGGBB, skew)
-//               TLBL label  12 words    (+ colour, scale x, scale y, skew, drop shadow)    TLRA ring (CCRA arc node)  12 words
+//               TLBL label  12 words    (+ colour, scale x, scale y, skew, drop shadow)
+//               TLRA arc    12 words    (then radius, thickness, colour, sweep, start angle: the arc's animated values)
 //             Values are the node's complete pose at that tick; ticks run at 60 per second.  x/y are relative to the
 //             parent exactly like the node's resting x/y.
 //     RFCM    [RFCM][size][name char[64]][tick][count] then `count` sub-blocks: the file spells them "ADNS"
 //             [16][sound id][volume 0..100] (play a sound of the scene's table) and "AGSM" [12][message id] (a
 //             message for the game code).
 //
-// Not decoded: the per-key layout anchors and the arc words of TLRA keys.
+// Not decoded: the per-key layout anchors.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -89,7 +93,7 @@ struct GbsTexture {
 constexpr uint32_t kGbsNoTexture = 0xE801FFFFu;
 
 struct GbsNode {
-    enum class Type { Sprite, Label, Group, Other };
+    enum class Type { Sprite, Label, Group, Arc, Other };
     Type type = Type::Other;
     std::string tag;  // "RPSG" ...
     uint32_t id = 0;
@@ -115,6 +119,13 @@ struct GbsNode {
     float leading = 0;    // extra line spacing
     int32_t tracking = 0; // extra advance per glyph
     uint32_t textFit = 0; // 0 none, otherwise how the text is squeezed into the box
+    // arc ("CCRA"): a band drawn around the middle of the node's box; `colour` above is its colour
+    int arcSegments = 0;         // flat pieces the sweep is cut into
+    float arcRadius = 0;         // of the centre line; the band reaches radius +- thickness / 2
+    float arcThickness = 0;
+    float arcSweep = 0;          // degrees
+    float arcStart = 0;          // degrees
+    bool arcClockwise = false;   // the node's direction flag (see gbs_arc.h)
     std::vector<GbsNode> kids;
 };
 
@@ -128,7 +139,8 @@ struct GbsKey {
     float scaleX = 1, scaleY = 1; // label
     float skew = 0;             // label / sprite: degrees of horizontal shear
     int dropShadow = 0;         // label: px offset of the black copy behind the text
-    uint32_t raw[12] = {};      // the payload words as stored (ring keys keep their arc words here)
+    float arcRadius = 0, arcThickness = 0, arcSweep = 0, arcStart = 0;  // 'R' keys: the arc's animated values (angles in degrees)
+    uint32_t raw[12] = {};      // the payload words as stored
     int rawCount = 0;
     bool hasColour() const { return kind != 'G'; }
 };

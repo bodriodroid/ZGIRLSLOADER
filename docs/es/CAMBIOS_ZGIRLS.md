@@ -193,6 +193,19 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
 - **Sin hacer**: equipos / tag / asistencias (el código está pero apagado y sin probar), cámara y config de escenario del juego, movimiento raíz, op 117 y tabla de ids de personaje.
 - Android: `versionCode 6`, `versionName 0.6-zgirls-Dev_Nov-06` (instala encima de la anterior).
 
+## Build 0.6 Dev_Nov-07d - CCRA: los anillos del super salen del propio .gbs
+- **Nodos de arco (`CCRA`)** decodificados: segmentos, radio de la línea central, grosor, color, barrido, ángulo inicial y sentido; y sus
+  claves de animación (`TLRA`: radio, grosor, color, barrido, inicio). Antes la palabra de color de esas claves se leía como radio.
+  Módulo nuevo `src/core/gbs_arc.*` (geometría sin SDL, con pruebas) y `GameUi` los dibuja como cualquier otro nodo.
+- **HUD**: el anillo del super ya no se dibuja a mano (155° fijos, colores inventados): se muestran el anillo del stock que tienes y el que se
+  está llenando, y el llenado lo hace la animación `P?_SuperBar<N>_Anim` puesta en el tick que corresponde al valor del medidor (como hace
+  el juego). Resultado: colores, grosor y sentido reales; el anillo en llenado crece desde el extremo donde empieza, no desde la insignia.
+  El destello `SuperBarFlash` (alfa 0 en reposo) vuelve a existir.
+- `GbsAnimPlayer::seek(nombre, tick)`: pone una animación en un tick y la mantiene (una copia ya existente conserva su orden de arranque).
+- Pruebas: `testGbsArc` (geometría, direcciones, `seek`) y `testGbsArcReal` (28 nodos de `InGame.gbs`, valores de P1/P2, la animación de un anillo).
+  Todo en verde salvo `zdroid_overlay_tests` (DSEG, en pausa).
+- Android: `versionCode 10`, `versionName 0.6-zgirls-Dev_Nov-07d`.
+
 ## Build 0.6 Dev_Nov-07c - las escenas .gbs se leen como las lee OtterUI, y la sombrilla vuelve a su sitio
 - **Sombrilla (y demás hijos) separados de las cajas**: los objetos "atados a otro" (`TETHEREDTO`) ahora se mueven cada tick con la
   regla del motor: el modo 1 (el más común: 59 ayudantes nacen así) acompaña al padre por lo que este se movió desde el tick
@@ -217,7 +230,7 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
 - **Menú principal**: la noticia sigue en 2 líneas dentro de su panel (como tu captura de Android) y la descripción se corta como
   en Otter. Las cajas de toque de la lista se corrigen aparte (`kItemHitShiftX`) para no mover el dibujo.
 - Otras pantallas (selector, Play, diálogos) siguen con su lectura anterior del pivote; se pasarán una a una comparando con Otter.
-- **Sin hacer**: nodos de arco `CCRA` genéricos (hoy el anillo del super está a mano en el HUD), máscaras (`KSMG`), el resto de vistas.
+- **Sin hacer**: nodos de arco `CCRA` genéricos (hecho en la Nov-07d), máscaras (`KSMG`), el resto de vistas.
 - Pruebas: todo en verde salvo `zdroid_overlay_tests` (DSEG, en pausa).
 - Android: `versionCode 9`, `versionName 0.6-zgirls-Dev_Nov-07c` (instala encima de la anterior).
 

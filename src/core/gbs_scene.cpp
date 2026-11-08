@@ -15,6 +15,7 @@ constexpr uint32_t kTagFont = 0x47464E54;   // "TNFG"
 constexpr uint32_t kTagSprite = 0x47535052; // "RPSG"
 constexpr uint32_t kTagLabel = 0x474C424C;  // "LBLG"
 constexpr uint32_t kTagGroup = 0x47475250;  // "PRGG"
+constexpr uint32_t kTagArc = 0x41524343;    // "CCRA"
 constexpr uint32_t kTagAnim = 0x4747414C;   // "LAGG"
 constexpr size_t kNodeHeader = 76;          // tag, size, id, name[64]
 constexpr size_t kTextureRow = 284;
@@ -117,6 +118,16 @@ bool parseNode(const uint8_t* d, size_t pos, size_t end, int depth, GbsNode& n, 
         n.tracking = static_cast<int32_t>(rd32(d + pos + 148));
         n.textFit = rd32(d + pos + 152);
         if (n.hAlign < 0 || n.hAlign > 2) n.hAlign = 0;
+    } else if (tag == kTagArc) {
+        n.type = GbsNode::Type::Arc;
+        if (size < 140) return fail(err, "arc chunk too small");
+        n.arcSegments = static_cast<int>(rd32(d + pos + 112));
+        n.arcRadius = static_cast<float>(static_cast<int32_t>(rd32(d + pos + 116)));
+        n.arcThickness = static_cast<float>(static_cast<int32_t>(rd32(d + pos + 120)));
+        n.colour = rd32(d + pos + 124);
+        n.arcSweep = static_cast<float>(static_cast<int32_t>(rd32(d + pos + 128)));
+        n.arcStart = static_cast<float>(static_cast<int32_t>(rd32(d + pos + 132)));
+        n.arcClockwise = rd32(d + pos + 136) == 1;
     } else if (tag == kTagGroup) {
         n.type = GbsNode::Type::Group;
         if (size < 116) return fail(err, "group chunk too small");
@@ -164,7 +175,16 @@ bool parseKey(const uint8_t* d, size_t pos, size_t end, GbsKey& k, std::string* 
     k.w = rdf(pl + 16);
     k.h = rdf(pl + 20);
     k.rot = rdf(pl + 24);
-    if (k.kind != 'G') k.argb = k.raw[7];
+    if (k.kind == 'R') {
+        // [pose x7][radius][thickness][colour][sweep][start]: the arc's own values are whole numbers
+        k.argb = k.raw[9];
+        k.arcRadius = static_cast<float>(static_cast<int32_t>(k.raw[7]));
+        k.arcThickness = static_cast<float>(static_cast<int32_t>(k.raw[8]));
+        k.arcSweep = static_cast<float>(static_cast<int32_t>(k.raw[10]));
+        k.arcStart = static_cast<float>(static_cast<int32_t>(k.raw[11]));
+    } else if (k.kind != 'G') {
+        k.argb = k.raw[7];
+    }
     if (k.kind == 'L') {
         k.scaleX = rdf(pl + 32);
         k.scaleY = rdf(pl + 36);

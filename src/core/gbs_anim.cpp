@@ -35,6 +35,10 @@ GbsPose poseOf(const GbsKey& k) {
     p.scaleY = k.scaleY;
     p.skew = k.skew;
     p.dropShadow = k.dropShadow;
+    p.arcRadius = k.arcRadius;
+    p.arcThickness = k.arcThickness;
+    p.arcSweep = k.arcSweep;
+    p.arcStart = k.arcStart;
     for (int i = 0; i < 12; ++i) p.raw[i] = k.raw[i];
     return p;
 }
@@ -84,6 +88,10 @@ GbsPose sampleChannel(const GbsChannel& ch, float t, int length) {
     p.scaleY = lerp(a.scaleY, b.scaleY, u);
     p.skew = lerp(a.skew, b.skew, u);
     p.dropShadow = static_cast<int>(lerp(static_cast<float>(a.dropShadow), static_cast<float>(b.dropShadow), u));
+    p.arcRadius = lerp(a.arcRadius, b.arcRadius, u);
+    p.arcThickness = lerp(a.arcThickness, b.arcThickness, u);
+    p.arcSweep = lerp(a.arcSweep, b.arcSweep, u);
+    p.arcStart = lerp(a.arcStart, b.arcStart, u);
     if (a.hasColour()) p.argb = lerpArgb(a.argb, b.argb, u);
     return p;
 }
@@ -113,6 +121,30 @@ bool GbsAnimPlayer::playFrom(const std::string& name, int startTick) {
     in.done = !a->loops() && in.tick >= a->length - 1;
     insts_.push_back(in);
     queueCues(in, in.tick - 1, in.tick);
+    evaluate();
+    return true;
+}
+
+bool GbsAnimPlayer::seek(const std::string& name, int tick) {
+    if (!view_) return false;
+    const GbsAnim* a = view_->anim(name);
+    if (!a) return false;
+    const int t = std::clamp(tick, 0, a->length - 1);
+    for (Inst& in : insts_)
+        if (in.anim == a) {
+            if (in.tick == t && in.held) return true;
+            in.tick = t;
+            in.held = true;
+            in.done = !a->loops() && t >= a->length - 1;
+            evaluate();
+            return true;
+        }
+    Inst in;
+    in.anim = a;
+    in.tick = t;
+    in.held = true;
+    in.done = !a->loops() && t >= a->length - 1;
+    insts_.push_back(in);
     evaluate();
     return true;
 }

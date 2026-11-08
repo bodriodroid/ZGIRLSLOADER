@@ -1,6 +1,8 @@
 // game_ui.cpp - see game_ui.h.
 #include "game_ui.h"
 
+#include "gbs_arc.h"
+
 #include <cstring>
 
 #include <algorithm>
@@ -636,6 +638,39 @@ void GameUi::drawNodesXf(const std::vector<GbsNode>& nodes, const Xf& parent, co
                 }
                 drawLabelBlock(*f, st.text, me.tx, boxY, nw, boxH, st.alignOverride >= 0 ? st.alignOverride : n.hAlign, n.vAlign, ts, textColor,
                                sc * st.textSqueezeX, sc, alpha, skewDeg, shadow);
+            }
+        } else if (n.type == GbsNode::Type::Arc && !st.skipSelf && alpha > 0.0f) {
+            // an arc node: a flat band around the middle of its box; an animation can move the sweep / start / colour (gbs_arc.h)
+            GbsArcStyle as;
+            as.segments = n.arcSegments;
+            as.radius = n.arcRadius;
+            as.thickness = n.arcThickness;
+            as.sweep = n.arcSweep;
+            as.start = n.arcStart;
+            as.clockwise = n.arcClockwise;
+            uint32_t argb = n.colour;
+            if (const GbsPose* ps = anim_ ? anim_->pose(n.id) : nullptr)
+                if (ps->kind == 'R') {
+                    as.radius = ps->arcRadius;
+                    as.thickness = ps->arcThickness;
+                    as.sweep = ps->arcSweep;
+                    as.start = ps->arcStart;
+                    argb = ps->argb;
+                }
+            const std::vector<GbsArcPoint> tris = gbsArcTriangles(as);
+            const float a8 = static_cast<float>(argb >> 24) * alpha;
+            if (!tris.empty() && a8 >= 0.5f && r_) {
+                const SDL_Color sc{static_cast<Uint8>((argb >> 16) & 0xFF), static_cast<Uint8>((argb >> 8) & 0xFF), static_cast<Uint8>(argb & 0xFF),
+                                   static_cast<Uint8>(std::clamp(a8, 0.0f, 255.0f))};
+                std::vector<SDL_Vertex> vx;
+                vx.reserve(tris.size());
+                for (const GbsArcPoint& p : tris) {
+                    float qx, qy;
+                    me.apply(nw / 2 + p.x, nh / 2 + p.y, qx, qy);
+                    vx.push_back(SDL_Vertex{SDL_FPoint{screenX(qx), screenY(qy)}, sc, SDL_FPoint{0, 0}});
+                }
+                SDL_SetRenderDrawBlendMode(r_, SDL_BLENDMODE_BLEND);
+                SDL_RenderGeometry(r_, nullptr, vx.data(), static_cast<int>(vx.size()), nullptr, 0);
             }
         }
         if (!n.kids.empty()) drawNodesXf(n.kids, me, hook, depth + 1);

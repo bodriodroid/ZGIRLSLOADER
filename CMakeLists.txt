@@ -34,6 +34,7 @@ add_library(zengine_core STATIC
   src/core/gbs_scene.cpp
   src/core/gbs_anim.cpp
   src/core/gbs_text.cpp
+  src/core/gbs_arc.cpp
   src/core/menu_list_anim.cpp
   src/core/art.cpp
   src/core/foit.cpp

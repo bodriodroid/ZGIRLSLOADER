@@ -301,7 +301,22 @@ this port's); the code in `src/core/gbs_anim.*`, `gbs_text.*` and `game_ui.*` is
   The next line starts `fontSize + (int)(fontSize * leading)` lower.
 * **Where this port still differs from the real runtime** on the main menu: the "SINGLE PLAYER" header sprite edge (sub-pixel sampling), the main
   menu icon (drawn by game code, not by the scene), and +-1/255 of alpha on the "Fade Up" node.
-* **Arc nodes (`CCRA`, keys `TLRA`)**: seven words after the generic node header (segment count, centre-line radius, thickness, colour, sweep in
-  degrees, start angle in degrees, direction flag) and, in a key, the same five middle values after the seven pose words. Only `InGame.gbs`
-  has them (the super-meter rings of the HUD). Not decoded by `gbs_scene` yet; the HUD draws its ring by hand.
+* **Arc nodes (`CCRA`, keys `TLRA`)** - decoded in `gbs_scene` (`GbsNode::Type::Arc`, `GbsKey` kind `'R'`) and drawn by `GameUi`; geometry in `core/gbs_arc.*`.
+  Node: seven words after the generic header = segment count, centre-line radius, thickness, colour 0xAARRGGBB, sweep (deg), start angle (deg),
+  direction flag. A key (`TLRA`, 12 words) is the seven pose words followed by radius, thickness, colour, sweep, start - the five values an
+  animation can move (the colour word is the key's colour; before this it was misread as the radius). Only `InGame.gbs` has them: 28 nodes, the
+  super-meter rings of the HUD (per player: groove `SuperBar_0`, one ring per stock `SuperBar_1..5`, and `SuperBarFlash`; every one twice).
+  The band is centred on the middle of the node's box, outer radius `radius + thickness/2` (89 px for 80 + 18), inner `radius - thickness/2`.
+  Point at fraction t of the sweep: angle = start + t*sweep for flag 1, else start - t*sweep with the point turned half a circle (both
+  coordinates negated); x = r*cos(angle), y = r*sin(angle), y down - so angle 0 is 3 o'clock and angles grow clockwise on screen. A segment is a
+  flat quad between two neighbouring angles. Nothing is drawn with fewer than 2 segments, no thickness or no sweep.
+  Player 1 and 2 are mirror images (start 44 / 316, 19 / 341, opposite flags). The groove has flag 1 for P1, the rings flag 0 (and the reverse
+  for P2), so a ring *shrinks towards its start point*: `P?_SuperBar<N>_Anim` (1000 ticks) takes the sweep from 155 at tick 1 to 0 at tick 999
+  while the colour goes to a brighter shade of the stock's own.
+* **How the HUD drives the rings**: the game does not set a sweep, it puts the stock's animation on a tick. Per player, with `stocks` = whole
+  stocks (meter/100 in the game's units, clamped 0..5) and `frac` = how far the next one is: rings `N <= stocks` rest on tick 1 (full) and only
+  `N == stocks` is shown; ring `N == stocks + 1` is put on `1000 - floor(frac*1000)` (clamped to 1..1000) and shown; every other ring rests on tick
+  1000 and is hidden. The groove is always shown; the flash is an alpha animation (`P?_SuperBar_Complete`). `GbsAnimPlayer::seek` is the
+  "put this animation on that tick and hold it" call; an existing copy keeps its place in the start order (a node two animations share goes to the
+  one started last), so a ring's glow animation still wins over its seek.
 
