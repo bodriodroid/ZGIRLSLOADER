@@ -1,0 +1,99 @@
+// Android Gradle module for ZGirlsMobile (ZGirls Loader for Android, debug build).
+//
+// The native side is the same C++ as the desktop viewer (src/core + src/app), built as
+// libmain.so and linked against libSDL2.so that the SDL2 checkout produces in-tree.
+// Gradle packages both shared libraries into the APK's jniLibs automatically.
+apply plugin: 'com.android.application'
+
+// The SDL2 source tree is required: pass it with -PsdlDir=... or set sdlDir in
+// android/gradle.properties.  When unset we fall back to a sibling checkout named SDL.
+def sdlDirResolved = (rootProject.findProperty('sdlDir')
+                    ?: project.findProperty('sdlDir')
+                    ?: System.getenv('SDL_DIR')
+                    ?: file('../SDL').absolutePath).toString()
+
+android {
+    namespace 'org.bodriodroid.zgirlsmobile'
+    compileSdk 34
+    ndkVersion '26.1.10909125'
+
+    defaultConfig {
+        applicationId 'org.bodriodroid.zgirlsmobile'
+        minSdk 24
+        targetSdk 34
+        versionCode 9          // bump on every build that is meant to be installed over the previous one
+        versionName '0.6-zgirls-Dev_Nov-07c'
+        externalNativeBuild {
+            cmake {
+                cppFlags '-std=c++17', '-ffp-contract=off'
+                arguments '-DANDROID_STL=c++_shared',
+                          '-DANDROID_PLATFORM=android-24',
+                          '-DZDROID_SDL2_SOURCE_DIR=' + sdlDirResolved
+            }
+        }
+        // arm64-v8a only by default; pass -PabiFilters=arm64-v8a,x86_64 to also build for the emulator
+        ndk { abiFilters.addAll((project.findProperty('abiFilters') ?: 'arm64-v8a').toString().split(',').collect { it.trim() }) }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    // Release signing: pass -PzgStoreFile=... -PzgStorePassword=... -PzgKeyAlias=... -PzgKeyPassword=... (or put them in
+    // ~/.gradle/gradle.properties).  Without them the release build is left unsigned; a debug build is signed with the debug key.
+    signingConfigs {
+        release {
+            if (project.hasProperty('zgStoreFile')) {
+                storeFile file(project.property('zgStoreFile'))
+                storePassword project.property('zgStorePassword')
+                keyAlias project.property('zgKeyAlias')
+                keyPassword project.property('zgKeyPassword')
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            // The Steam screen launches DepotDownloader from nativeLibraryDir; keeping the
+            // .so unstripped inside the APK avoids 6.5+ scanning issues on devices that
+            // extract to a protected directory.
+            packaging {
+                jniLibs {
+                    useLegacyPackaging = true
+                }
+            }
+        }
+        release {
+            if (project.hasProperty('zgStoreFile')) signingConfig signingConfigs.release
+            minifyEnabled false
+            packaging {
+                jniLibs {
+                    useLegacyPackaging = true
+                }
+            }
+        }
+    }
+
+    // SDL's own Java side (SDLActivity and friends) is compiled straight from the checkout,
+    // the same way SDL's android-project does it.  ZGirlsActivity extends SDLActivity.
+    sourceSets {
+        main {
+            java.srcDirs += ["${sdlDirResolved}/android-project/app/src/main/java"]
+            aidl.srcDirs += ["${sdlDirResolved}/android-project/app/src/main/aidl"]
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+}
+

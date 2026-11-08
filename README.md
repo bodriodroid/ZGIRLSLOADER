@@ -1,6 +1,6 @@
 # ZGirls Loader (Android: ZGirlsMobile) - Skullgirls 2nd Encore: asset loader + viewer, engine ZDroid-Engine
 
-> Cambios de esta versión: ver `CAMBIOS_ZGIRLS.md`.
+> Cambios de esta versión: ver `docs/es/CAMBIOS_ZGIRLS.md`.
 
 **This is not a playable port yet.** It is the foundation: it reads the data of *your own* copy of the game
 (extracted from the `.gfs` packages, or downloaded from your own Steam account) and shows it. It ships no game
@@ -36,7 +36,7 @@ cmake --build build
 ```
 Fight test (needs your own extracted `annie.foit/.art/.art-pt/_1p.dds` + `.lvl` stages + stage textures): mount them all, open
 Play -> Training / Local Versus. Keys (P1): WASD move (double-tap = dash, W = jump), J K L = LP MP HP, U I O = LK MK HK, Enter / Space = restart round, F1 = show hit / hurt / push boxes.
-Step by step guide in Spanish: `PRUEBA_PELEA.md`.
+Step by step guide in Spanish: `docs/es/PRUEBA_PELEA.md`.
 The data folder may be nested any way (`core/core/...`, `sg_dump/unpacked/sprites/...`): the VFS indexes every file under
 all of its path suffixes, case-insensitively, and skips `extract build analysis analysis_v2 SKGSTEAM mods`.
 You need the **unpacked** files (`.gfs` packages are not unpacked by this project yet; SkullMod does it).
@@ -66,6 +66,8 @@ name bar with arrows along the bottom; thumbnails `Textures/charselect/stages`, 
 cancel text; tapping the selected one again confirms.  Mount these from your own copy: `ui/Win` (scene, textures, `UISound`), the sprites folder (`character_select_<name>.dds` +
 `.spr.msb` + `<name>_1p.dds`, the standing characters) and `core` (`music.ini`).  On confirm the scene's own `CharSelectSnd_<name>_1` animation plays the confirm sound and the announcer
 saying the name (`UISound/charconfirm.<name>.p1.wav`, `UISound/JP_chars/...` in Japanese).  Smoke flags: `--screen charselect --cs-step 0|1|2 [--cs-story]`.
+
+**Developer Options** (Settings > Developer Options, and in a match Pause > Help & Options > Developer Options; table in `src/core/dev_options.cpp`, keys `ZD_DEV_*` in the `[options]` of the `.savini`, environment override `ZDROID_DEV_<KEY>` on the desktop): render resolution (33 / 50 / 75 / 100 %), sprite quality (quarter size ... every pixel), smoothing, shadows (Off / Low / Medium / High / Game - the PC engine's flattened-silhouette floor shadow), stage backdrop (Auto never uses the Character Select pictures; Portrait does; Generated), backdrop upscaling (bicubic 2x + sharpening), frame preloading, FPS counter, hit / hurt boxes, round intro, fighter entrances and a stage-info overlay (which picture, its size, render size, sprite level, texture memory). Matches load the stage first, then the fighters, then their sprites (decoded on worker threads).
 
 **Scene mode.** Mount the folder that holds the UI pack too (`ui/Win/Main.gbs`, `ui/Win/Textures/**`, `ui/Win/Fonts/**`,
 all from your own copy). The menu then reads `Main.gbs` (`src/core/gbs_scene.*` parses it, `src/app/game_ui.*` draws it,

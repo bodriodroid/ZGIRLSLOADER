@@ -1,0 +1,37 @@
+# Core + tests on Linux with AddressSanitizer / UndefinedBehaviorSanitizer, with GCC and Clang (no SDL or Android SDK needed).
+# The APK workflow (android.yml) only builds the app; this one is what runs the tests.
+name: tests
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+jobs:
+  core-tests:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=${{ matrix.compiler }} -DZDROID_BUILD_VIEWER=OFF -DZDROID_SANITIZE=ON
+      - name: Build
+        run: cmake --build build -j
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure
+
+  # libFuzzer on the file parsers (clang).  Informational: a crash here is a real bug, a setup problem is not a failed build.
+  fuzz:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang runtimes
+        run: sudo apt-get update && sudo apt-get install -y clang libclang-rt-18-dev
+      - name: Configure
+        run: cmake -S . -B build-fuzz -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_COMPILER=clang++ -DZDROID_BUILD_VIEWER=OFF -DZDROID_FUZZ=ON
+      - name: Build
+        run: cmake --build build-fuzz --target zdroid_fuzz -j
+      - name: Fuzz for one minute
+        run: mkdir -p corpus && ./build-fuzz/zdroid_fuzz corpus -max_total_time=60 -rss_limit_mb=2048

@@ -1,0 +1,7 @@
+// Built and checked in a Linux sandbox with Android SDK 34 / NDK 26.1.10909125 / Gradle 8.9 (see the wrapper).
+// Needs an SDL2 checkout: ./gradlew -PsdlDir=/path/to/SDL assembleDebug
+buildscript {
+    repositories { mavenCentral(); google() }
+    dependencies { classpath 'com.android.tools.build:gradle:8.7.3' }
+}
+allprojects { repositories { mavenCentral(); google() } }

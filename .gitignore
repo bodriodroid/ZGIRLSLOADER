@@ -1,0 +1,9 @@
+build/
+build-*/
+out/
+.gradle/
+.idea/
+local.properties
+*.apk
+**/app/build/
+**/app/.cxx/
