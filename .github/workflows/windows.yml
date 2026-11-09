@@ -1,0 +1,48 @@
+name: windows-desktop
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master, "ci/**"]
+  pull_request:
+jobs:
+  build-and-test:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up CMake and Ninja
+        uses: lukka/get-cmake@latest
+      - name: Fetch SDL2
+        shell: pwsh
+        run: git clone --depth 1 --branch release-2.30.9 https://github.com/libsdl-org/SDL.git "$env:GITHUB_WORKSPACE/SDL"
+      - name: Configure
+        shell: pwsh
+        run: >-
+          cmake -S . -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DZDROID_SDL2_SOURCE_DIR="$env:GITHUB_WORKSPACE/SDL"
+          -DZDROID_BUILD_VIEWER=ON
+          -DZDROID_BUILD_TESTS=ON
+      - name: Build desktop viewer and tests
+        run: cmake --build build --config Release --parallel
+      - name: Run tests
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Upload Windows binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: zgirlsloader-windows-x64
+          path: |
+            build/zdroid_viewer.exe
+            build/zdroid_probe.exe
+            build/zdroid_foit.exe
+            build/zdroid_duel.exe
+            build/zdroid_mods.exe
+            build/zdroid_gbs.exe
+            build/zdroid_dds.exe
+            build/zdroid_msb.exe
+            build/zdroid_fight.exe
+            build/zdroid_moves.exe
+            build/zdroid_cmds.exe
+            build/zdroid_stages.exe
+            build/zdroid_foitdump.exe
+            build/zdroid_sim.exe
+          if-no-files-found: warn
