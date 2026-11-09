@@ -102,7 +102,6 @@ The game folder gets a `mods/` folder automatically with `pal` (custom `.pal` pa
 
 ## Android
 
-```
 git clone --depth 1 --branch release-2.30.9 https://github.com/libsdl-org/SDL.git ../SDL
 cd android && ./gradlew -PsdlDir=../SDL assembleDebug     # -> app/build/outputs/apk/debug/app-debug.apk
 ```
