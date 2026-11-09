@@ -67,8 +67,14 @@ add_library(zengine_core STATIC
   src/core/story.cpp
   src/core/steam_dl.cpp
   src/core/steam_proc.cpp
-  src/core/steam_task.cpp)
-target_include_directories(zengine_core PUBLIC src/core)
+  src/core/steam_task.cpp
+  src/fx/aead.cpp
+  src/fx/pafx.cpp
+  src/fx/fx_tuning.cpp
+  src/fx/fx_math.cpp
+  src/fx/fx_glsl.cpp
+  src/fx/fx_pack.cpp)
+target_include_directories(zengine_core PUBLIC src/core src/fx)
 find_package(Threads REQUIRED)
 target_link_libraries(zengine_core PUBLIC Threads::Threads)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -80,6 +86,8 @@ endif()
 # skipping them keeps the APK build (and the .so list) small.
 if(NOT ANDROID)
   add_executable(zdroid_probe src/tools/zdroid_probe.cpp)
+  add_executable(zdroid_pafx src/tools/zdroid_pafx.cpp)
+  target_link_libraries(zdroid_pafx PRIVATE zengine_core)
   target_link_libraries(zdroid_probe PRIVATE zengine_core)
 
   # What the fight runtime makes of a character's .foit (missing states, the 18 normals, timeline sanity).
@@ -133,6 +141,10 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   add_executable(zdroid_tests tests/test_main.cpp)
   target_link_libraries(zdroid_tests PRIVATE zengine_core)
   add_test(NAME zdroid_tests COMMAND zdroid_tests)
+  add_executable(zdroid_fx_tests tests/test_fx.cpp)
+  target_link_libraries(zdroid_fx_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_fx_tests COMMAND zdroid_fx_tests)
+  set_tests_properties(zdroid_fx_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_DATA=${ZDROID_TEST_DATA}")
   add_executable(zdroid_duel_tests tests/test_duel_rules.cpp)
   target_link_libraries(zdroid_duel_tests PRIVATE zengine_core)
   add_test(NAME zdroid_duel_tests COMMAND zdroid_duel_tests)

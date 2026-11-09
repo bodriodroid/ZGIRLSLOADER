@@ -7,3 +7,6 @@ local.properties
 *.apk
 **/app/build/
 **/app/.cxx/
+*.pafx
+pafx.key
+*.key

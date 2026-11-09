@@ -21,6 +21,21 @@ jobs:
       - name: Run tests
         run: ctest --test-dir build --output-on-failure
 
+  # The effect programs (src/fx/fx_glsl.cpp) are rendered with a real GLES driver (Mesa llvmpipe, no GPU) and compared pixel by pixel
+  # with the C++ reference (src/fx/fx_math.cpp).  Synthetic numbers only: no game data is involved.
+  fx-gles:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install a software GLES stack
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgles2 libgl1-mesa-dri python3-numpy
+      - name: Build the pack tool
+        run: cmake -S . -B build-fx -DCMAKE_BUILD_TYPE=Release -DZDROID_BUILD_VIEWER=OFF -DZDROID_BUILD_TESTS=OFF && cmake --build build-fx --target zdroid_pafx -j
+      - name: Generate the cases and render them
+        run: |
+          ./build-fx/zdroid_pafx gen-check fxcheck
+          python3 tools/fx_gles_check.py fxcheck
+
   # libFuzzer on the file parsers (clang).  Informational: a crash here is a real bug, a setup problem is not a failed build.
   fuzz:
     runs-on: ubuntu-24.04

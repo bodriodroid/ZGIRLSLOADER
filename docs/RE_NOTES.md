@@ -320,3 +320,30 @@ this port's); the code in `src/core/gbs_anim.*`, `gbs_text.*` and `game_ui.*` is
   "put this animation on that tick and hold it" call; an existing copy keeps its place in the start order (a node two animations share goes to the
   one started last), so a ring's glow animation still wins over its seek.
 
+## Render effects (9-Nov; behaviour read from the user's `core/shaders/*.fx`, the numbers are NOT copied into the repo)
+What the game's shaders do, as far as the Android effect programs (`src/fx/`, docs/PAFX.md) need it. The numbers (flash colours, curve
+constants, death-look colours) are read out of the player's own Core at pack time into the sealed `.pafx`; this section only records the
+structure.
+
+* **Fighters (`PaletteGradient`)**: a sprite texel is three bytes. R = a packed normal (two 4-bit components), G = line level in the top
+  3 bits and tone in the low 5, B = palette index. The pixel colour is the palette row's gradient at the tone, blended between the four
+  nearest texels with the sprite's own bilinear weights; the line level then lerps towards the line colour and raises alpha. Lighting
+  (up to 3 directional + 4 point lights, ambient) only touches texels whose palette entry is flagged "lit". A per-row hue mask and a
+  "palette FX" colour with its own no-light flag come from a second small texture; a world-space "chowder" field tints by floor position.
+  The engine's CPU path (`toRgba(buildRgbaTables)`) is the same gradient / line maths without lighting; `sprite_palette` reproduces it on
+  the GPU to within one 8-bit step.
+* **Super flash**: two stages. The background is darkened towards a tinted luminance (`Apply_SuperShadowBG`: lerp(colour, tint * luma,
+  t)); then the whole picture is remapped between a low and a high colour by luminance (`Apply_SuperFlash`): the remap is scaled by
+  `brightness * (1.2 + lerp(0.5, luma - 0.5, contrast))` and pushed away from / towards grey by `-saturation`, then lerped in by `t`.
+  There are four looks (super, DHC once, DHC twice, counter-out) per family; the sprite family (fighters, stages) and the Otter UI
+  family have different tables but the same maths. The look index is the game's flash number minus one.
+* **`SuperOutline`**: the no-light sprite with its colour replaced by a lerp between two palette-FX colours; coverage / alpha unchanged.
+* **`FloorShadow`**: discards when `|z| > fade` or `z * fade > 0` (the sign of the fade distance picks the side that casts), and where the
+  texel has neither palette index nor line; otherwise black with alpha `maxAlpha * (1 - |z| / fade)`. (The geometry flattening is in the
+  25-oct section above.)
+* **Jojos death (Otter UI)**: portrait = stroke / fill colours mixed by the coverage channel, alpha from the larger of two samples one
+  texel apart (widens the stroke); background = radial gradient through five colour stops measured from the centre with x stretched by
+  the aspect ratio.
+* Shader files present in a Core: `.fx` (HLSL, the readable source), `glsl12/*.glsl` (the compiled desktop variants, one file per
+  technique) and `pssl/*.sb` (PS4 binaries, not read).
+

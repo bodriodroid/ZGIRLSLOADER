@@ -193,6 +193,34 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
 - **Sin hacer**: equipos / tag / asistencias (el código está pero apagado y sin probar), cámara y config de escenario del juego, movimiento raíz, op 117 y tabla de ids de personaje.
 - Android: `versionCode 6`, `versionName 0.6-zgirls-Dev_Nov-06` (instala encima de la anterior).
 
+## Build 0.7 Dev_Nov-09 - PAFX (Paradox Archive FX) y los efectos de Core reconstruidos para Android
+- **CI de Android**: el paso "Setup Android SDK" fallaba porque `android-actions/setup-android@v3` instala por defecto el paquete `tools`
+  (ya no existe) y `sdkmanager` salía con error justo después de aceptar las licencias. Ahora solo pide `platform-tools`. (Tu edición ya
+  apuntaba a eso pero tenía las claves mal indentadas, lo que invalidaba todo el YAML; quedó con tu idea y el YAML válido.)
+- **Core**: el zip nuevo es idéntico al Core que ya estaba montado (882 archivos, 0 diferencias). Trae los shaders: `.fx` (HLSL), `glsl12`
+  (GLSL de escritorio) y `pssl` (PS4, binarios). Los `.fx` sirven de referencia de comportamiento (notas en `docs/RE_NOTES.md`).
+- **PAFX** = *Paradox Archive FX*: el paquete de efectos de render de Android; no es un `.gfs` ni lleva arte ni audio. Lo arma cada jugador
+  **en su dispositivo, desde su propio Core**, y lo sella con una clave por instalación que se genera allí y no sale de allí. Ni el repo,
+  ni los zips públicos, ni la APK llevan un `.pafx`. Formato en `docs/PAFX.md` (cabecera de 64 bytes + tabla y entradas selladas con
+  ChaCha20-Poly1305, implementado sin librerías externas y comprobado contra los vectores del RFC 8439 y contra otra implementación).
+- **El código es nuestro, los números son del jugador**: los 6 programas GLSL ES (`src/fx/fx_glsl.cpp`) están escritos desde cero y no
+  llevan ningún valor del juego; los valores (colores de los flashes, contraste/brillo/saturación, sombra del super, colores de la muerte de
+  Jojos) los lee `zdroid_pafx pack` de tu `core/shaders/*.fx` y viajan dentro del pack sellado (`fx/tuning.ini`). Sin pack el motor usa una
+  apariencia neutra propia.
+- **Efectos (v1)**: `sprite_palette` (sprites desde los planos de índice + paleta, igual que las tablas de CPU a +-1/255, con rotación de
+  tono, alfa, flash y sombra de super), `super_outline`, `floor_shadow`, `flat_tint` (escenarios / tarjetas de UI), `death_portrait` y
+  `death_background`. Matemática de referencia en C++ (`src/fx/fx_math.*`, también la ruta de CPU).
+- **Verificación**: `tools/fx_gles_check.py` dibuja cada programa con un GLES real (Mesa llvmpipe, sin GPU) y lo compara píxel a píxel con la
+  referencia: diferencia máxima **1/255** en los 11 casos, con números neutros y con los leídos de tu Core. Nuevo job de CI `fx-gles`.
+  `tests/test_fx.cpp` (341 comprobaciones: cifrado, contenedor con clave equivocada / daño / truncado / entradas cambiadas, extracción de
+  números, maths) limpio con ASan/UBSan; el fuzz ahora también alimenta el lector de PAFX.
+- **Herramienta**: `zdroid_pafx pack | info | dump | gen-check`. Con tu Core: 4 grupos de números leídos, 97 archivos de shader con huella.
+- **Sin hacer (y dicho claro)**: el juego en vivo todavía dibuja con `SDL_Renderer`, que no admite programas propios; falta el pase GLES
+  pequeño (vaciar el lote de SDL, dibujar los sprites con `sprite_palette`, restaurar el estado), cargar el pack desde la carpeta privada
+  de la app y un botón "crear pack de efectos" junto al selector de datos. Tampoco están aún la iluminación con normales (el decodificador de
+  `.art` no expone el plano de normales), el campo "chowder", las máscaras de tono por fila de paleta ni los retratos palettizados de Otter.
+- Android: `versionCode 11`, `versionName 0.7-zgirls-Dev_Nov-09`.
+
 ## Build 0.6 Dev_Nov-07d - CCRA: los anillos del super salen del propio .gbs
 - **Nodos de arco (`CCRA`)** decodificados: segmentos, radio de la línea central, grosor, color, barrido, ángulo inicial y sentido; y sus
   claves de animación (`TLRA`: radio, grosor, color, barrido, inicio). Antes la palabra de color de esas claves se leía como radio.

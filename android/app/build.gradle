@@ -21,8 +21,8 @@ android {
         applicationId 'org.bodriodroid.zgirlsmobile'
         minSdk 24
         targetSdk 34
-        versionCode 10         // bump on every build that is meant to be installed over the previous one
-        versionName '0.6-zgirls-Dev_Nov-07d'
+        versionCode 11         // bump on every build that is meant to be installed over the previous one
+        versionName '0.7-zgirls-Dev_Nov-09'
         externalNativeBuild {
             cmake {
                 cppFlags '-std=c++17', '-ffp-contract=off'
