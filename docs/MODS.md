@@ -40,6 +40,19 @@ A `.pal` whose number of colours does not match the table (made for another game
 region for Squigly and Marie; palettes for those two need a table update.  The hue-shift bytes and the two super-shadow colours are
 read and kept, not used yet.
 
+### Making palettes from your own colours: `zdroid_palgen`
+
+`zdroid_palgen --sprites <folder with <name>_1p.dds> --out <folder> [--theme claude|dark|all] [--only Name,Name] [--swatch file.png]`
+reads each character's default palette texture, recolours its regions and writes `<out>/<Character>/<Theme>.pal` — the layout of
+`mods/pal`, so the result can be copied straight in.  The built-in theme is the colours of the Claude chat (`src/core/palgen.*`):
+every region is classified from its 16 tones — already (nearly) black stays black, (nearly) white becomes white, skin becomes a lighter
+grey, everything else the normal grey — and the luminance of every tone goes through the role's ramp, so the shading of the art is kept.
+The iris regions listed in `src/core/pal_theme_hints.inc` become the Claude orange (#D97757) and the ties black; the other region numbers
+of a character are not guessed.  `Claude` is the normal one, `ClaudeDark` the same a step darker.  A character whose texture does not have
+the rows of the region table (Squigly and Marie here) is skipped with a line saying why.
+
+The output is derived from your game's palette textures: keep it for yourself, do not publish it.  Only the generator is in the repository.
+
 ## modscustom/ — mods
 
 One folder per mod; inside, mirror the game's layout (`mymod/characters/filia.foit`, `mymod/UISound/x.wav` ...).  Optional

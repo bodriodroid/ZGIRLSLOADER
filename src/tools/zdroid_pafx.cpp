@@ -19,6 +19,7 @@
 #include "fx_glsl.h"
 #include "fx_math.h"
 #include "fx_pack.h"
+#include "fx_store.h"
 
 using namespace zengine;
 using namespace zengine::fx;
@@ -48,35 +49,7 @@ const char* opt(int argc, char** argv, const char* name) {
     return nullptr;
 }
 
-// The Core folder may be the folder that holds shaders/ or the shaders folder itself.
-fs::path shadersDir(const fs::path& core) {
-    if (fs::is_directory(core / "shaders")) return core / "shaders";
-    return core;
-}
-
-bool gatherCore(const fs::path& coreArg, CoreShaderInputs& in, std::string* err) {
-    const fs::path sd = shadersDir(coreArg);
-    if (!fs::is_directory(sd)) {
-        if (err) *err = "no shaders folder in " + coreArg.string();
-        return false;
-    }
-    std::vector<std::pair<std::string, uint64_t>> files;
-    std::error_code ec;
-    for (auto it = fs::recursive_directory_iterator(sd, ec); !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
-        if (!it->is_regular_file()) continue;
-        files.emplace_back(fs::relative(it->path(), sd).generic_string(), static_cast<uint64_t>(it->file_size()));
-    }
-    in.fileCount = static_cast<int>(files.size());
-    in.fingerprint = coreFingerprint(files);
-    readFile(sd / "TiledSprite_fp.fx", in.tiledSpriteFp);
-    readFile(sd / "Otter_vp.fx", in.otterVp);
-    readFile(sd / "Otter_fp.fx", in.otterFp);
-    if (in.tiledSpriteFp.empty() && in.otterVp.empty() && in.otterFp.empty()) {
-        if (err) *err = "none of TiledSprite_fp.fx / Otter_vp.fx / Otter_fp.fx found in " + sd.string();
-        return false;
-    }
-    return true;
-}
+bool gatherCore(const fs::path& coreArg, CoreShaderInputs& in, std::string* err) { return gatherCoreShaders(coreArg.string(), in, err); }
 
 bool getKey(int argc, char** argv, AeadKey& key) {
     std::string err;

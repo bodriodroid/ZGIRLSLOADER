@@ -36,6 +36,21 @@ jobs:
           ./build-fx/zdroid_pafx gen-check fxcheck
           python3 tools/fx_gles_check.py fxcheck
 
+  # FxRenderer (src/app/fx_gl.cpp): the effect programs inside SDL's real OpenGL ES 2 renderer, headless (SDL's offscreen video driver on
+  # Mesa llvmpipe).  Checks sprites, shadows and the outline against the C++ maths, and that SDL's own drawing around a pass is untouched.
+  gl-renderer:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install SDL2 and a software GLES stack
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libegl1 libgles2 libgl1-mesa-dri
+      - name: Configure
+        run: cmake -S . -B build-gl -DCMAKE_BUILD_TYPE=RelWithDebInfo -DZDROID_SANITIZE=ON
+      - name: Build
+        run: cmake --build build-gl --target zdroid_fx_gl_tests -j
+      - name: Run
+        run: SDL_VIDEODRIVER=offscreen EGL_PLATFORM=surfaceless ZDROID_GL_REQUIRED=1 ASAN_OPTIONS=detect_leaks=0 ./build-gl/zdroid_fx_gl_tests
+
   # libFuzzer on the file parsers (clang).  Informational: a crash here is a real bug, a setup problem is not a failed build.
   fuzz:
     runs-on: ubuntu-24.04

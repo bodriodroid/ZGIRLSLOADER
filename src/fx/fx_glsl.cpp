@@ -103,6 +103,37 @@ void main() {
 }
 )GLSL";
 
+// Same picture with the coloured texels filtered bilinearly (the CPU route's "Smooth" look): each of the four texels around the
+// sample point is turned into (colour, alpha) first, then they are blended; texels with no coverage lend no colour (the CPU route
+// copies the neighbours' colour into them for the same reason).
+const char* const kSpriteSmoothMain = R"GLSL(
+uniform vec2 uTexSize;         // texels of uIndex
+vec4 fxTexel(vec2 ij) {
+    vec2 uv = (clamp(ij, vec2(0.0), uTexSize - 1.0) + 0.5) / uTexSize;
+    vec4 idx = texture2D(uIndex, uv);
+    float band = floor(idx.b * 255.0 + 0.5);
+    float g = floor(idx.g * 255.0 + 0.5);
+    float lf = floor(g / 32.0) / 7.0;
+    if (band < 0.5) return vec4(uLine, lf);
+    return vec4(mix(fxHue(fxPaletteColour(band, g), uHue), uLine, lf), 1.0);
+}
+void main() {
+    vec2 p = vUV * uTexSize - 0.5;
+    vec2 i0 = floor(p);
+    vec2 f = p - i0;
+    vec4 t00 = fxTexel(i0);
+    vec4 t10 = fxTexel(i0 + vec2(1.0, 0.0));
+    vec4 t01 = fxTexel(i0 + vec2(0.0, 1.0));
+    vec4 t11 = fxTexel(i0 + vec2(1.0, 1.0));
+    float w00 = (1.0 - f.x) * (1.0 - f.y), w10 = f.x * (1.0 - f.y), w01 = (1.0 - f.x) * f.y, w11 = f.x * f.y;
+    float a = w00 * t00.a + w10 * t10.a + w01 * t01.a + w11 * t11.a;
+    float c00 = w00 * step(0.0001, t00.a), c10 = w10 * step(0.0001, t10.a), c01 = w01 * step(0.0001, t01.a), c11 = w11 * step(0.0001, t11.a);
+    float cw = c00 + c10 + c01 + c11;
+    vec3 col = cw > 0.0 ? (t00.rgb * c00 + t10.rgb * c10 + t01.rgb * c01 + t11.rgb * c11) / cw : uLine;
+    gl_FragColor = vec4(fxScreen(col), a * uAlpha);
+}
+)GLSL";
+
 const char* const kOutlineMain = R"GLSL(
 uniform vec3 uOutlineA;
 uniform vec3 uOutlineB;
@@ -178,6 +209,7 @@ std::vector<FxProgramSource> build() {
     v.push_back({"flat_tint", kVertex, pre + scr + kFlatMain});
     v.push_back({"death_portrait", kVertex, pre + kDeathPortrait});
     v.push_back({"death_background", kVertex, pre + kDeathBackground});
+    v.push_back({"sprite_palette_smooth", kVertex, pre + scr + spr + kSpriteSmoothMain});   // last: older packs lack it
     return v;
 }
 }  // namespace

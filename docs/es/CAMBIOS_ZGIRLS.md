@@ -284,3 +284,28 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
 - **Sin hacer / dudas**: barra de stun (hace falta el umbral de mareo), filmstrip de más de un luchador (equipos), animación de pausa "Player N Pause", `Movelist`, panel de `TrainingMode` y el resto de vistas de Main / Options / Help / Store. Un KO con agarre de Filia deja un frame con el muñeco de agarre dibujado además de la rival real (pendiente con el trabajo de agarres).
 - Android: `versionCode 7`, `versionName 0.6-zgirls-Dev_Nov-07` (instala encima de la anterior).
 
+## Build 0.8 Dev_Nov-11 - efectos PAFX en el juego en vivo (GLES, opcional) y paletas Claude
+- **Efectos por GPU en la partida** (opción de desarrollador "Efectos GPU", **desactivada por defecto**): `FxRenderer` (`src/app/fx_gl.*`) dibuja
+  los programas PAFX dentro del renderer GLES2 de SDL por "pases": SDL termina su lote, el pase lee viewport / recorte / destino que SDL ya puso,
+  dibuja con sus programas y devuelve **todo** el estado GL (programa, buffer, texturas, mezcla, atributos) antes de que SDL siga. Solo con el
+  renderer `opengles2`; en cualquier otro caso (o si algo falla en la partida) se queda la ruta de CPU de siempre.
+- **Skin**: sprites desde los planos de índice (textura RGBA8: G = tono, B = banda) + textura de paleta; `sprite_palette` para Pixelated y el
+  programa nuevo `sprite_palette_smooth` (bilineal sobre los colores ya pintados) para Smooth; sombras de suelo con `floor_shadow`. Dibujo en dos
+  fases (primero decodificar / subir, luego un solo pase). El pack viejo sin el programa nuevo se reconstruye solo ("hecho antes de esta versión").
+- **El pack en el dispositivo** (`src/fx/fx_store.*`): `fx/fx.pafx` + `fx/pafx.key` en la carpeta privada de la app; se reutiliza si abre con
+  su clave, tiene todos los programas y la huella coincide con tu Core; se reconstruye (escritura atómica) si falta, cambió el Core, es de una
+  versión anterior o está dañado. Si falta el Core nunca se reemplaza un pack hecho con uno.
+- **Comprobado sin teléfono**: `tests/test_fx_gl.cpp` (58 comprobaciones; job de CI `gl-renderer`) compara sprites, sprites suaves, sombras y contorno
+  con la matemática de C++ en distintas escalas, viewports, recortes, tamaño lógico y render a textura, y que lo que dibuja SDL antes y después
+  del pase y todo el estado GL quedan intactos. Con arte real (`ZDROID_SMOKE_GL=1` en el visor) la ruta de GPU difiere de la de CPU como máximo
+  16/255 en unos pocos píxeles. **Falta la primera prueba en un teléfono real**, por eso la opción viene apagada; el estado se ve en el overlay de la etapa.
+- **Sin hacer**: nada dispara aún los efectos (la simulación no tiene estado de super / oscurecer / cambio de tono), así que flash, sombra de super,
+  los tintes de `_palette_effects.ini` y las paletas animadas todavía no se reproducen; normales, "chowder", máscaras de tono, retratos palettizados
+  de Otter y desenfoque de movimiento tampoco.
+- **Paletas Claude** (`zdroid_palgen`, `src/core/palgen.*`): genera `.pal` a partir de las texturas de paleta de TU juego. Cuerpo y ropa en gris normal
+  (la piel un poco más clara), lo que ya era negro sigue negro (las corbatas de Filia, Big Band y Peacock, negras), lo casi blanco, blanco, y los ojos
+  en el naranja Claude `#D97757` (tabla de regiones en `src/core/pal_theme_hints.inc`); se conserva el sombreado. Variantes `Claude` y `ClaudeDark`.
+  Squigly y Marie se saltan (su textura tiene una región más / menos que la tabla). Faltan los ojos de Beowulf, Big Band, Painwheel, Peacock y Umbrella.
+  Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
+- Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
+

@@ -52,6 +52,10 @@ struct SpriteParams {
 // The colour of one texel.  With default params this is exactly toRgba(buildRgbaTables(pal)) of art.h, to within one 8-bit step.
 Rgba spritePalette(const Palette& pal, uint8_t band, uint8_t grad, const SpriteParams& p);
 
+// The same with the coloured texels filtered bilinearly at (u, v) of a w x h plane pair (the "Smooth" look): colours are blended with
+// the weights of the texels that have any coverage, alpha with all four; coordinates clamp at the edges.
+Rgba spritePaletteSmooth(const Palette& pal, const uint8_t* band, const uint8_t* grad, int w, int h, float u, float v, const SpriteParams& p);
+
 // Flat-colour "super outline": the sprite's coverage in two fixed colours blended by `mix`.
 Rgba superOutline(const Palette& pal, uint8_t band, uint8_t grad, const SpriteParams& p, const float a[3], const float b[3], float mix);
 

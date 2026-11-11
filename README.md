@@ -90,7 +90,7 @@ lives in the app's own prefs folder. The download is the packed `.gfs` form: it 
 src/core     portable C++17 library (vfs, text formats, gbs, gbs_scene, art decoder, foit (frames/states/boxes), gamedata, level, menu_data, steam_*)
 src/app      SDL2 front end: zdroid_viewer.cpp (Menu/Home/Browse/Steam) + ui.{h,cpp} (immediate-mode UI) +
              menu.{h,cpp} (notice, title, menu) + game_ui.{h,cpp} (draws .gbs scenes) + menu_scene.cpp (menu on the scenes) + play.{h,cpp} (the Play screen) + public-domain font8x8
-src/tools    zdroid_probe, zdroid_foit (character body inspector), zdroid_dds, zdroid_msb, zdroid_fight, zdroid_mods
+src/tools    zdroid_probe, zdroid_foit (character body inspector), zdroid_dds, zdroid_msb, zdroid_fight, zdroid_mods, zdroid_pafx, zdroid_palgen (themed .pal palettes, see docs/MODS.md)
 tests        unit tests, oracle generator, real-data diff
 tools/reference/sg_extract.py   the original extractor this code is checked against
 android      Gradle project (builds an arm64 apk; see android/README.md)   docs/RE_NOTES.md   reverse-engineering notes

@@ -83,9 +83,34 @@ neutral numbers and with the numbers read from a real Core. The CI job `fx-gles`
 cipher, the container (wrong key, damage anywhere, truncation, swapped entries), the number extraction and the maths; the fuzz harness
 feeds the reader arbitrary bytes.
 
+## In the live game: GPU effects (developer option, default Off)
+
+`src/app/fx_gl.*` (`FxRenderer`) runs the programs inside SDL's own OpenGL ES 2 renderer, the one Android uses. SDL keeps a private cache
+of the GL state it last set and trusts it on the next draw, so the renderer works in *passes*: a `Pass` lets SDL finish its queued drawing
+and apply its viewport / clip / render target, reads what SDL set, draws with its own programs and puts every piece of GL state it touched
+back (program, buffer, texture units, blend, vertex attributes) before SDL draws again. `init()` fails on any other SDL renderer, and the
+game keeps its CPU path.
+
+* **Skin** (`src/app/play.cpp`) draws fighters with the GPU route when the option is on, the pack is ready and the sprite level is 0: the
+  index planes become RGBA8 textures (G = grad, B = band), the palette a tones x bands texture, and one pass draws every sprite
+  (`sprite_palette`, or `sprite_palette_smooth`, the bilinear version, for Smooth) plus the floor shadows (`floor_shadow`). If a pass cannot
+  start (another GL context, device reset, a texture the GPU refuses) the Skin drops the route and goes on with the CPU one.
+* **The pack on the device** (`src/fx/fx_store.*`): `loadOrBuildFxPack` keeps `fx/fx.pafx` + `fx/pafx.key` in the app's private folder.
+  It is reused when it opens with its key, has every program and its fingerprint matches the Core; it is rebuilt (atomically) when it is
+  missing, the Core changed, it was built before a program was added, or it is unreadable. A missing Core never replaces a pack a Core made.
+* **Option**: Developer Options > "GPU effects" (`ZD_DEV_GPUFX`, env `ZDROID_DEV_GPUFX`), Off by default; the stage-info overlay says whether the
+  route is active and, if not, why.
+* **Verification** (headless, Mesa llvmpipe through SDL's offscreen video driver): `tests/test_fx_gl.cpp` (58 checks, CI job `gl-renderer`)
+  compares sprites, smooth sprites, shadows and the outline with the C++ maths across window scale, viewport, clip, logical size and render
+  targets, and checks that SDL's own draws around a pass and the whole GL state are untouched. On real art (a `ZDROID_SMOKE_GL=1` viewer
+  capture of a fight) the GPU route differs from the CPU one by at most 16/255 in a handful of pixels. **Nobody has run it on a real phone yet:
+  that is why the option is Off.**
+
 ## What is not wired yet
 
-The effects exist as programs + reference maths + a pack, verified off-screen. The live game still draws through `SDL_Renderer`, which
-does not accept custom programs; the next step is a small GLES pass (flush SDL's batch, draw the fighter sprites with `sprite_palette`,
-restore SDL's state) that loads the pack from the app's private folder at start and falls back to the CPU path when there is none, plus a
-"build effects pack" button next to the data-folder picker so the player makes theirs on the device.
+* Nothing triggers the effects: the fight simulation has no super / darkening / hue-shift state yet, so the flash, the super shadow, the
+  `_palette_effects.ini` tints (AllBlack, Dead_Pallor, Armor ...) and the animated hue-shift palettes are available to the GPU route but not played.
+* Normal-lit shading (the `.art` decoder does not expose the normal plane), the "chowder" field, per-row hue masks, Otter's palettized portraits,
+  the super-flash card and motion blur are not in v1.
+* Only SDL's `opengles2` renderer, only sprite level 0; the shadows are sampled nearest.
+* A "build effects pack" button next to the data-folder picker (today the pack is built the first time the option is switched on).

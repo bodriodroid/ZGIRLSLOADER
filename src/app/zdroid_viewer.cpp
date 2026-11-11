@@ -1080,6 +1080,9 @@ int main(int argc, char** argv) {
     }
     SDL_Renderer* ren = nullptr;
     if (!smoke) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    // captures use the software renderer (same picture everywhere); ZDROID_SMOKE_GL=1 captures through the real GL renderer
+    // instead (SDL_VIDEODRIVER=offscreen EGL_PLATFORM=surfaceless on Mesa), which is how the GPU effects are checked headless
+    if (!ren && smoke && std::getenv("ZDROID_SMOKE_GL")) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_TARGETTEXTURE);
     if (!ren) ren = SDL_CreateRenderer(win, -1, SDL_RENDERER_SOFTWARE);
     if (!ren) {
         std::fprintf(stderr, "SDL_CreateRenderer: %s\n", SDL_GetError());

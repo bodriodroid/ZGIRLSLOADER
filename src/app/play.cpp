@@ -7,6 +7,7 @@
 #include "zg_progress.h"
 
 #include "app_paths.h"
+#include "fx_store.h"
 #include "dds.h"
 #include "imgscale.h"
 #include "level.h"
@@ -18,6 +19,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <thread>
@@ -125,12 +127,58 @@ Anim animFor(const fight::Fighter& f) {
 // Skin
 // ---------------------------------------------------------------------------
 
-void Skin::reset(SDL_Renderer* r) {
-    if (r)
-        for (auto& kv : tex_)
-            if (kv.second.t) SDL_DestroyTexture(kv.second.t);
+void Skin::freeTex(Tex& t, bool sdlAlive) {
+    if (t.t && sdlAlive) SDL_DestroyTexture(t.t);
+    t.t = nullptr;
+    if (t.gl.valid() && fx_) fx_->destroy(t.gl);   // no-op once the GL context is gone
+    t.gl = FxIndexTex{};
+}
+
+void Skin::freeAll(bool sdlAlive) {
+    for (auto& kv : tex_) freeTex(kv.second, sdlAlive);
     tex_.clear();
     bytes_ = 0;
+    if (palGl_.valid() && fx_) fx_->destroy(palGl_);
+    palGl_ = FxPaletteTex{};
+}
+
+void Skin::setFx(FxRenderer* fx) {
+    const bool was = gpu_;
+    if (was) freeAll(true);   // the GPU textures belong to the old renderer: free them while it is alive
+    fx_ = fx;
+    gpuFailed_ = false;
+    gpu_ = wantGpu();
+    if (gpu_ != was) {
+        if (!was) freeAll(true);   // entering the GPU route: the coloured textures are of no use
+        ++epoch_;
+    } else if (was) {
+        ++epoch_;
+    }
+}
+
+int Skin::gpuTextures() const {
+    int n = 0;
+    for (const auto& kv : tex_)
+        if (kv.second.gl.valid()) ++n;
+    return n;
+}
+
+bool Skin::ensureFxPalette() {
+    if (palGl_.valid()) return true;
+    if (!fx_ || !fx_->ready()) return false;
+    palGl_ = fx_->createPalette(pal_);
+    return palGl_.valid();
+}
+
+void Skin::dropGpu() {
+    freeAll(true);
+    gpu_ = false;
+    gpuFailed_ = true;
+    ++epoch_;
+}
+
+void Skin::reset(SDL_Renderer* r) {
+    freeAll(r != nullptr);
     ms_ = fight::MoveSet{};
     art_.clear();
     artPt_.clear();
@@ -149,14 +197,11 @@ void Skin::configure(SDL_Renderer* r, int level, bool smooth, size_t cacheBytes)
         cacheLimit_ = cacheBytes;
         return;
     }
-    if (r)
-        for (auto& kv : tex_)
-            if (kv.second.t) SDL_DestroyTexture(kv.second.t);
-    tex_.clear();
-    bytes_ = 0;
+    freeAll(r != nullptr);
     level_ = level;
     smooth_ = smooth;
     cacheLimit_ = cacheBytes;
+    gpu_ = wantGpu();   // the GPU route needs full-size, unfiltered sprites
     ++epoch_;
 }
 
@@ -207,6 +252,13 @@ Skin::Decoded Skin::decode(uint16_t fidx, int slot) const {
     const std::vector<uint8_t>& src = fr->src == 5 ? art_ : (fr->src == 4 ? artPt_ : none);
     ArtPlanes pl;
     if (src.empty() || !foit::decodeImage(fr->img[slot], src.data(), src.size(), pl) || pl.width <= 0 || pl.height <= 0) return d;
+    if (gpu_) {   // the GPU colours the planes itself: ship them as they are
+        d.index = FxRenderer::packIndex(pl.band.data(), pl.grad.data(), pl.width, pl.height);
+        d.fullW = d.w = pl.width;
+        d.fullH = d.h = pl.height;
+        d.ok = !d.index.empty();
+        return d;
+    }
     std::vector<uint8_t> rgba = toRgba(pl, tables_);
     d.fullW = pl.width;
     d.fullH = pl.height;
@@ -229,9 +281,9 @@ void Skin::evict() {
         for (auto it = tex_.begin(); it != tex_.end(); ++it)
             if (oldest == tex_.end() || it->second.use < oldest->second.use) oldest = it;
         if (oldest == tex_.end()) break;
-        if (oldest->second.t) {
+        if (oldest->second.t || oldest->second.gl.valid()) {
             bytes_ -= std::min(bytes_, static_cast<size_t>(oldest->second.w) * oldest->second.h * 4);
-            SDL_DestroyTexture(oldest->second.t);
+            freeTex(oldest->second, true);
         }
         tex_.erase(oldest);
     }
@@ -242,7 +294,18 @@ void Skin::insert(SDL_Renderer* r, uint16_t fidx, int slot, Decoded&& d) {
     const uint32_t k = key(fidx, slot);
     if (tex_.count(k)) return;
     Tex t;
-    if (d.ok) {
+    if (d.ok && gpu_) {
+        FxIndexTex g;
+        if (!d.index.empty() && fx_ && fx_->ready()) g = fx_->createIndex(d.index.data(), d.w, d.h);
+        if (g.valid()) {   // refused (bigger than the GPU takes): nothing is drawn for this image, like a failed SDL texture
+            t.gl = g;
+            t.w = d.w;
+            t.h = d.h;
+            t.fullW = d.fullW;
+            t.fullH = d.fullH;
+            bytes_ += static_cast<size_t>(d.w) * d.h * 4;
+        }
+    } else if (d.ok && !d.rgba.empty()) {
         SDL_Texture* tx = SDL_CreateTexture(r, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, d.w, d.h);
         if (tx) {
             SDL_UpdateTexture(tx, nullptr, d.rgba.data(), d.w * 4);
@@ -311,6 +374,12 @@ int Skin::drawFrame(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, d
     }
     const Uint8 a8 = alpha >= 1.0 ? 255 : static_cast<Uint8>(std::lround(alpha * 255.0));
     const double sxk = scale * xs, syk = scale * ys;
+    if (gpu_ && !ensureFxPalette()) dropGpu();   // the GPU would not take the palette: this skin goes back to the CPU route
+    if (gpu_) {
+        const int n = drawFrameGpu(r, idx, feetX, feetY, faceRight, sxk, syk, alpha);
+        if (n >= 0) return n;
+        dropGpu();   // the pass could not start (GL context changed under us): carry on with the CPU route, this frame included
+    }
     int drawn = 0;
     for (int slot = 0; slot < foit::kSlots; ++slot) {
         if (fr->img[slot].placeholder()) continue;
@@ -346,6 +415,11 @@ int Skin::drawShadow(SDL_Renderer* r, uint16_t idx, double feetX, double floorY,
                      double alpha, bool fade, double fadeDist) {
     const foit::Frame* fr = ms_.frame(idx);
     if (!fr) return 0;
+    if (gpu_) {
+        const int n = drawShadowGpu(r, idx, feetX, floorY, air, scale, faceRight, flat, alpha, fade, fadeDist);
+        if (n >= 0) return n;
+        dropGpu();
+    }
     int drawn = 0;
     const double dist = std::max(50.0, fadeDist);
     auto alphaAt = [&](double heightAboveFloor) {
@@ -394,6 +468,102 @@ int Skin::drawShadow(SDL_Renderer* r, uint16_t idx, double feetX, double floorY,
     return drawn;
 }
 
+// GPU route: the images are cached as index planes; one pass per call draws every slot of the frame through the effect programs.
+// Two phases, because decoding / uploading an image can evict an older one: first make sure every slot is cached, then draw only
+// what is still there.
+int Skin::drawFrameGpu(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, bool faceRight, double sxk, double syk, double alpha) {
+    const foit::Frame* fr = ms_.frame(idx);
+    if (!fr || !fx_) return -1;
+    for (int slot = 0; slot < foit::kSlots; ++slot)
+        if (!fr->img[slot].placeholder()) image(r, idx, slot);
+    FxRenderer::Pass pass(*fx_);
+    if (!pass.ok()) return -1;
+    fx::SpriteParams sp;
+    sp.alpha = static_cast<float>(std::clamp(alpha, 0.0, 1.0));
+    sp.hueCos = hueCos_;
+    sp.hueSin = hueSin_;
+    sp.hueAmount = hueAmount_;
+    sp.screen = screenFx_;
+    int drawn = 0;
+    for (int slot = 0; slot < foit::kSlots; ++slot) {
+        if (fr->img[slot].placeholder()) continue;
+        const auto it = tex_.find(key(idx, slot));
+        if (it == tex_.end() || !it->second.gl.valid()) continue;
+        const Tex& t = it->second;
+        const double dx = fr->drawX(slot), dy = fr->drawY(slot);
+        double x0, x1;
+        if (faceRight) {
+            x0 = feetX + dx * sxk;
+            x1 = feetX + (dx + t.fullW) * sxk;
+        } else {
+            x0 = feetX - (dx + t.fullW) * sxk;
+            x1 = feetX - dx * sxk;
+        }
+        double y0 = feetY + dy * syk, y1 = feetY + (dy + t.fullH) * syk;
+        if (!smooth_) {   // Pixelated: whole logical pixels, like the CPU route
+            x0 = std::round(x0);
+            x1 = std::round(x1);
+            y0 = std::round(y0);
+            y1 = std::round(y1);
+        }
+        const SDL_FRect dst{static_cast<float>(x0), static_cast<float>(y0), static_cast<float>(std::max(smooth_ ? 0.25 : 1.0, x1 - x0)),
+                            static_cast<float>(std::max(smooth_ ? 0.25 : 1.0, y1 - y0))};
+        pass.sprite(t.gl, palGl_, dst, !faceRight, sp, smooth_);
+        ++drawn;
+    }
+    return drawn;
+}
+
+int Skin::drawShadowGpu(SDL_Renderer* r, uint16_t idx, double feetX, double floorY, double air, double scale, bool faceRight, double flat,
+                        double alpha, bool fade, double fadeDist) {
+    const foit::Frame* fr = ms_.frame(idx);
+    if (!fr || !fx_) return -1;
+    const double dist = std::max(50.0, fadeDist);
+    for (int slot = 0; slot < foit::kSlots; ++slot)
+        if (!fr->img[slot].placeholder()) image(r, idx, slot);
+    FxRenderer::Pass pass(*fx_);
+    if (!pass.ok()) return -1;
+    int drawn = 0;
+    for (int slot = 0; slot < foit::kSlots; ++slot) {
+        if (fr->img[slot].placeholder()) continue;
+        const auto it = tex_.find(key(idx, slot));
+        if (it == tex_.end() || !it->second.gl.valid()) continue;
+        const Tex& t = it->second;
+        const double dx = fr->drawX(slot), dy = fr->drawY(slot);
+        double x0, x1;
+        if (faceRight) {
+            x0 = feetX + dx * scale;
+            x1 = feetX + (dx + t.fullW) * scale;
+        } else {
+            x0 = feetX - (dx + t.fullW) * scale;
+            x1 = feetX - dx * scale;
+        }
+        // same geometry as the CPU route: the silhouette is mirrored and squashed onto the floor, each point pushed by its height
+        const double hTop = -dy, hBot = -(dy + t.fullH);
+        const double yTop = floorY + (air + hTop) * flat * scale, yBot = floorY + (air + hBot) * flat * scale;
+        // what the programs fade by: the height above the floor of each corner (interpolated per pixel); without `fade` one value
+        // for the whole silhouette - the fighter's height in the air
+        const double zTop = fade ? air + hTop : 0.5 * air, zBot = fade ? air + hBot : 0.5 * air;
+        if (zTop >= dist && zBot >= dist) continue;   // fully faded out
+        FxShadowQuad q;
+        const float u0 = faceRight ? 0.0f : 1.0f, u1 = faceRight ? 1.0f : 0.0f;
+        const float xs4[4] = {static_cast<float>(x0), static_cast<float>(x1), static_cast<float>(x0), static_cast<float>(x1)};
+        const float ys4[4] = {static_cast<float>(yTop), static_cast<float>(yTop), static_cast<float>(yBot), static_cast<float>(yBot)};
+        const float zs4[4] = {static_cast<float>(zTop), static_cast<float>(zTop), static_cast<float>(zBot), static_cast<float>(zBot)};
+        const float us4[4] = {u0, u1, u0, u1}, vs4[4] = {0.0f, 0.0f, 1.0f, 1.0f};
+        for (int i = 0; i < 4; ++i) {
+            q.x[i] = xs4[i];
+            q.y[i] = ys4[i];
+            q.z[i] = zs4[i];
+            q.u[i] = us4[i];
+            q.v[i] = vs4[i];
+        }
+        pass.shadow(t.gl, q, static_cast<float>(dist), static_cast<float>(std::clamp(alpha, 0.0, 1.0)));
+        ++drawn;
+    }
+    return drawn;
+}
+
 // ---------------------------------------------------------------------------
 // PlayScreen
 // ---------------------------------------------------------------------------
@@ -429,9 +599,41 @@ void PlayScreen::refreshDev() {
     dev_ = devopt::resolve([](const char* k) { return devGet(k); });
 }
 
+// "GPU effects" option: starts the effect renderer (loading the pack from the app's private folder, building it from the player's own
+// Core the first time) and hands it to both skins, or takes it back.  Anything that goes wrong leaves the option off and the CPU
+// route in charge; fxStatus_ says why.
+void PlayScreen::syncFx(SDL_Renderer* r) {
+    if (!dev_.gpuFx || !r) {
+        for (Skin& sk : skin_) sk.setFx(nullptr);   // they free their GPU textures while the renderer lives
+        fxr_.shutdown();
+        fxStatus_ = "off";
+        return;
+    }
+    if (!fxr_.ready() || fxr_.renderer() != r) {
+        for (Skin& sk : skin_) sk.setFx(nullptr);
+        fxr_.shutdown();
+        std::string coreDir;
+        std::string real;
+        if (gd_ && gd_->vfs().pick("TiledSprite_fp.fx", &real)) coreDir = std::filesystem::path(real).parent_path().string();
+        fx::FxPack pack;
+        fx::FxStoreInfo info;
+        std::string err;
+        if (!fx::loadOrBuildFxPack(apppaths::prefFile("fx"), coreDir, pack, &info, &err) || !fxr_.init(r, pack, &err)) {
+            fxStatus_ = "off (" + err + ")";
+            std::printf("[play] GPU effects: %s\n", fxStatus_.c_str());
+            return;
+        }
+        fxStatus_ = std::string("on, ") + (info.fromCore ? "numbers from your Core" : "neutral numbers") +
+                    (info.built ? (info.persisted ? ", pack built and saved" : ", pack built (not saved)") : ", pack loaded");
+        std::printf("[play] GPU effects: %s\n", fxStatus_.c_str());
+    }
+    for (Skin& sk : skin_) sk.setFx(&fxr_);
+}
+
 // Sprite level, filter and texture budget of both fighters.  The level follows the closest camera zoom (the biggest the sprites
 // ever get on screen): a 640x360 window needs half-size art, a phone needs every pixel.
 void PlayScreen::applyDevToSkins(SDL_Renderer* r) {
+    syncFx(r);
     float sx = 1.0f, sy = 1.0f;
     if (r) SDL_RenderGetScale(r, &sx, &sy);
     const double phys = std::max(0.1, static_cast<double>(std::min(sx, sy))) * dev_.renderScale;
@@ -1679,9 +1881,14 @@ void PlayScreen::drawStageInfo(Ui& ui) {
     std::snprintf(b, sizeof b, "render %s  sprites level %d (%.2f px/art px)  textures %.0f/%.0f MB  %s", res, skin_[0].level(), spritePx_,
                   (skin_[0].cacheUsed() + skin_[1].cacheUsed()) / 1048576.0, (skin_[0].cacheLimit() + skin_[1].cacheLimit()) / 1048576.0,
                   dev_.smooth ? "smooth" : "pixelated");
-    ui.fill(Rect{3, 326, 5 + std::max(Ui::textW(a), Ui::textW(b)), 22}, Col{0, 0, 0, 150});
-    ui.text(5, 328, a, Col{255, 236, 150, 255});
-    ui.text(5, 338, b, Col{200, 230, 255, 255});
+    char c[200];
+    std::snprintf(c, sizeof c, "GPU effects %s%s", fxStatus_.empty() ? "off" : fxStatus_.c_str(),
+                  (skin_[0].gpuActive() || skin_[1].gpuActive()) ? "  (sprites on the GPU route)" : "");
+    const int wmax = std::max({Ui::textW(a), Ui::textW(b), Ui::textW(c)});
+    ui.fill(Rect{3, 316, 5 + wmax, 32}, Col{0, 0, 0, 150});
+    ui.text(5, 318, a, Col{255, 236, 150, 255});
+    ui.text(5, 328, b, Col{200, 230, 255, 255});
+    ui.text(5, 338, c, Col{190, 255, 200, 255});
 }
 
 // The game's own loading screen (bomb + "LOADING..." over the line-art slideshow) with a thin progress bar and the

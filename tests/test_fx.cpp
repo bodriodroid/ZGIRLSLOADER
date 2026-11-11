@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -14,6 +15,7 @@
 #include "fx_glsl.h"
 #include "fx_math.h"
 #include "fx_pack.h"
+#include "fx_store.h"
 #include "fx_tuning.h"
 #include "pafx.h"
 
@@ -459,7 +461,7 @@ static void testMath() {
 // ---------------------------------------------------------------- programs and the pack
 static void testPack() {
     const auto& progs = fxProgramSources();
-    CHECK(progs.size() == 6);
+    CHECK(progs.size() == 7);
     for (const FxProgramSource& p : progs) {
         CHECK(!p.vertex.empty() && p.fragment.find("void main") != std::string::npos);
         CHECK(p.vertex.find("gl_Position") != std::string::npos);
@@ -504,6 +506,143 @@ static void testPack() {
     CHECK(buildFxPack(empty, keyOf(9), idOf(9), bytes, &rep, &err) && rep.tuningGroups == 0);
     FxPack np;
     CHECK(np.load(bytes.data(), bytes.size(), keyOf(9)) && !np.tuningFromCore());
+}
+
+// the bilinear sprite: texel centres give the nearest look, the middle of two texels their average, empty texels lend no colour
+static void testSmoothMath() {
+    Palette pal;
+    pal.tones = 2;
+    pal.bands = 3;
+    pal.rgb = {0, 0, 0, 255, 255, 255,      // band 0 (never read)
+               200, 0, 0, 200, 0, 0,        // band 1: red
+               0, 0, 200, 0, 0, 200};       // band 2: blue
+    // 2x2 picture: red, blue / empty outline-less texel (band 0, line 0), red with a half-strength outline
+    const uint8_t band[4] = {1, 2, 0, 1};
+    const uint8_t grad[4] = {0, 0, 0, 0};
+    SpriteParams p;
+    auto at = [&](float u, float v) { return spritePaletteSmooth(pal, band, grad, 2, 2, u, v, p); };
+    const Rgba red = at(0.25f, 0.25f), blue = at(0.75f, 0.25f);
+    CHECK(near(red.r, 200 / 255.0f, 1e-4f) && near(red.a, 1.0f) && near(blue.b, 200 / 255.0f, 1e-4f));   // texel centres
+    const Rgba mid = at(0.5f, 0.25f);   // halfway between red and blue, top row
+    CHECK(near(mid.r, 100 / 255.0f, 1e-4f) && near(mid.b, 100 / 255.0f, 1e-4f) && near(mid.a, 1.0f));
+    const Rgba edge = at(0.25f, 0.5f);  // red above an empty texel: half coverage, but the colour stays red (the empty texel lends none)
+    CHECK(near(edge.a, 0.5f) && near(edge.r, 200 / 255.0f, 1e-4f) && near(edge.b, 0.0f, 1e-4f));
+    const Rgba out = at(-1.0f, -1.0f);  // beyond the picture: the corner texel again (clamped)
+    CHECK(near(out.r, red.r) && near(out.a, red.a));
+    // alpha and the screen effect act after the filtering
+    p.alpha = 0.5f;
+    CHECK(near(at(0.25f, 0.25f).a, 0.5f));
+    // a fully empty neighbourhood: no coverage
+    const uint8_t b0[4] = {0, 0, 0, 0};
+    CHECK(near(spritePaletteSmooth(pal, b0, grad, 2, 2, 0.5f, 0.5f, SpriteParams{}).a, 0.0f));
+}
+
+// ---------------------------------------------------------------- the pack on the device
+static void put(const std::filesystem::path& p, const std::string& text) {
+    std::filesystem::create_directories(p.parent_path());
+    std::ofstream(p, std::ios::binary) << text;
+}
+
+static void testStore() {
+    namespace fs = std::filesystem;
+    const fs::path root = fs::temp_directory_path() / ("zd_fx_store_" + std::to_string(static_cast<long>(std::rand())) + "_" + std::to_string(static_cast<long>(std::time(nullptr))));
+    fs::remove_all(root);
+    const fs::path core = root / "core", store = root / "private";
+    put(core / "shaders" / "TiledSprite_fp.fx", kTiled);
+    put(core / "shaders" / "Otter_vp.fx", kOtterVp);
+    put(core / "shaders" / "Otter_fp.fx", kOtterFp);
+    put(core / "shaders" / "pssl" / "other.fx", "x");
+
+    CoreShaderInputs in;
+    std::string err;
+    CHECK(gatherCoreShaders(core.string(), in, &err));                       // the Core folder ...
+    CoreShaderInputs in2;
+    CHECK(gatherCoreShaders((core / "shaders").string(), in2, &err));        // ... or its shaders folder
+    CHECK(in.fingerprint == in2.fingerprint && in.fileCount == 4 && in.fingerprint.size() == 16);
+    CHECK(!in.tiledSpriteFp.empty() && !in.otterVp.empty() && !in.otterFp.empty());
+    CoreShaderInputs none;
+    CHECK(!gatherCoreShaders((root / "nothing").string(), none, &err) && !err.empty());
+    put(root / "emptycore" / "shaders" / "readme.txt", "no shaders here");
+    CHECK(!gatherCoreShaders((root / "emptycore").string(), none, &err));
+
+    // first use: created from the Core, written, and the key next to it
+    FxPack pk;
+    FxStoreInfo inf;
+    CHECK(loadOrBuildFxPack(store.string(), core.string(), pk, &inf, &err));
+    CHECK(inf.built && inf.persisted && inf.fromCore && inf.why == "created" && inf.fingerprint == in.fingerprint);
+    CHECK(fs::exists(store / kFxPackFile) && fs::exists(store / kFxKeyFile) && fs::file_size(store / kFxKeyFile) == 32);
+    CHECK(near(pk.tuning().sprite.contrast, 1.5f));
+    CHECK(pk.programs().size() == fxProgramSources().size());
+
+    // second use: loaded as it is
+    const auto packTime = fs::last_write_time(store / kFxPackFile);
+    FxPack again;
+    CHECK(loadOrBuildFxPack(store.string(), core.string(), again, &inf, &err));
+    CHECK(!inf.built && inf.persisted && inf.fromCore && inf.why.empty());
+    CHECK(fs::last_write_time(store / kFxPackFile) == packTime);
+    CHECK(again.coreFingerprint() == pk.coreFingerprint());
+
+    // the Core is not found right now: the pack made from it stays in use
+    FxPack gone;
+    CHECK(loadOrBuildFxPack(store.string(), "", gone, &inf, &err));
+    CHECK(!inf.built && inf.fromCore);
+    CHECK(loadOrBuildFxPack(store.string(), (root / "nothing").string(), gone, &inf, &err) && !inf.built && inf.fromCore);
+
+    // the Core changed: rebuilt
+    put(core / "shaders" / "pssl" / "other.fx", "a longer file than before");
+    FxPack changed;
+    CHECK(loadOrBuildFxPack(store.string(), core.string(), changed, &inf, &err));
+    CHECK(inf.built && inf.why == "the Core changed" && changed.coreFingerprint() != pk.coreFingerprint());
+
+    // damaged, or sealed with another key: rebuilt
+    {
+        std::fstream f(store / kFxPackFile, std::ios::in | std::ios::out | std::ios::binary);
+        f.seekp(200);
+        f.put('\x5a');
+    }
+    FxPack fixed;
+    CHECK(loadOrBuildFxPack(store.string(), core.string(), fixed, &inf, &err));
+    CHECK(inf.built && inf.why == "unreadable" && fixed.programs().size() == fxProgramSources().size());
+    fs::remove(store / kFxKeyFile);   // a new install key cannot open the old pack
+    FxPack rekeyed;
+    CHECK(loadOrBuildFxPack(store.string(), core.string(), rekeyed, &inf, &err));
+    CHECK(inf.built && inf.why == "unreadable");
+
+    // a pack made before a program existed is rebuilt (here: a pack without "sprite_palette_smooth")
+    {
+        AeadKey key{};
+        CHECK(loadOrCreatePafxKey((store / kFxKeyFile).string(), key, &err));
+        PafxWriter w;
+        std::string man = "format=1\ncoreFingerprint=" + in.fingerprint + "\ncoreShaderFiles=4\ntuningGroups=0\ntuningFromCore=0\nprograms=";
+        bool first = true;
+        for (const FxProgramSource& p : fxProgramSources()) {
+            if (p.name == "sprite_palette_smooth") continue;
+            man += (first ? "" : ",") + p.name;
+            first = false;
+            w.addText("fx/" + p.name + ".vert", PafxKind::GlslVertex, p.vertex);
+            w.addText("fx/" + p.name + ".frag", PafxKind::GlslFragment, p.fragment);
+        }
+        w.addText("fx/manifest.ini", PafxKind::Text, man + "\n");
+        w.addText("fx/tuning.ini", PafxKind::Text, tuningToIni(neutralTuning()));
+        std::vector<uint8_t> bytes;
+        CHECK(w.build(key, idOf(3), bytes, &err));
+        put(store / kFxPackFile, std::string(bytes.begin(), bytes.end()));
+    }
+    FxPack old;
+    CHECK(loadOrBuildFxPack(store.string(), core.string(), old, &inf, &err));
+    CHECK(inf.built && inf.why == "built before this version" && old.program("sprite_palette_smooth") != nullptr);
+
+    // no private folder: built in memory, nothing written
+    FxPack mem;
+    CHECK(loadOrBuildFxPack("", core.string(), mem, &inf, &err));
+    CHECK(inf.built && !inf.persisted && inf.fromCore && mem.programs().size() == fxProgramSources().size());
+    CHECK(loadOrBuildFxPack("", "", mem, &inf, &err) && !inf.fromCore);   // no Core either: neutral numbers of our own
+
+    // a store folder that cannot be created is an error, not a crash
+    put(root / "afile", "x");
+    CHECK(!loadOrBuildFxPack((root / "afile" / "sub").string(), core.string(), mem, &inf, &err) && !err.empty());
+
+    fs::remove_all(root);
 }
 
 // ---------------------------------------------------------------- a real Core, when one is around
@@ -562,6 +701,9 @@ int main() {
     testMath();
     std::printf("[fx] pack\n");
     testPack();
+    testSmoothMath();
+    std::printf("[fx] the pack on the device\n");
+    testStore();
     std::printf("[fx] real Core\n");
     testRealCore();
     std::printf("%d checks, %d failed\n", g_checks, g_fail);

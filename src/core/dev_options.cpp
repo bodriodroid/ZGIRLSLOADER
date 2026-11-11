@@ -23,6 +23,7 @@ const Def kDefs[kCount] = {
     {"ZD_DEV_ENTRANCE", "entrance", 2, {"Off", "On"}, 1, "Fighter entrances"},
     {"ZD_DEV_INFO", "info", 2, {"Off", "On"}, 0, "Stage info overlay"},
     {"ZD_DEV_RAM", "ram", 2, {"Off", "On"}, 0, "RAM display"},
+    {"ZD_DEV_GPUFX", "gpufx", 2, {"Off", "On"}, 0, "GPU effects (PAFX)"},
 };
 
 bool eqi(const std::string& a, const char* b) {
@@ -43,8 +44,8 @@ struct Str {
 };
 const Str kText[] = {
     {"dev", "Developer Options", "Opciones de Desarrollador"},
-    {"dev.desc", "Resolution, sprite quality, shadows, stage backdrop and debug switches.",
-     "Resolución, calidad de sprites, sombras, escenario e interruptores de depuración."},
+    {"dev.desc", "Resolution, sprite quality, shadows, stage backdrop, GPU effects and debug switches.",
+     "Resolución, calidad de sprites, sombras, escenario, efectos GPU e interruptores de depuración."},
     {"dev.res", "Render resolution", "Resolución de render"},
     {"dev.res.d", "How many pixels the picture is drawn with before it fills the window: Low 33%, Medium 50%, High 75%, Native 100%. Lower is faster.",
      "Con cuántos píxeles se dibuja la imagen antes de llenar la ventana: Baja 33%, Media 50%, Alta 75%, Nativa 100%. Menos = más rápido."},
@@ -80,6 +81,9 @@ const Str kText[] = {
     {"dev.ram", "RAM display", "Pantalla de RAM"},
     {"dev.ram.d", "Seven-segment readout of the memory the app uses (resident MB, peak, growth per minute) and the match's state hash, bottom right. Error codes show there on their own.",
      "Lectura de siete segmentos de la memoria que usa la app (MB residentes, pico, crecimiento por minuto) y el hash del combate, abajo a la derecha. Los códigos de error salen ahí solos."},
+    {"dev.gpufx", "GPU effects (PAFX)", "Efectos GPU (PAFX)"},
+    {"dev.gpufx.d", "Colours the fighters and their floor shadows on the GPU with the PAFX effect programs (hue shift, super flash and darkening). Built on first use from your own Core; needs an OpenGL ES 2 renderer, otherwise it stays off.",
+     "Colorea a los luchadores y sus sombras en la GPU con los programas de efectos PAFX (cambio de tono, destello y oscurecimiento de los supers). Se crea al primer uso con tu propio Core; necesita un renderer OpenGL ES 2, si no se queda apagado."},
     {"dev.back", "Back", "Atrás"},
     // choice names
     {"c.Low", "Low", "Baja"},
@@ -138,6 +142,7 @@ Settings resolve(const std::function<std::string(const char* key)>& get) {
     s.entrances = idx(kEntrances) == 1;
     s.stageInfo = idx(kStageInfo) == 1;
     s.ramDebug = idx(kRam) == 1;
+    s.gpuFx = idx(kGpuFx) == 1;
     return s;
 }
 

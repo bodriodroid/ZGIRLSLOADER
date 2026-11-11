@@ -49,6 +49,7 @@
 #include "menu_data.h"
 #include "music_lib.h"
 #include "modsdir.h"
+#include "palgen.h"
 #include "palmod.h"
 #include "moveset.h"
 #include "steam_dl.h"
@@ -2723,6 +2724,107 @@ static void testPalmod() {
     CHECK_EQ(int(pal.at(0, 3)[2]), 0x99);
 }
 
+// ============================================================ Claude palette generator (src/core/palgen.cpp)
+static double palgenLuma(uint32_t argb) {
+    return (0.299 * ((argb >> 16) & 0xFF) + 0.587 * ((argb >> 8) & 0xFF) + 0.114 * (argb & 0xFF)) / 255.0;
+}
+
+static void testPalgen() {
+    std::printf("[palette generator: Claude theme]\n");
+    CHECK(palgen::rampsValid());
+
+    // a synthetic Filia palette (24 regions, 16 tones): every row is the base colour scaled from 55 % (tone 0) to 100 % (tone 15), the white one from 88 %
+    auto rowColour = [](int row, int tone, int out[3]) {
+        static const int base[][3] = {{0, 0, 0},       {150, 150, 150}, {40, 30, 60},   {235, 235, 225}, {255, 200, 160}, {200, 20, 30},
+                                      {60, 160, 80},   {60, 160, 80},   {60, 160, 80},  {60, 160, 80},   {60, 160, 80},   {60, 160, 80},
+                                      {60, 160, 80},   {60, 160, 80},   {60, 160, 80},  {60, 160, 80},   {200, 20, 30},   {60, 160, 80},
+                                      {60, 160, 80},   {60, 160, 80},   {60, 160, 80},  {60, 160, 80},   {60, 160, 80},   {60, 160, 80},
+                                      {60, 160, 80}};
+        const double f = row == 3 ? 0.88 + 0.12 * tone / 15.0 : 0.55 + 0.45 * tone / 15.0;   // the white row stays light in every tone
+        for (int k = 0; k < 3; ++k) out[k] = static_cast<int>(base[row][k] * f);
+    };
+    Palette src;
+    src.tones = 16;
+    src.bands = 25;
+    src.rgb.assign(static_cast<size_t>(16) * 25 * 3, 0);
+    for (int row = 1; row < 25; ++row)
+        for (int t = 0; t < 16; ++t) {
+            int c[3];
+            rowColour(row, t, c);
+            for (int k = 0; k < 3; ++k) src.rgb[(static_cast<size_t>(row) * 16 + t) * 3 + k] = static_cast<uint8_t>(c[k]);
+        }
+    auto classifyRow = [&](int row) { return palgen::classify(&src.rgb[static_cast<size_t>(row) * 16 * 3]); };
+    CHECK(classifyRow(1) == palgen::Role::Cloth);   // a grey
+    CHECK(classifyRow(2) == palgen::Role::Black);   // nearly black
+    CHECK(classifyRow(3) == palgen::Role::White);   // nearly white
+    CHECK(classifyRow(4) == palgen::Role::Skin);    // a skin tone
+    CHECK(classifyRow(6) == palgen::Role::Cloth);   // a green
+
+    const palgen::Hints fh = palgen::hintsFor("filia");
+    CHECK_EQ(fh.eyes.size(), size_t(1));
+    CHECK_EQ(fh.ties.size(), size_t(1));
+    CHECK(palgen::hintsFor("nobody").eyes.empty());
+
+    palmod::PalFile pal;
+    palgen::Report rep;
+    std::string err;
+    CHECK(palgen::generate("Filia", src, palgen::Theme::Claude, pal, &rep, &err));
+    CHECK_EQ(pal.character, std::string("Filia"));
+    CHECK_EQ(rep.regions, 24);
+    CHECK_EQ(rep.ties, 1);
+    int total = 0;
+    for (int n : rep.perRole) total += n;
+    CHECK_EQ(total, 24);
+    CHECK_EQ(rep.perRole[static_cast<int>(palgen::Role::Eye)], 1);
+
+    // it is a real .pal: serialises, parses back and bakes with the region table
+    const std::vector<uint8_t> bytes = palmod::serialize(pal);
+    palmod::PalFile back;
+    CHECK(palmod::parse(bytes.data(), bytes.size(), back, &err));
+    CHECK(back.colors == pal.colors);
+    Palette baked;
+    CHECK(palmod::toPalette(back, baked, &err));
+    CHECK_EQ(baked.bands, 25);
+    CHECK(rep.meanErr < 3.0);
+
+    // the keys of every region run light -> dark, and the roles keep their order: white above grey above black
+    const std::vector<int>& counts = *palmod::regionCounts("filia");
+    std::vector<size_t> first;   // index of each region's first key
+    size_t at = 0;
+    for (int c : counts) {
+        first.push_back(at);
+        for (int i = 0; i + 1 < c; ++i) CHECK(palgenLuma(pal.colors[at + i]) >= palgenLuma(pal.colors[at + i + 1]) - 1e-9);
+        at += static_cast<size_t>(c);
+    }
+    const double black = palgenLuma(pal.colors[first[1]]);    // row 2
+    const double cloth = palgenLuma(pal.colors[first[0]]);    // row 1 (row index = region + 1)
+    const double white = palgenLuma(pal.colors[first[2]]);    // row 3
+    CHECK(black < cloth);
+    CHECK(cloth < white);
+    CHECK(black < 0.30);
+    CHECK(white > 0.85);
+    // the iris (row 5) is orange: red > green > blue; the tie (row 16, red in the original) is black
+    const uint32_t eye = pal.colors[first[4]];
+    CHECK(((eye >> 16) & 0xFF) > ((eye >> 8) & 0xFF) && ((eye >> 8) & 0xFF) > (eye & 0xFF));
+    CHECK(palgenLuma(pal.colors[first[15]]) < 0.30);
+    // every key is opaque
+    for (uint32_t c : pal.colors) CHECK_EQ(c >> 24, 0xFFu);
+
+    // the dark variant is darker for the greys and the whites
+    palmod::PalFile dark;
+    CHECK(palgen::generate("Filia", src, palgen::Theme::ClaudeDark, dark, nullptr, &err));
+    CHECK(palgenLuma(dark.colors[first[0]]) < cloth);
+    CHECK(palgenLuma(dark.colors[first[2]]) < white);
+
+    // refusals: a texture of another build, an unknown name
+    Palette shortSrc = src;
+    shortSrc.bands = 24;
+    shortSrc.rgb.resize(static_cast<size_t>(16) * 24 * 3);
+    CHECK(!palgen::generate("Filia", shortSrc, palgen::Theme::Claude, pal, nullptr, &err));
+    CHECK(!palgen::generate("Nobody", src, palgen::Theme::Claude, pal, nullptr, &err));
+    CHECK(std::string(palgen::themeLabel(palgen::Theme::ClaudeDark)) == "ClaudeDark");
+}
+
 static void testModsDir() {
     std::printf("[mods/ folder: layout, mount order, palettes]\n");
     const std::string game = makeTempDir("modsdir");
@@ -3494,6 +3596,7 @@ static void testDevOptions() {
     CHECK(d0.upscale == Upscale::Enhanced);
     CHECK(d0.preload == Preload::Standard);
     CHECK(!d0.fps && !d0.boxes && !d0.stageInfo);
+    CHECK(!d0.gpuFx);                            // the GPU effects stay off until asked for
     CHECK(d0.roundIntro && d0.entrances);
     CHECK_EQ(d0.spriteMinLevel, 0);
     CHECK(!d0.spriteFullSize);
@@ -3501,7 +3604,7 @@ static void testDevOptions() {
     // stored texts (case-insensitive); an unknown one falls back to the default
     std::map<std::string, std::string> save = {{"ZD_DEV_RES", "low"}, {"ZD_DEV_TEXQ", "Maximum"}, {"ZD_DEV_FILTER", "Pixelated"}, {"ZD_DEV_SHADOW", "Medium"},
                                                {"ZD_DEV_STAGE", "Portrait"}, {"ZD_DEV_UPSCALE", "Off"}, {"ZD_DEV_PRELOAD", "FULL"}, {"ZD_DEV_FPS", "On"},
-                                               {"ZD_DEV_INTRO", "Off"}, {"ZD_DEV_INFO", "garbage"}};
+                                               {"ZD_DEV_INTRO", "Off"}, {"ZD_DEV_INFO", "garbage"}, {"ZD_DEV_GPUFX", "on"}};
     const Settings d1 = resolve([&](const char* k) { auto it = save.find(k); return it == save.end() ? std::string() : it->second; });
     CHECK(d1.renderScale == 0.33);
     CHECK(d1.spriteFullSize && d1.spriteLevel(0.1) == 0);
@@ -3511,6 +3614,7 @@ static void testDevOptions() {
     CHECK(d1.upscale == Upscale::Off);
     CHECK(d1.preload == Preload::Full);
     CHECK(d1.fps && !d1.roundIntro && !d1.stageInfo);
+    CHECK(d1.gpuFx);
     CHECK(d1.spriteCacheBytes > d0.spriteCacheBytes);
     save["ZD_DEV_TEXQ"] = "Low";
     CHECK_EQ(resolve([&](const char* k) { auto it = save.find(k); return it == save.end() ? std::string() : it->second; }).spriteMinLevel, 2);
@@ -5003,6 +5107,7 @@ int main() {
     testModsItems();
     testPalOrganise();
     testPalmod();
+    testPalgen();
     testModsDir();
     testErrCodes();
     testModCheck();

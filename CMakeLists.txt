@@ -61,6 +61,7 @@ add_library(zengine_core STATIC
   src/core/imgscale.cpp
   src/core/dev_options.cpp
   src/core/palmod.cpp
+  src/core/palgen.cpp
   src/core/gamedata.cpp
   src/core/menu_data.cpp
   src/core/spr_tiles.cpp
@@ -73,7 +74,8 @@ add_library(zengine_core STATIC
   src/fx/fx_tuning.cpp
   src/fx/fx_math.cpp
   src/fx/fx_glsl.cpp
-  src/fx/fx_pack.cpp)
+  src/fx/fx_pack.cpp
+  src/fx/fx_store.cpp)
 target_include_directories(zengine_core PUBLIC src/core src/fx)
 find_package(Threads REQUIRED)
 target_link_libraries(zengine_core PUBLIC Threads::Threads)
@@ -130,6 +132,10 @@ if(NOT ANDROID)
   # Decode a single .dds into a .png (also produces the DDS preview screenshots).
   add_executable(zdroid_dds src/tools/zdroid_dds.cpp)
   target_link_libraries(zdroid_dds PRIVATE zengine_core)
+
+  # Themed character palettes (*.pal) made from the palette textures of the player's own game data.
+  add_executable(zdroid_palgen src/tools/zdroid_palgen.cpp)
+  target_link_libraries(zdroid_palgen PRIVATE zengine_core)
 
   # Writes one palettized HUD portrait (character_<name>_colors|lines|shade.pcx + a palette) as .png for inspection.
   add_executable(zdroid_hudart src/tools/zdroid_hudart.cpp)
@@ -194,7 +200,7 @@ if(ZDROID_BUILD_VIEWER)
   endif()
   if(ZDROID_SDL2_TARGET)
     # viewer sources: the loader screens (zdroid_viewer.cpp) + the UI layer + the Play screen
-    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/gallery.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/audio.cpp src/app/splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp)
+    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/gallery.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/audio.cpp src/app/splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp src/app/fx_gl.cpp)
     if(ANDROID)
       # SDLActivity calls SDL_main() inside a library that must be called "main"
       add_library(main SHARED ${ZDROID_VIEWER_SOURCES})
@@ -225,6 +231,15 @@ if(ZDROID_BUILD_VIEWER)
         if(NOT WIN32)
           target_link_libraries(zdroid_overlay_tests PRIVATE dl)
         endif()
+        # the PAFX programs inside SDL's real GLES2 renderer (needs Mesa / EGL surfaceless; prints SKIP without it)
+        add_executable(zdroid_fx_gl_tests tests/test_fx_gl.cpp src/app/fx_gl.cpp)
+        target_include_directories(zdroid_fx_gl_tests PRIVATE src/app)
+        target_link_libraries(zdroid_fx_gl_tests PRIVATE zengine_core ${ZDROID_SDL2_TARGET})
+        if(NOT WIN32)
+          target_link_libraries(zdroid_fx_gl_tests PRIVATE dl)
+        endif()
+        add_test(NAME zdroid_fx_gl_tests COMMAND zdroid_fx_gl_tests)
+        set_tests_properties(zdroid_fx_gl_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=offscreen;EGL_PLATFORM=surfaceless;SDL_AUDIODRIVER=dummy")
         add_test(NAME zdroid_overlay_tests COMMAND zdroid_overlay_tests)
         set_tests_properties(zdroid_overlay_tests PROPERTIES ENVIRONMENT "SDL_VIDEODRIVER=dummy")
         add_test(NAME zdroid_audio_tests COMMAND zdroid_audio_tests)

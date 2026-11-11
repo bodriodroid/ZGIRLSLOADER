@@ -84,6 +84,34 @@ Rgba spritePalette(const Palette& pal, uint8_t band, uint8_t grad, const SpriteP
     return {col.r, col.g, col.b, a};
 }
 
+Rgba spritePaletteSmooth(const Palette& pal, const uint8_t* band, const uint8_t* grad, int w, int h, float u, float v, const SpriteParams& p) {
+    const float px = u * static_cast<float>(w) - 0.5f, py = v * static_cast<float>(h) - 0.5f;
+    const float fx0 = std::floor(px), fy0 = std::floor(py);
+    const float fx = px - fx0, fy = py - fy0;
+    const int ix = static_cast<int>(fx0), iy = static_cast<int>(fy0);
+    const float wts[4] = {(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy};
+    float a = 0, cw = 0, r = 0, g = 0, b = 0;
+    for (int k = 0; k < 4; ++k) {
+        const int x = std::clamp(ix + (k & 1), 0, w - 1), y = std::clamp(iy + (k >> 1), 0, h - 1);
+        const size_t i = static_cast<size_t>(y) * w + x;
+        // texel colour and coverage with the plain (nearest) maths, before the screen effects
+        SpriteParams q = p;
+        q.alpha = 1;
+        q.screen = ScreenFx{};
+        const Rgba t = spritePalette(pal, band[i], grad[i], q);
+        a += wts[k] * t.a;
+        if (t.a > 0.0001f) {
+            cw += wts[k];
+            r += wts[k] * t.r;
+            g += wts[k] * t.g;
+            b += wts[k] * t.b;
+        }
+    }
+    Rgb col = cw > 0 ? Rgb{r / cw, g / cw, b / cw} : Rgb{p.line[0], p.line[1], p.line[2]};
+    col = screenFx(col, p.screen);
+    return {col.r, col.g, col.b, a * p.alpha};
+}
+
 Rgba superOutline(const Palette& pal, uint8_t band, uint8_t grad, const SpriteParams& p, const float a[3], const float b[3], float m) {
     Rgba base = spritePalette(pal, band, grad, p);
     base.r = mix(a[0], b[0], m);

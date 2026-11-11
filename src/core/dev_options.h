@@ -13,6 +13,7 @@
 //   Backdrop upscale   Off / Smooth / Enhanced (bicubic 2x + light sharpening) for stage pictures smaller than the screen
 //   Preloading         how many animation frames are turned into textures behind the loading screen
 //   FPS, boxes, round intro, entrances, stage info, RAM display: switches   (RAM display = the seven-segment memory readout, err_overlay.h)
+//   GPU effects        On: fighters and floor shadows are coloured by the PAFX effect programs on the GPU (fx_gl.h, docs/PAFX.md); Off: the CPU route
 #pragma once
 #include <functional>
 #include <string>
@@ -34,6 +35,7 @@ enum Id : int {
     kEntrances,
     kStageInfo,
     kRam,
+    kGpuFx,
     kCount
 };
 
@@ -72,6 +74,7 @@ struct Settings {
     bool roundIntro = true, entrances = true;
     bool stageInfo = false;
     bool ramDebug = false;           // the seven-segment RAM / state-hash readout in the corner
+    bool gpuFx = false;              // sprites and shadows through the PAFX effect programs (needs an OpenGL ES 2 renderer)
 
     // level (0 full, 1 half, 2 quarter, 3 eighth) for a sprite shown at `pxPerArtPx` screen pixels per art pixel
     int spriteLevel(double pxPerArtPx) const;

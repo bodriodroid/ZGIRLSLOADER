@@ -36,6 +36,7 @@
 #include "fight.h"
 #include "foit.h"
 #include "foit_duel.h"
+#include "fx_gl.h"
 #include "gamedata.h"
 #include "level.h"
 #include "menu_data.h"
@@ -81,8 +82,9 @@ public:
 
     // One image slot of one frame, decoded to RGBA at the skin's current level.
     struct Decoded {
-        std::vector<uint8_t> rgba;
-        int w = 0, h = 0;          // pixels of `rgba` (the texture)
+        std::vector<uint8_t> rgba;   // CPU route: the coloured pixels
+        std::vector<uint8_t> index;  // GPU route (FxRenderer::packIndex): band + grad planes, coloured by the PAFX programs
+        int w = 0, h = 0;          // pixels of `rgba` / `index` (the texture)
         int fullW = 0, fullH = 0;  // size of the art itself (what the frame's geometry is measured in)
         unsigned epoch = 0;        // configure() generation the pixels belong to
         bool ok = false;
@@ -100,6 +102,18 @@ public:
     void configure(SDL_Renderer* r, int level, bool smooth, size_t cacheBytes);
     int level() const { return level_; }
     unsigned epoch() const { return epoch_; }
+
+    // GPU effects (PAFX, src/app/fx_gl.h).  With a ready FxRenderer, full-size sprites (nearest or bilinear) and floor shadows go through the
+    // effect programs: the GPU gets the index planes and the palette and colours them itself, which is what makes the hue shift /
+    // super flash / darkening possible.  Reduced sprites (index planes cannot be shrunk) and anything the GPU
+    // refuses stay on the CPU route, so nothing ever disappears.  Pass nullptr to switch back; the skin frees its GPU textures first
+    // (call this while the renderer's context is alive and before FxRenderer::shutdown()).
+    void setFx(FxRenderer* fx);
+    bool gpuActive() const { return gpu_; }
+    // what the GPU route applies on top of the plain palette colours (default: nothing)
+    void setScreenFx(const fx::ScreenFx& s) { screenFx_ = s; }
+    void setHue(float cosA, float sinA, float amount) { hueCos_ = cosA, hueSin_ = sinA, hueAmount_ = amount; }
+    int gpuTextures() const;   // cached images that live on the GPU route (tests, the dev overlay)
 
     bool hasMoves() const { return ok && ms_.valid(); }
     const fight::MoveSet& moves() const { return ms_; }
@@ -133,7 +147,8 @@ public:
 
 private:
     struct Tex {
-        SDL_Texture* t = nullptr;
+        SDL_Texture* t = nullptr;  // CPU route
+        FxIndexTex gl;             // GPU route (exactly one of the two is set for a cached image)
         int w = 0, h = 0;          // texture size
         int fullW = 0, fullH = 0;  // art size
         uint32_t use = 0;          // value of useClock_ when it was last drawn
@@ -141,6 +156,14 @@ private:
     static uint32_t key(uint16_t frame, int slot) { return (static_cast<uint32_t>(frame) << 3) | static_cast<uint32_t>(slot); }
     const Tex& image(SDL_Renderer* r, uint16_t frame, int slot);
     void evict();
+    void freeTex(Tex& t, bool sdlAlive);   // an SDL texture is destroyed only when the renderer is still there
+    void freeAll(bool sdlAlive);           // every cached image and the GPU palette
+    bool ensureFxPalette();
+    void dropGpu();         // the GPU refused something: back to the CPU route for good (until setFx() again)
+    bool wantGpu() const { return fx_ && fx_->ready() && !gpuFailed_ && level_ == 0 && (!smooth_ || fx_->hasSmooth()); }
+    int drawFrameGpu(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, bool faceRight, double sxk, double syk, double alpha);
+    int drawShadowGpu(SDL_Renderer* r, uint16_t idx, double feetX, double floorY, double air, double scale, bool faceRight, double flat,
+                      double alpha, bool fade, double fadeDist);
 
     fight::MoveSet ms_;
     std::vector<uint8_t> art_, artPt_, tables_;
@@ -151,6 +174,12 @@ private:
     int level_ = 0;
     bool smooth_ = true;
     unsigned epoch_ = 1;
+    FxRenderer* fx_ = nullptr;   // not owned
+    bool gpu_ = false;           // the GPU route is in use (fx_ ready, level 0)
+    bool gpuFailed_ = false;     // dropGpu() ran: stay on the CPU route
+    FxPaletteTex palGl_;         // this skin's palette on the GPU
+    fx::ScreenFx screenFx_;
+    float hueCos_ = 1, hueSin_ = 0, hueAmount_ = 0;
 };
 
 // A decoded stage backdrop, kept as a single SDL texture.
@@ -433,6 +462,10 @@ private:
     devopt::Settings dev_;
     void refreshDev();
     void applyDevToSkins(SDL_Renderer* r);
+    // GPU effects (fx_gl.h): one renderer, borrowed by both skins
+    FxRenderer fxr_;
+    std::string fxStatus_;            // "off", "on, ..." or why it stayed off
+    void syncFx(SDL_Renderer* r);
     double spritePx_ = 1.0;           // screen pixels per art pixel at the closest camera zoom (picks the sprite level)
     std::string bgFile_;              // which picture the stage backdrop came from ("" = the generated stage)
     int bgSrcW_ = 0, bgSrcH_ = 0;     // its size as stored
