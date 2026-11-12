@@ -5,6 +5,8 @@
 #include <filesystem>
 #include <set>
 
+#include "vault.h"
+
 namespace fs = std::filesystem;
 
 namespace zengine {
@@ -46,6 +48,7 @@ std::string normalizeKey(std::string_view path) {
 }
 
 bool readFile(const std::string& path, std::vector<uint8_t>& out) {
+    if (vault::isVirtualPath(path)) return vault::readVirtual(path, out);
     std::FILE* f = std::fopen(path.c_str(), "rb");
     if (!f) return false;
     out.clear();
@@ -80,31 +83,46 @@ size_t Vfs::mount(const std::string& dir) {
     }
     std::sort(found.begin(), found.end());
 
-    for (const auto& [rel, real] : found) {
-        files_.push_back(real);
-        const std::string key = normalizeKey(rel);
-        // index under every path suffix: "a/b/c.txt", "b/c.txt", "c.txt"
-        size_t parts = static_cast<size_t>(std::count(key.begin(), key.end(), '/')) + 1;
-        size_t pos = 0;
-        while (true) {
-            // depth = total path parts of the FILE, so shallower files win for a shared suffix
-            const std::string suffix = key.substr(pos);
-            auto ins = bySuffix_.emplace(suffix, Entry{real, order, parts});
-            if (!ins.second) {
-                Entry& e = ins.first->second;
-                if (order > e.mountOrder || (order == e.mountOrder && parts < e.depth)) {
-                    e.real = real;
-                    e.mountOrder = order;
-                    e.depth = parts;
-                }
-            }
-            size_t slash = key.find('/', pos);
-            if (slash == std::string::npos) break;
-            pos = slash + 1;
-        }
-        byName_[baseName(key)].push_back(real);
-    }
+    for (const auto& [rel, real] : found) addFile(real, rel, order);
     return found.size();
+}
+
+void Vfs::addFile(const std::string& real, const std::string& rel, int order) {
+    files_.push_back(real);
+    const std::string key = normalizeKey(rel);
+    // index under every path suffix: "a/b/c.txt", "b/c.txt", "c.txt"
+    size_t parts = static_cast<size_t>(std::count(key.begin(), key.end(), '/')) + 1;
+    size_t pos = 0;
+    while (true) {
+        // depth = total path parts of the FILE, so shallower files win for a shared suffix
+        const std::string suffix = key.substr(pos);
+        auto ins = bySuffix_.emplace(suffix, Entry{real, order, parts});
+        if (!ins.second) {
+            Entry& e = ins.first->second;
+            if (order > e.mountOrder || (order == e.mountOrder && parts < e.depth)) {
+                e.real = real;
+                e.mountOrder = order;
+                e.depth = parts;
+            }
+        }
+        size_t slash = key.find('/', pos);
+        if (slash == std::string::npos) break;
+        pos = slash + 1;
+    }
+    byName_[baseName(key)].push_back(real);
+}
+
+size_t Vfs::mountVault(std::shared_ptr<const vault::Vault> v) {
+    if (!v) return 0;
+    const int order = static_cast<int>(mounts_.size());
+    const int id = vault::registerVault(v);
+    mounts_.push_back(vault::virtualPath(id, ""));
+    // same rule as a folder: sorted, so the index does not depend on the order the entries were sealed in
+    std::vector<std::string> names;
+    for (const fx::PafxEntryInfo& e : v->entries()) names.push_back(e.name);
+    std::sort(names.begin(), names.end());
+    for (const std::string& n : names) addFile(vault::virtualPath(id, n), n, order);
+    return names.size();
 }
 
 bool Vfs::resolve(std::string_view path, std::string* realPath) const {

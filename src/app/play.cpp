@@ -40,7 +40,7 @@ constexpr int kTakeTicks = 85, kActionTicks = 89;   // PrePostHud.gbs: "1v1 Matc
 // The virtual pad lives in src/core/touch_pad.*: an 8-way stick (finger-tracked, floating) plus the arcade buttons.
 
 // ZGirlsMobile: Android has no environment variables and no F1/F2 keys, so the switches below can also be turned on from a
-// text file, one word per line ('#' starts a comment):  boxes  demo  pad  huddemo
+// text file, one word per line ('#' starts a comment):  boxes  demo  pad  huddemo  superdemo
 // Looked up in the app's external folder (Android/data/org.bodriodroid.zgirlsmobile/files/zgirls_flags.txt) and in the pref dir.
 // The environment variable still wins on desktop.  Read once per match start.
 bool zgFlag(const char* envName, const char* word) {
@@ -381,6 +381,9 @@ int Skin::drawFrame(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, d
         dropGpu();   // the pass could not start (GL context changed under us): carry on with the CPU route, this frame included
     }
     int drawn = 0;
+    const auto c8 = [](float v) { return static_cast<Uint8>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
+    const Uint8 tr = c8(tint_[0]), tg = c8(tint_[1]), tb = c8(tint_[2]);
+    const bool tinted = tr != 255 || tg != 255 || tb != 255;
     for (int slot = 0; slot < foit::kSlots; ++slot) {
         if (fr->img[slot].placeholder()) continue;
         const Tex& t = image(r, idx, slot);
@@ -404,11 +407,19 @@ int Skin::drawFrame(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, d
         const SDL_FRect dst{static_cast<float>(x0), static_cast<float>(y0), static_cast<float>(std::max(smooth_ ? 0.25 : 1.0, x1 - x0)),
                             static_cast<float>(std::max(smooth_ ? 0.25 : 1.0, y1 - y0))};
         if (a8 != 255) SDL_SetTextureAlphaMod(t.t, a8);
+        if (tinted) SDL_SetTextureColorMod(t.t, tr, tg, tb);
         SDL_RenderCopyExF(r, t.t, nullptr, &dst, 0, nullptr, faceRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL);
+        if (tinted) SDL_SetTextureColorMod(t.t, 255, 255, 255);
         if (a8 != 255) SDL_SetTextureAlphaMod(t.t, 255);
         ++drawn;
     }
     return drawn;
+}
+
+void Skin::setSuperOutline(const float a[3], const float b[3], float mix, float strength) {
+    for (int i = 0; i < 3; ++i) outA_[i] = a[i], outB_[i] = b[i];
+    outMix_ = mix;
+    outStrength_ = strength;
 }
 
 int Skin::drawShadow(SDL_Renderer* r, uint16_t idx, double feetX, double floorY, double air, double scale, bool faceRight, double flat,
@@ -509,6 +520,8 @@ int Skin::drawFrameGpu(SDL_Renderer* r, uint16_t idx, double feetX, double feetY
         const SDL_FRect dst{static_cast<float>(x0), static_cast<float>(y0), static_cast<float>(std::max(smooth_ ? 0.25 : 1.0, x1 - x0)),
                             static_cast<float>(std::max(smooth_ ? 0.25 : 1.0, y1 - y0))};
         pass.sprite(t.gl, palGl_, dst, !faceRight, sp, smooth_);
+        if (outStrength_ > 0.0f && fx_->hasOutline())
+            pass.outline(t.gl, dst, !faceRight, outStrength_ * sp.alpha, outA_, outB_, outMix_);
         ++drawn;
     }
     return drawn;
@@ -618,13 +631,14 @@ void PlayScreen::syncFx(SDL_Renderer* r) {
         fx::FxPack pack;
         fx::FxStoreInfo info;
         std::string err;
-        if (!fx::loadOrBuildFxPack(apppaths::prefFile("fx"), coreDir, pack, &info, &err) || !fxr_.init(r, pack, &err)) {
+        if (!fx::loadOrBuildFxPack(apppaths::coreStoreDir(), coreDir, pack, &info, &err) || !fxr_.init(r, pack, &err)) {
             fxStatus_ = "off (" + err + ")";
             std::printf("[play] GPU effects: %s\n", fxStatus_.c_str());
             return;
         }
         fxStatus_ = std::string("on, ") + (info.fromCore ? "numbers from your Core" : "neutral numbers") +
-                    (info.built ? (info.persisted ? ", pack built and saved" : ", pack built (not saved)") : ", pack loaded");
+                    (info.built ? (info.persisted ? ", pack built and saved" : ", pack built (not saved)") : ", pack loaded") +
+                    (fxr_.hasOutline() ? ", super outline" : ", no super outline program");
         std::printf("[play] GPU effects: %s\n", fxStatus_.c_str());
     }
     for (Skin& sk : skin_) sk.setFx(&fxr_);
@@ -1207,6 +1221,8 @@ void PlayScreen::finishLoad() {
     showBoxes_ = dev_.boxes || zgFlag("ZDROID_PLAY_BOXES", "boxes");
     showFps_ = dev_.fps;
     padForced_ = zgFlag("ZDROID_PLAY_PAD", "pad");
+    superDemo_ = zgFlag("ZDROID_PLAY_SUPERDEMO", "superdemo");
+    superDemoTick_ = 0;
     fakeFingers_.clear();
     if (const char* ft = std::getenv("ZDROID_PLAY_FAKETOUCH")) {  // "x,y;x,y": fingers held all the time
         int64_t id = 1000;
@@ -1281,6 +1297,9 @@ void PlayScreen::startRound() {
             hitFlash_[i] = 0;
             compState_[i] = -1;
         }
+        superFx_.reset();
+        superState_ = fx::SuperFxState();
+        superOwner_ = -1;
         endTimer_ = 0;
         endReason_ = 0;
         endText_.clear();
@@ -1451,6 +1470,110 @@ uint16_t PlayScreen::humanButtons(int player, Ui& ui) {
     return b;
 }
 
+// The picture of a super move.  The world only raises two switches on the super's owner (SUPERSHADOWS while the stage is dark around it,
+// SUPERFLASH while the flash runs; the flash value is the 1-based look); the timeline turns them into smooth strengths.
+void PlayScreen::superFxTick() {
+    fx::SuperFxInput in;
+    if (foit_) {
+        const fight::FoitSuper s = foit_->superState();
+        in.flash = s.flash;
+        in.shadows = s.shadows;
+        if (s.owner >= 0) superOwner_ = s.owner;
+    }
+    superFx_.step(in);
+    superState_ = superFx_.state();
+    if (!superState_.active() && in.flash == 0 && !in.shadows) superOwner_ = -1;
+}
+
+// What one object wears while a super is on: the owner's side stays bright, everything else goes dark; the whole picture takes the
+// flash.  GPU route: the exact ScreenFx maths (and the owner's silhouette in the palette's super-outline colours during the pulse).
+// CPU route: a colour multiplier per sprite (the CPU cannot remap pixels by luminance).
+void PlayScreen::applySuperToSkin(Skin& sk, const fight::FoitView& v) {
+    const fx::SuperFxState& st = superState_;
+    if (!st.active() || superOwner_ < 0) {
+        clearSuperOnSkins();
+        return;
+    }
+    const bool lit = v.side == superOwner_ || v.superLit;
+    const float dark = lit ? 0.0f : st.shadowT;
+    const fx::FxTuning& tun = fxTuning();
+    sk.setScreenFx(fx::ScreenFx::make(tun, false, st.look, dark, st.flashT));
+    sk.setTint(1.0f - dark * (1.0f - tun.shadowTint[0]), 1.0f - dark * (1.0f - tun.shadowTint[1]), 1.0f - dark * (1.0f - tun.shadowTint[2]));
+    const float a0[3] = {1, 1, 1};
+    if (v.body && v.side == superOwner_ && st.flashT > 0.0f) {
+        // the owner's silhouette: the two colours of its palette, or (a palette without them) the flash look's own colours
+        const fx::FlashLook& look = tun.sprite.look[std::clamp(st.look, 1, 4) - 1];
+        float fb0[3], fb1[3], c0[3], c1[3];
+        for (int i = 0; i < 3; ++i) {
+            fb0[i] = look.high[i];
+            fb1[i] = look.low[i] + 0.4f * (look.high[i] - look.low[i]);
+        }
+        uint32_t s1 = 0, s2 = 0;
+        if (gd_)
+            for (const palmod::Entry& e : gd_->customPalettes().entries)
+                if (!palPath_[v.side].empty() && e.dds == palPath_[v.side]) {
+                    s1 = e.shadow1;
+                    s2 = e.shadow2;
+                    break;
+                }
+        fx::outlineColour(s1, fb0, c0);
+        fx::outlineColour(s2, fb1, c1);
+        sk.setSuperOutline(c0, c1, st.outlineMix, st.flashT);
+    } else {
+        sk.setSuperOutline(a0, a0, 0.0f, 0.0f);
+    }
+}
+
+void PlayScreen::clearSuperOnSkins() {
+    for (Skin& sk : skin_) {
+        sk.setScreenFx(fx::ScreenFx());
+        sk.setTint(1, 1, 1);
+        const float w[3] = {1, 1, 1};
+        sk.setSuperOutline(w, w, 0.0f, 0.0f);
+    }
+}
+
+void PlayScreen::superBackdropPass(SDL_Renderer* r) {
+    const fx::SuperFxState& st = superState_;
+    if (!r || !st.active() || superOwner_ < 0) return;
+    SDL_BlendMode oldMode = SDL_BLENDMODE_NONE;
+    Uint8 or_ = 0, og = 0, ob = 0, oa = 0;
+    SDL_GetRenderDrawBlendMode(r, &oldMode);
+    SDL_GetRenderDrawColor(r, &or_, &og, &ob, &oa);
+    const fx::FxTuning& tun = fxTuning();
+    if (st.shadowT > 0.0f) {   // multiply by the darkening tint, strength shadowT
+        const auto c8 = [&](int i) { return static_cast<Uint8>(std::lround(255.0f * (1.0f - st.shadowT * (1.0f - tun.shadowTint[i])))); };
+        SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_MOD);
+        SDL_SetRenderDrawColor(r, c8(0), c8(1), c8(2), 255);
+        SDL_RenderFillRect(r, nullptr);
+    }
+    if (st.flashT > 0.0f && superGpu()) {   // the stage is drawn through SDL, not the effect programs: its flash is the overlay below
+        const fx::FlashLook& look = tun.sprite.look[std::clamp(st.look, 1, 4) - 1];
+        const auto c8 = [&](int i) { return static_cast<Uint8>(std::lround(255.0f * std::clamp(0.5f * (look.low[i] + look.high[i]), 0.0f, 1.0f))); };
+        SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(r, c8(0), c8(1), c8(2), static_cast<Uint8>(std::lround(140.0f * st.flashT)));
+        SDL_RenderFillRect(r, nullptr);
+    }
+    SDL_SetRenderDrawBlendMode(r, oldMode);
+    SDL_SetRenderDrawColor(r, or_, og, ob, oa);
+}
+
+void PlayScreen::superTopPass(SDL_Renderer* r) {
+    const fx::SuperFxState& st = superState_;
+    if (!r || st.flashT <= 0.0f || superOwner_ < 0 || superGpu()) return;
+    SDL_BlendMode oldMode = SDL_BLENDMODE_NONE;
+    Uint8 or_ = 0, og = 0, ob = 0, oa = 0;
+    SDL_GetRenderDrawBlendMode(r, &oldMode);
+    SDL_GetRenderDrawColor(r, &or_, &og, &ob, &oa);
+    const fx::FlashLook& look = fxTuning().sprite.look[std::clamp(st.look, 1, 4) - 1];
+    const auto c8 = [&](int i) { return static_cast<Uint8>(std::lround(255.0f * std::clamp(0.5f * (look.low[i] + look.high[i]), 0.0f, 1.0f))); };
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(r, c8(0), c8(1), c8(2), static_cast<Uint8>(std::lround(140.0f * st.flashT)));
+    SDL_RenderFillRect(r, nullptr);
+    SDL_SetRenderDrawBlendMode(r, oldMode);
+    SDL_SetRenderDrawColor(r, or_, og, ob, oa);
+}
+
 // Hit flash and screen shake: a fighter that lost health this tick.
 void PlayScreen::hitFlashTick() {
     for (int i = 0; i < 2; ++i) {
@@ -1573,12 +1696,24 @@ void PlayScreen::syncFoitFlow() {
 }
 
 void PlayScreen::stepSim(uint16_t p1, uint16_t p2) {
+    if (superDemo_ && foitMode_ && foit_->fighting()) {   // capture aid: full bar, then down, down-forward, forward + two punches
+        foit_->fillMeter(0);
+        const int t = superDemoTick_++ - 30;
+        p2 = 0;   // the other side stands still: nothing interrupts the motion
+        const uint16_t kF = fight::kRight;
+        const uint16_t motion[9] = {fight::kDown, fight::kDown, static_cast<uint16_t>(fight::kDown | kF), static_cast<uint16_t>(fight::kDown | kF), kF, kF,
+                                    static_cast<uint16_t>(fight::kLP | fight::kMP), static_cast<uint16_t>(fight::kLP | fight::kMP),
+                                    static_cast<uint16_t>(fight::kLP | fight::kMP)};
+        if (t >= 0 && t < 9) p1 = motion[t];
+        else if (t >= 9) p1 = 0;
+    }
     int simulated = 0;
     sess_->addLocalInput(p1, p2, &simulated);
     hudTick();
     if (foitMode_) {
         syncFoitFlow();
         hitFlashTick();
+        superFxTick();
         return;
     }
     if (introStage_ == 3) {   // the entrances: until both fighters are on their feet (or somebody presses an attack)
@@ -2131,6 +2266,8 @@ if (bgBottom < 360) {
         drawGeneratedStage(ui, lv, cx, s, floorY, bound);
     }
 
+    superBackdropPass(r);   // a super in progress: the stage goes dark behind the fighters
+
     // ---- fighters
     if (foitMode_) foit_->views(views_);   // what every object of the data driven fight shows this tick
     for (int i = 0; i < 2; ++i) {
@@ -2196,6 +2333,7 @@ if (bgBottom < 360) {
         for (const fight::FoitView& v : views_)
             if (!v.body) drawFoitView(ui, r, v, sx(v.x), sy(v.y), s);
     }
+    superTopPass(r);
 
     // ---- F1: the real boxes of the frame on screen (push blue, hurt green, hit red)
     if (showBoxes_ && foitMode_) {
@@ -2259,6 +2397,7 @@ void PlayScreen::makeShadowTexture(SDL_Renderer* r) {
 void PlayScreen::drawFoitView(Ui& ui, SDL_Renderer* r, const fight::FoitView& v, double fx, double fy, double s) {
     if (v.frame < 0 || v.xscale == 0 || v.yscale == 0 || v.alpha <= 0) return;   // nothing to show (yet)
     Skin& sk = skin_[v.side];
+    applySuperToSkin(sk, v);
     if (sk.drawFrame(r, static_cast<uint16_t>(v.frame), fx, fy, s, v.faceRight, v.xscale, v.yscale, v.alpha) > 0) return;
     if (v.body) drawDummy(ui, st_.p[v.side], animFor(st_.p[v.side]), static_cast<int>(fx), static_cast<int>(fy), 330.0 * s, v.side);   // frame with no picture
 }

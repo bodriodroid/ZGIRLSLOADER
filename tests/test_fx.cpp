@@ -14,6 +14,7 @@
 #include "art.h"
 #include "fx_glsl.h"
 #include "fx_math.h"
+#include "super_fx.h"
 #include "fx_pack.h"
 #include "fx_store.h"
 #include "fx_tuning.h"
@@ -690,6 +691,109 @@ static void testRealCore() {
     std::printf("  (ZDROID_TEST_DATA has no shaders/TiledSprite_fp.fx: skipping the real-Core extraction)\n");
 }
 
+// ---- the picture of a super move (super_fx.h): ramps, the flash pulse, the outline colours
+static void testSuperFx() {
+    using fx::SuperFxInput;
+    using fx::SuperFxState;
+    using fx::SuperFxTimeline;
+    // nothing going on: nothing drawn
+    {
+        SuperFxTimeline t;
+        for (int i = 0; i < 20; ++i) t.step(SuperFxInput{});
+        const SuperFxState s = t.state();
+        CHECK(!s.active());
+        CHECK(s.shadowT == 0.0f && s.flashT == 0.0f && s.outlineMix == 0.0f);
+    }
+    // the stage goes fully dark in kShadowIn ticks, never past 1, and is back to 0 kShadowOut ticks after the switch drops
+    {
+        SuperFxTimeline t;
+        SuperFxInput on;
+        on.shadows = true;
+        float prev = -1;
+        for (int i = 0; i < SuperFxTimeline::kShadowIn; ++i) {
+            t.step(on);
+            const float v = t.state().shadowT;
+            CHECK(v > prev);   // strictly darker every tick on the way in
+            prev = v;
+        }
+        CHECK(t.state().shadowT == 1.0f);
+        for (int i = 0; i < 30; ++i) t.step(on);
+        CHECK(t.state().shadowT == 1.0f);
+        for (int i = 0; i < SuperFxTimeline::kShadowOut; ++i) {
+            t.step(SuperFxInput{});
+            const float v = t.state().shadowT;
+            CHECK(v < prev);
+            prev = v;
+        }
+        CHECK(t.state().shadowT == 0.0f);
+    }
+    // the flash is a pulse that starts when the switch goes on, peaks, and is over by kFlashUp + kFlashDown ticks even if the switch stays on
+    {
+        SuperFxTimeline t;
+        SuperFxInput on;
+        on.flash = 1;
+        t.step(on);   // age 0
+        CHECK(t.state().flashT > 0.0f && t.state().flashT < 1.0f);
+        float peak = 0;
+        for (int i = 1; i < 60; ++i) {
+            t.step(on);
+            peak = std::max(peak, t.state().flashT);
+            CHECK(t.state().flashT >= 0.0f && t.state().flashT <= 1.0f);
+            if (i >= SuperFxTimeline::kFlashUp + SuperFxTimeline::kFlashDown) CHECK(t.state().flashT == 0.0f);
+        }
+        CHECK(peak == 1.0f);
+        CHECK(t.state().look == 1);
+        // dropping the switch ends the pulse for good; no new one starts until the switch comes back
+        t.step(SuperFxInput{});
+        CHECK(!t.state().active());
+        for (int i = 0; i < 10; ++i) t.step(SuperFxInput{});
+        CHECK(t.state().flashT == 0.0f && t.state().outlineMix == 0.0f);
+        // a DHC raises another look: a fresh pulse with that look
+        SuperFxInput dhc;
+        dhc.flash = 3;
+        t.step(dhc);
+        CHECK(t.state().look == 3 && t.state().flashT > 0.0f);
+    }
+    // a switch that drops mid-pulse lets the pulse finish its own fall instead of cutting it off
+    {
+        SuperFxTimeline t;
+        SuperFxInput on;
+        on.flash = 2;
+        t.step(on);
+        t.step(on);
+        t.step(SuperFxInput{});
+        CHECK(t.state().flashT > 0.0f);
+        int ticks = 0;
+        while (t.state().flashT > 0.0f && ticks < 100) {
+            t.step(SuperFxInput{});
+            ++ticks;
+        }
+        CHECK(ticks < SuperFxTimeline::kFlashUp + SuperFxTimeline::kFlashDown);
+    }
+    // looks outside 1..4 are clamped
+    {
+        SuperFxTimeline t;
+        SuperFxInput on;
+        on.flash = 9;
+        t.step(on);
+        CHECK(t.state().look == 4);
+    }
+    // pulse and outline shapes
+    CHECK(SuperFxTimeline::pulseAt(-1) == 0.0f);
+    CHECK(SuperFxTimeline::pulseAt(SuperFxTimeline::kFlashUp - 1) == 1.0f);
+    CHECK(SuperFxTimeline::pulseAt(SuperFxTimeline::kFlashUp + SuperFxTimeline::kFlashDown) == 0.0f);
+    CHECK(SuperFxTimeline::outlineAt(0) == 0.0f && SuperFxTimeline::outlineAt(6) == 1.0f && SuperFxTimeline::outlineAt(12) == 0.0f);
+    // outline colours: ARGB -> floats, a missing (0) entry gives the fallback
+    {
+        const float fb[3] = {0.25f, 0.5f, 0.75f};
+        float o[3];
+        fx::outlineColour(0xFFD97757u, fb, o);
+        CHECK(std::fabs(o[0] - 217.0f / 255.0f) < 1e-6f && std::fabs(o[1] - 119.0f / 255.0f) < 1e-6f && std::fabs(o[2] - 87.0f / 255.0f) < 1e-6f);
+        fx::outlineColour(0u, fb, o);
+        CHECK(o[0] == 0.25f && o[1] == 0.5f && o[2] == 0.75f);
+    }
+}
+
 int main() {
     std::printf("[fx] crypto\n");
     testAead();
@@ -699,6 +803,8 @@ int main() {
     testTuning();
     std::printf("[fx] maths\n");
     testMath();
+    std::printf("[fx] super move picture\n");
+    testSuperFx();
     std::printf("[fx] pack\n");
     testPack();
     testSmoothMath();

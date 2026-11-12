@@ -29,6 +29,7 @@ endif()
 # ---- core library: no platform dependencies
 add_library(zengine_core STATIC
   src/core/vfs.cpp
+  src/core/vault.cpp
   src/core/text_formats.cpp
   src/core/gbs.cpp
   src/core/gbs_scene.cpp
@@ -75,7 +76,8 @@ add_library(zengine_core STATIC
   src/fx/fx_math.cpp
   src/fx/fx_glsl.cpp
   src/fx/fx_pack.cpp
-  src/fx/fx_store.cpp)
+  src/fx/fx_store.cpp
+  src/fx/super_fx.cpp)
 target_include_directories(zengine_core PUBLIC src/core src/fx)
 find_package(Threads REQUIRED)
 target_link_libraries(zengine_core PUBLIC Threads::Threads)
@@ -151,6 +153,10 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   target_link_libraries(zdroid_fx_tests PRIVATE zengine_core)
   add_test(NAME zdroid_fx_tests COMMAND zdroid_fx_tests)
   set_tests_properties(zdroid_fx_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_DATA=${ZDROID_TEST_DATA}")
+  add_executable(zdroid_vault_tests tests/test_vault.cpp)
+  target_link_libraries(zdroid_vault_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_vault_tests COMMAND zdroid_vault_tests)
+  set_tests_properties(zdroid_vault_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_DATA=${ZDROID_TEST_DATA}")
   add_executable(zdroid_duel_tests tests/test_duel_rules.cpp)
   target_link_libraries(zdroid_duel_tests PRIVATE zengine_core)
   add_test(NAME zdroid_duel_tests COMMAND zdroid_duel_tests)

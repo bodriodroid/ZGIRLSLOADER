@@ -40,6 +40,7 @@
 #include "gamedata.h"
 #include "level.h"
 #include "menu_data.h"
+#include "super_fx.h"
 #include "moveset.h"
 #include "splash.h"
 #include "touch_pad.h"
@@ -113,6 +114,12 @@ public:
     // what the GPU route applies on top of the plain palette colours (default: nothing)
     void setScreenFx(const fx::ScreenFx& s) { screenFx_ = s; }
     void setHue(float cosA, float sinA, float amount) { hueCos_ = cosA, hueSin_ = sinA, hueAmount_ = amount; }
+    // CPU route stand-in for the darkening of ScreenFx (the CPU cannot remap per pixel): a colour multiplier on every sprite drawn
+    // afterwards (1, 1, 1 = untouched).  The GPU route ignores it - it has the exact maths in setScreenFx.
+    void setTint(float r, float g, float b) { tint_[0] = r, tint_[1] = g, tint_[2] = b; }
+    // The super outline of the GPU route: after the normal sprite, its silhouette in two flat colours blended by `mix`, drawn with
+    // `strength` 0..1 (0 = off).  Needs an effect program set that has the outline pass; otherwise nothing is drawn.
+    void setSuperOutline(const float a[3], const float b[3], float mix, float strength);
     int gpuTextures() const;   // cached images that live on the GPU route (tests, the dev overlay)
 
     bool hasMoves() const { return ok && ms_.valid(); }
@@ -180,6 +187,8 @@ private:
     FxPaletteTex palGl_;         // this skin's palette on the GPU
     fx::ScreenFx screenFx_;
     float hueCos_ = 1, hueSin_ = 0, hueAmount_ = 0;
+    float tint_[3] = {1, 1, 1};
+    float outA_[3] = {1, 1, 1}, outB_[3] = {1, 1, 1}, outMix_ = 0, outStrength_ = 0;
 };
 
 // A decoded stage backdrop, kept as a single SDL texture.
@@ -396,6 +405,20 @@ private:
     void hitFlashTick();
     void syncFoitFlow();           // after every tick: the world's round flow -> phase_ / cards / wins / the end of the match
     void drawFoitView(Ui& ui, SDL_Renderer* r, const fight::FoitView& v, double sx, double sy, double s);
+    // ---- the picture of a super move (presentation only: stepped per displayed tick, never saved, nothing in the sim reads it)
+    fx::SuperFxTimeline superFx_;
+    fx::SuperFxState superState_;
+    int superOwner_ = -1;          // side whose super is on screen (kept while the dark stage fades out), -1 = none
+    fx::FxTuning neutralTun_ = fx::neutralTuning();
+    bool superDemo_ = false;       // capture aid (ZDROID_PLAY_SUPERDEMO / 'superdemo'): player 1 casts a super half a second into the fight, player 2 stands still
+    int superDemoTick_ = 0;
+    void superFxTick();            // after every tick: reads the world's SUPERFLASH / SUPERSHADOWS and moves the timeline on
+    const fx::FxTuning& fxTuning() const { return fxr_.ready() ? fxr_.tuning() : neutralTun_; }
+    bool superGpu() const { return skin_[0].gpuActive() || skin_[1].gpuActive(); }
+    void applySuperToSkin(Skin& sk, const fight::FoitView& v);   // screen effect / tint / outline of one object, before it is drawn
+    void clearSuperOnSkins();
+    void superBackdropPass(SDL_Renderer* r);   // right after the stage: darkens it (and tints it on the GPU route)
+    void superTopPass(SDL_Renderer* r);        // CPU route: the flash as one overlay over the finished picture
     bool showBoxes_ = false;       // F1: draw hit (red) / hurt (green) / push (blue) boxes
     bool f1Prev_ = false;
     int hitFlash_[2] = {0, 0};

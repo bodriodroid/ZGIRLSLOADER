@@ -158,6 +158,7 @@ std::string MenuScreen::own(const std::string& key) const {
         {"unofficial", "ZDroid - unofficial engine reimplementation. Needs your own copy of the game.",
          "ZDroid - reimplementación no oficial del motor. Necesita tu propia copia del juego."},
         {"dis.title", "NOTICE", "AVISO"},
+        {"dev", "Developer: Destroyer And Nitro", "Desarrollador: Destroyer And Nitro"},
         // The notice text comes from the project owner (Spanish original; the English is a translation).
         {"dis.1", "This is an UNOFFICIAL Skullgirls port attempt. Material that is not authorised, for example elements, drawings, images, voices, etc., is not being distributed or shared.",
          "Este es un intento de port de Skullgirls NO OFICIAL. El material que no está autorizado, por ejemplo elementos, dibujos, imágenes, voces, etc., no se distribuye ni se comparte."},
@@ -1098,6 +1099,10 @@ void MenuScreen::drawDisclaimer(Ui& ui) {
     const Col red{255, 84, 84, 255}, hot{255, 52, 52, 255}, warm{255, 142, 118, 255};
     ui.fill(Rect{0, 0, kW, 3}, hot);
     shadowText(ui, 24, 12, own("dis.title"), hot, 2);
+    {
+        const std::string dev = own("dev");   // who made this loader (also the name on the app's signing certificate)
+        ui.text(kW - 24 - Ui::textW(dev), 18, dev, warm);
+    }
     ui.fill(Rect{24, 34, kW - 48, 1}, Col{255, 52, 52, 140});
 
     int y = 44;

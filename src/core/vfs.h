@@ -9,6 +9,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -16,10 +17,15 @@
 
 namespace zengine {
 
+namespace vault {
+class Vault;
+}
+
 // Lowercases ASCII, turns '\\' into '/', drops leading "./" and '/', collapses "//".
 std::string normalizeKey(std::string_view path);
 
-// Reads a whole file. Returns false on any I/O error.
+// Reads a whole file. Returns false on any I/O error.  Also understands the virtual paths of a mounted Core vault ("vault:<id>/<name>",
+// see vault.h), so callers never need to know whether a file is a real one or sealed inside the app's private storage.
 bool readFile(const std::string& path, std::vector<uint8_t>& out);
 
 class Vfs {
@@ -28,6 +34,9 @@ public:
     // Directories named extract/build/analysis/analysis_v2/SKGSTEAM/mods are skipped
     // (they are output folders of the extraction tools). Returns files indexed (0 = missing dir).
     size_t mount(const std::string& dir);
+    // Adds the entries of a sealed Core vault, indexed exactly like a mounted folder (same suffix rules, same override order).  The
+    // vault is registered (vault::registerVault) and its files get virtual paths.  Returns the number of entries (0 = empty).
+    size_t mountVault(std::shared_ptr<const vault::Vault> v);
 
     bool resolve(std::string_view path, std::string* realPath = nullptr) const;
     bool exists(std::string_view path) const { return resolve(path, nullptr); }
@@ -46,6 +55,7 @@ public:
     const std::vector<std::string>& mounts() const { return mounts_; }
 
 private:
+    void addFile(const std::string& real, const std::string& rel, int order);
     struct Entry {
         std::string real;
         int mountOrder = 0;

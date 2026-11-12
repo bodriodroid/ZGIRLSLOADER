@@ -299,8 +299,7 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   con la matemática de C++ en distintas escalas, viewports, recortes, tamaño lógico y render a textura, y que lo que dibuja SDL antes y después
   del pase y todo el estado GL quedan intactos. Con arte real (`ZDROID_SMOKE_GL=1` en el visor) la ruta de GPU difiere de la de CPU como máximo
   16/255 en unos pocos píxeles. **Falta la primera prueba en un teléfono real**, por eso la opción viene apagada; el estado se ve en el overlay de la etapa.
-- **Sin hacer**: nada dispara aún los efectos (la simulación no tiene estado de super / oscurecer / cambio de tono), así que flash, sombra de super,
-  los tintes de `_palette_effects.ini` y las paletas animadas todavía no se reproducen; normales, "chowder", máscaras de tono, retratos palettizados
+- **Sin hacer**: (actualizado en la 0.9: el super ya se reproduce, ver abajo) los tintes de `_palette_effects.ini` y las paletas animadas todavía no se reproducen; normales, "chowder", máscaras de tono, retratos palettizados
   de Otter y desenfoque de movimiento tampoco.
 - **Paletas Claude** (`zdroid_palgen`, `src/core/palgen.*`): genera `.pal` a partir de las texturas de paleta de TU juego. Cuerpo y ropa en gris normal
   (la piel un poco más clara), lo que ya era negro sigue negro (las corbatas de Filia, Big Band y Peacock, negras), lo casi blanco, blanco, y los ojos
@@ -309,3 +308,44 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9 Dev_Nov-12 - efectos de super conectados, Core cifrado dentro de la app y desarrollador "Destroyer And Nitro"
+- **Qué hace el simulador** (medido con tus datos, no copiado de ningún lado): el luchador que lanza un super levanta dos interruptores. `SUPERSHADOWS`
+  queda en 1 durante **todo** el movimiento y `SUPERFLASH` durante su primer tramo (decenas de ticks; el reloj de la ronda se detiene). El valor de
+  `SUPERFLASH` es el look del flash (1 super, 2 / 3 combo hiper, 4 contra). `FoitDuel::superState()` los lee y dice de quién es el super;
+  cada `FoitView` marca si ese objeto es el que lo levantó (`superLit`).
+- **Línea de tiempo de presentación** (`src/fx/super_fx.*`, solo imagen: no se guarda, el simulador no la lee, no afecta al rollback): la oscuridad del
+  escenario sube en 8 ticks y baja en 14; el flash es un pulso (sube en 3 ticks, baja en 16, se reinicia si cambia el look). Esos tiempos son números
+  neutros propios; los colores y mezclas salen del pack PAFX con los números de TU Core.
+- **Ruta GPU** (opción "Efectos GPU"): cada objeto lleva `ScreenFx::make(...)`; el bando del super queda iluminado y todo lo demás oscuro; durante
+  el pulso el cuerpo del dueño además dibuja la **silueta de super** en dos colores (los `shadow1` / `shadow2` del `.pal` de su paleta; sin ellos,
+  los colores del propio look). El escenario va por SDL: se oscurece multiplicando (`SDL_BLENDMODE_MOD`) y recibe un velo durante el pulso.
+- **Ruta CPU** (la de siempre): aproximación - multiplicación de color por sprite y escenario, y el flash como un velo sobre la imagen terminada;
+  no hay silueta. Mismos tiempos.
+- Captura de ayuda: `ZDROID_PLAY_SUPERDEMO=1` (o la palabra `superdemo` en `zgirls_flags.txt`): el jugador 1 lanza un super medio segundo después de
+  empezar la pelea, con barra llena, mientras el 2 se queda quieto. El estado de la opción GPU ahora dice si existe el programa de silueta.
+- **Pruebas**: `tests/test_fx.cpp` (rampas, pulso, looks, colores de silueta) y `tests/test_main.cpp` (un super real levanta los interruptores solo en su
+  dueño, las vistas lo marcan, y se apagan al acabar); capturas headless de una pelea en las dos rutas. ASan/UBSan limpios.
+- **Sigue sin hacer (dicho claro)**: los tintes de `_palette_effects.ini` (el formato se entiende, pero los slots `PALFX*` de los objetos guardan
+  patrones de 32 bits que no son números de efecto pequeños ni coinciden con los hashes de nombre habituales, así que no se sabe qué efecto lleva
+  cada objeto); las paletas animadas (bytes de tono del `.pal`); las banderas por objeto `IGNOREALLSUPERFLASHES` / `IGNOREPARENTSUPERFLASH` (hoy todo lo del
+  bando del dueño cuenta como iluminado); barra de stun; modos 2/3/9/10 de las ataduras (necesitan la cámara); y lo de arriba (vistas de Main / Options,
+  cutscenes, Squigly / Marie y los ojos de 5 personajes en las paletas Claude). **La ruta GPU sigue sin probarse en un teléfono real**, por eso la opción sigue apagada.
+- **Core cifrado dentro de la app (sin permiso de "todos los archivos")**: la app ya no pide `MANAGE_EXTERNAL_STORAGE` ni los permisos de almacenamiento
+  (solo `INTERNET`, para Steam). Pantalla nueva de arranque (`CoreSetupActivity`): eliges UNA vez la carpeta `core` con el selector de carpetas de
+  Android; la app la **copia a su almacenamiento privado** (`files/core_import`), el cargador la **sella en un solo archivo cifrado**
+  (`files/fx/core.vault`, ChaCha20-Poly1305 con la clave `pafx.key` de esa instalación) y **borra la copia suelta**. Tus archivos originales no se tocan.
+  Una bóveda copiada a otro teléfono no abre, y un byte cambiado se rechaza. El Core se lee desde la bóveda como si fuera una carpeta
+  (`Vfs::mountVault`, rutas virtuales `vault:<id>/<nombre>`; cualquier carpeta o mod montado después la sobrescribe) y el pack de efectos toma sus shaders de ahí.
+  Mantén pulsado el icono de la app -> "Cambiar carpeta Core" para repetirlo; "Continuar sin Core" lo salta. Detalles y límites: `docs/CORE_VAULT.md`.
+  Cambia una cosa: una carpeta fuera de la de la app (p. ej. `/sdcard/sg_dump`) ya no se puede leer; el resto de datos va en `Android/data/<paquete>/files`.
+- **Desarrollador "Destroyer And Nitro"**: es el nombre del certificado con el que se firma el APK de release (`CN=Destroyer And Nitro, O=Destroyer And Nitro`),
+  sale en la pantalla de aviso y en la de Core. El flujo de GitHub firma con tu clave estable si defines los secretos `ZG_KEYSTORE_B64` +
+  `ZG_KEYSTORE_PASSWORD` (`tools/make_release_keystore.sh` la crea); sin ellos firma con una clave propia de esa build (mismo nombre, pero hay que desinstalar
+  antes de instalar la siguiente) y comprueba con `apksigner` que el firmante es ese. **Ojo, dicho claro:** un nombre en el certificado no quita por sí solo el
+  aviso de "desarrollador desconocido" de Android / Play Protect; eso pide registrar el paquete + la clave en la Android Developer Console de Google (hay cuenta
+  gratuita de "distribución limitada" para aficionados). Pasos en `android/README.md`.
+- **Pruebas nuevas**: `tests/test_vault.cpp` (`zdroid_vault_tests`, 93 comprobaciones): ida y vuelta, nada en claro dentro del archivo, clave equivocada / sin clave /
+  tabla dañada / truncada / una entrada alterada, el VFS y su orden de capas, shaders y pack de efectos desde la bóveda, e importación desde la carpeta de paso
+  (buena, carpeta equivocada, reemplazo). Con un Core real: 882 archivos (10,5 MB) sellados y leídos idénticos; el visor arrancando solo con la bóveda da la misma imagen,
+  byte a byte, que con la carpeta Core. **La parte Java (selector, copia) solo la valida el CI: en este entorno no hay Android SDK.**
+- Android: `versionCode 13`, `versionName 0.9-zgirls-Dev_Nov-12`.

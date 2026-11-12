@@ -1,0 +1,4 @@
+<resources>
+    <string name="shortcut_core_short">Cambiar carpeta Core</string>
+    <string name="shortcut_core_long">Cambiar la copia cifrada del Core</string>
+</resources>

@@ -54,5 +54,8 @@ std::string prefFile(const std::string& name) {
     return d.empty() ? std::string() : d + name;
 }
 
+std::string coreStoreDir() { return prefFile("fx"); }
+std::string coreImportDir() { return prefFile("core_import"); }
+
 }  // namespace apppaths
 }  // namespace zengine

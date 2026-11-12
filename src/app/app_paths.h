@@ -15,5 +15,10 @@ const std::string& prefDir();
 // prefDir() + name ("" when there is no folder).
 std::string prefFile(const std::string& name);
 
+// The app's private folder for sealed material: the effects pack, the per-install key and the Core vault live here (vault.h, fx_store.h).
+std::string coreStoreDir();
+// Where the Android shell leaves the copy of the folder the player picked, until the loader has sealed it into the vault and deleted it.
+std::string coreImportDir();
+
 }  // namespace apppaths
 }  // namespace zengine

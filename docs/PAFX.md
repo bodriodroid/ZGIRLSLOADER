@@ -4,6 +4,9 @@ PAFX is the render-effects pack of the Android build. It is **not** a game archi
 level data) and it is **never distributed**: each player builds their own, on their own device, from their own copy of the game's
 Core, and seals it with a key that is generated on that device and never leaves it.
 
+The same container, with the same per-install key (`pafx.key`), also holds the player's sealed copy of the Core on Android
+(`core.vault`, see `docs/CORE_VAULT.md`).
+
 ```
 player's Core (shaders/*.fx)  ──zdroid_pafx pack──▶  fx.pafx  (sealed with the per-install key)
 engine's GLSL ES programs  ───────────────────────▶      │
@@ -106,11 +109,36 @@ game keeps its CPU path.
   capture of a fight) the GPU route differs from the CPU one by at most 16/255 in a handful of pixels. **Nobody has run it on a real phone yet:
   that is why the option is Off.**
 
+## The super move picture
+
+The simulation only raises two switches on the fighter that casts a super (both are plain on / off slots flipped by the character scripts):
+`SUPERSHADOWS` stays on for the whole move, `SUPERFLASH` for its first stretch (tens of ticks, the round clock stops meanwhile) and its value
+is the 1-based flash look (1 super, 2 / 3 hyper combo, 4 counter).  `FoitDuel::superState()` reports them and which side owns the move;
+`fx::SuperFxTimeline` (`src/fx/super_fx.*`) turns them into smooth strengths for the shader uniforms: the stage goes fully dark in 8 ticks
+and back in 14, the flash is a pulse (up in 3 ticks, down over 16, restarted by a new look).  The ramp lengths are our own neutral numbers.
+It is presentation only: stepped once per displayed tick, never saved, never read by the simulation.
+
+* **GPU route**: every object gets `ScreenFx::make(tuning, ...)`: the super's side stays bright (`shadowT` 0), everything else gets the dark
+  tint (`shadowT` of the timeline), and the whole picture takes the flash look.  During the pulse the owner's body also gets the **super
+  outline** (flat silhouette in two colours, blended back and forth): the two colours are the `.pal` super-outline entries of its palette
+  (`shadow1` / `shadow2`; `zdroid_palgen` writes the orange ones) or, for a palette without them, the flash look's own colours.
+* **Stage**: drawn through SDL, not the effect programs, so on both routes it is darkened with an exact multiply (SDL's `MOD` blend by the
+  dark tint) and, on the GPU route, tinted with one translucent overlay while the pulse runs.
+* **CPU route** (the default): the CPU cannot remap a pixel by its luminance, so a sprite is multiplied by the dark tint (the stage the same
+  way) and the flash is one translucent overlay over the finished picture.  Same timing, a cruder look; no outline.
+* `ZDROID_PLAY_SUPERDEMO=1` (or the word `superdemo` in `zgirls_flags.txt`) is a capture aid: player 1 casts a super half a second into the
+  fight with a full bar while player 2 stands still.
+* Verification: `tests/test_fx.cpp` (ramps, pulse, looks, outline colours), `tests/test_main.cpp` (a real super raises the switches on its
+  owner only, the views mark that fighter as lit, both switches are off again afterwards), and headless captures of a fight on both routes.
+
 ## What is not wired yet
 
-* Nothing triggers the effects: the fight simulation has no super / darkening / hue-shift state yet, so the flash, the super shadow, the
-  `_palette_effects.ini` tints (AllBlack, Dead_Pallor, Armor ...) and the animated hue-shift palettes are available to the GPU route but not played.
+* **`_palette_effects.ini` tints** (AllBlack, Dead_Pallor, Armor ...) and the **animated hue-shift palettes** (`.pal` hue bytes) are not
+  played.  The ini format is understood (rows of `[high colour, low colour] mult` per tick, `PAL n` references, `NORMAL`, `Loop`, flags such
+  as `NoLight` / `HiMult`), but what the `PALFX*` slots of an object hold is not: they carry 32-bit patterns that are not small effect numbers
+  and that do not match the common name hashes, so which effect an object wears cannot be read yet.
 * Normal-lit shading (the `.art` decoder does not expose the normal plane), the "chowder" field, per-row hue masks, Otter's palettized portraits,
   the super-flash card and motion blur are not in v1.
+* Per-object `IGNOREALLSUPERFLASHES` / `IGNOREPARENTSUPERFLASH`: every object of the owner's side counts as lit and everything else as dark.
 * Only SDL's `opengles2` renderer, only sprite level 0; the shadows are sampled nearest.
 * A "build effects pack" button next to the data-folder picker (today the pack is built the first time the option is switched on).

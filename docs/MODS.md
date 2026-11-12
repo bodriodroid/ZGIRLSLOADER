@@ -37,8 +37,8 @@ into `mods/.cache/pal/<char>__<file>.dds`, a normal palette texture, so every sc
 
 A `.pal` whose number of colours does not match the table (made for another game version) is skipped with a warning
 (`zdroid_probe <game folder>` prints them).  Known gap: the table is the one of build 3.7.14, which differs from the user's data by one
-region for Squigly and Marie; palettes for those two need a table update.  The hue-shift bytes and the two super-shadow colours are
-read and kept, not used yet.
+region for Squigly and Marie; palettes for those two need a table update.  The two super-outline colours (`shadow1` / `shadow2`) are used
+by the super move picture (see `docs/PAFX.md`); the hue-shift bytes are read and kept, not played yet.
 
 ### Making palettes from your own colours: `zdroid_palgen`
 
