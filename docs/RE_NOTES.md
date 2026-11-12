@@ -347,3 +347,11 @@ structure.
 * Shader files present in a Core: `.fx` (HLSL, the readable source), `glsl12/*.glsl` (the compiled desktop variants, one file per
   technique) and `pssl/*.sb` (PS4 binaries, not read).
 
+## Super move switches and the PALFX slots (measured on a running fight)
+
+* A super raises `SUPERSHADOWS` (slot 72) on its owner for the whole move and `SUPERFLASH` (slot 71) for the first stretch; both are plain
+  on / off values (the flash value is the 1-based look).  Helpers of the owner can raise them too.  See `docs/PAFX.md` ("The super move picture").
+* The `PALFX*` slots (73-79, 46) hold 32-bit patterns of a handful of distinct values across a long random fight (not small effect numbers,
+  and not the plain CRC32 / FNV / djb2 / sdbm / one-at-a-time hashes of the names in `_palette_effects.ini`, with or without case folding).  Scripts
+  copy them around (`PALFXHIT = set-ifnot(FLAG0, BLOCKED)`, `PALFXSELF2 = set(FLAG0, 0)`), so the value is chosen by data, not a constant in the script.
+  Open question: how an object's `PALFX*` value selects a row set of `_palette_effects.ini`.

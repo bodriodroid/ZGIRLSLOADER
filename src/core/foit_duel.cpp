@@ -15,7 +15,7 @@ constexpr int kSlotFacing = 56;
 constexpr int kSlotHitStun = 53;
 constexpr int kSlotLife = 64;
 constexpr int kSlotRedLife = 65;
-constexpr int kSlotSuperBar = 66, kSlotSuperFlash = 71;
+constexpr int kSlotSuperBar = 66, kSlotSuperFlash = 71, kSlotSuperShadows = 72;
 constexpr int kSlotXVel = 158, kSlotYVel = 159;
 constexpr int kSlotXScale = 164, kSlotYScale = 165, kSlotAlpha = 166;
 constexpr int kSlotComboHits = 11;   // hits the fighter has landed in the combo that is running
@@ -241,6 +241,24 @@ float FoitDuel::lifeFraction(int side) const {
     return std::clamp(obj_[i]->life() / maxLife_[i], 0.0f, 1.0f);
 }
 
+void FoitDuel::fillMeter(int side) {
+    rt::Object& o = *obj_[side & 1];
+    if (o.slots[kSlotSuperBar] < 500.0f) o.slots[kSlotSuperBar] = 500.0f;
+}
+
+FoitSuper FoitDuel::superState() const {
+    FoitSuper s;
+    for (const rt::Object* o : w_.objects) {
+        if (!o->alive) continue;
+        const float f = o->slots[kSlotSuperFlash], sh = o->slots[kSlotSuperShadows];
+        if (f == 0 && sh == 0) continue;
+        s.owner = o->leader == obj_[1].get() ? 1 : 0;
+        if (f != 0) s.flash = std::max(s.flash, std::max(1, static_cast<int>(f)));
+        if (sh != 0) s.shadows = true;
+    }
+    return s;
+}
+
 void FoitDuel::views(std::vector<FoitView>& out) const {
     out.clear();
     for (const rt::Object* o : w_.objects) {
@@ -256,6 +274,7 @@ void FoitDuel::views(std::vector<FoitView>& out) const {
         v.xscale = o->slots[kSlotXScale];
         v.yscale = o->slots[kSlotYScale];
         v.alpha = o->slots[kSlotAlpha];
+        v.superLit = o->slots[kSlotSuperFlash] != 0 || o->slots[kSlotSuperShadows] != 0;
         out.push_back(v);
     }
 }

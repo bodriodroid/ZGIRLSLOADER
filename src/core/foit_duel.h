@@ -58,6 +58,14 @@ struct FoitView {
     bool faceRight = true;
     float xscale = 1, yscale = 1;   // multipliers of the art (0 = invisible)
     float alpha = 1;                // 0..1
+    bool superLit = false;          // raised SUPERFLASH / SUPERSHADOWS itself: stays bright while the rest of the picture goes dark
+};
+
+// What the picture has to do for a super move (presentation only; read by the Play screen, never by the simulation).
+struct FoitSuper {
+    int flash = 0;         // SUPERFLASH of the owner: 0 = off, else the 1-based flash look
+    bool shadows = false;  // SUPERSHADOWS of the owner: the stage is dark around it
+    int owner = -1;        // side (0 / 1) whose object raised either flag, -1 when none did
 };
 
 class FoitDuel {
@@ -96,6 +104,11 @@ public:
     float lifeFraction(int side) const;
     // True while the fighter's own super flash (SUPERFLASH) is running: the clock stops and the HUD plays its filmstrip.
     bool superFlash(int side) const;
+    // The super in progress, if any: which side owns it and whether the flash / the dark stage are on.  Scans every object, so a
+    // helper that raises the flag counts for its fighter.
+    FoitSuper superState() const;
+    // Tops up a fighter's super bar.  A capture / test aid (changes the simulation: never use it in a networked match).
+    void fillMeter(int side);
     // Everything on screen, the two bodies first.  Fills `out` (cleared first).
     void views(std::vector<FoitView>& out) const;
     // Frame indexes the fighter will want soon (rest of its current state, then the state after it): for the texture prefetch.

@@ -4416,6 +4416,57 @@ static void testFoitDuelReal(const std::vector<std::string>& dirs) {
         return b;
     };
 
+    // a super move: the owner raises SUPERSHADOWS for the whole move and SUPERFLASH for its first ticks, superState() names the owner and the
+    // views mark that fighter as lit; the other side never does, and both switches are off again once the move is over
+    {
+        FoitDuel d;
+        CHECK(d.init(makeCfg(99, 2, false, false)));
+        fight::MatchState st;
+        d.project(st);
+        fight::LocalSession sess(st, fight::foitDuelCallbacks(&d));
+        std::vector<uint16_t> seq;
+        for (int i = 0; i < 2; ++i) seq.push_back(fight::kDown);
+        for (int i = 0; i < 2; ++i) seq.push_back(fight::kDown | fight::kRight);
+        for (int i = 0; i < 2; ++i) seq.push_back(fight::kRight);
+        for (int i = 0; i < 3; ++i) seq.push_back(fight::kLP | fight::kMP);
+        int fightStart = -1, flashTicks = 0, shadowTicks = 0, wrongOwner = 0, litBodies = 0, litOther = 0;
+        bool everOn = false;
+        std::vector<fight::FoitView> vs;
+        for (int t = 0; t < 900; ++t) {
+            if (d.fighting()) {
+                if (fightStart < 0) fightStart = t;
+                // a full super bar for side 0 (the bar is a plain slot; a real match fills it by fighting)
+                auto& o = const_cast<foit::rt::Object&>(d.body(0));
+                if (o.slots[66] < 500.0f) o.slots[66] = 500.0f;
+            }
+            const int rel = fightStart < 0 ? -1 : t - fightStart - 60;
+            const uint16_t in0 = rel >= 0 && static_cast<size_t>(rel) < seq.size() ? seq[static_cast<size_t>(rel)] : 0;
+            int sim = 0;
+            sess.addLocalInput(in0, 0, &sim);
+            const fight::FoitSuper su = d.superState();
+            if (su.flash || su.shadows) {
+                everOn = true;
+                if (su.owner != 0) ++wrongOwner;
+                if (su.flash) ++flashTicks;
+                if (su.shadows) ++shadowTicks;
+                d.views(vs);
+                for (const fight::FoitView& v : vs) {
+                    if (v.body && v.superLit && v.side == 0) ++litBodies;
+                    if (v.body && v.superLit && v.side == 1) ++litOther;
+                }
+            } else {
+                CHECK(su.owner == -1);
+            }
+        }
+        CHECK(everOn);
+        CHECK(wrongOwner == 0);
+        CHECK(flashTicks > 10 && flashTicks < 120);        // a short flash...
+        CHECK(shadowTicks > flashTicks);                   // ...inside a longer dark stage
+        CHECK(litBodies > 0 && litOther == 0);
+        const fight::FoitSuper after = d.superState();     // the move is long over by the last tick
+        CHECK(after.flash == 0 && !after.shadows && after.owner == -1);
+    }
+
     // input conversion: opposite directions cancel, the six buttons keep their order, macros expand
     {
         int dir = -1;

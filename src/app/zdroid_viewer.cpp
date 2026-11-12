@@ -24,6 +24,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <tuple>
@@ -43,6 +44,7 @@
 #include "modloader.h"
 #include "modsdir.h"
 #include "play.h"
+#include "vault.h"
 #include "credits.h"
 #include "gallery.h"
 #include "story_mode.h"
@@ -175,9 +177,31 @@ void scanDownloadDir(const std::string& steamDir, size_t& gfs, size_t& files, ui
     }
 }
 
+// The player's own Core, sealed in the app's private folder (vault.h), or nullptr when there is none.  Opened once and shared: a rescan
+// mounts the same vault again instead of reading it from disk again.
+std::shared_ptr<const vault::Vault> openCoreVault() {
+    static std::mutex mu;
+    static std::shared_ptr<const vault::Vault> cached;
+    std::lock_guard<std::mutex> lk(mu);
+    if (cached) return cached;
+    const std::string store = apppaths::coreStoreDir();
+    if (store.empty()) return nullptr;
+    auto v = std::make_shared<vault::Vault>();
+    std::string err;
+    if (!v->open(store, &err)) {
+        if (err != "no Core vault yet") std::printf("core vault: not usable (%s)\n", err.c_str());
+        return nullptr;
+    }
+    std::printf("core vault: %zu files\n", v->entries().size());
+    cached = v;
+    return cached;
+}
+
 std::unique_ptr<LoadResult> buildData(const std::string& dataRoot, const std::vector<std::string>& extraDirs, int delayMs, bool jpVoices = false) {
     auto r = std::make_unique<LoadResult>();
     if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+    // the sealed Core is the base layer: every folder mounted after it (and every mod) overrides it
+    if (const std::shared_ptr<const vault::Vault> v = openCoreVault()) r->gd.mountVault(v);
     r->gd.mount(dataRoot);
     for (const std::string& d : extraDirs) r->gd.mount(d);
     // SKGLoader/mods/* override the base game: mounted last, higher priority last.
@@ -1023,6 +1047,11 @@ int main(int argc, char** argv) {
 
     // ---- where things live
     app.prefsDir = apppaths::prefDir();
+    // a folder the Android shell copied for us (the player picked their Core): seal it into the vault and delete the plain copy
+    if (!app.prefsDir.empty()) {
+        const vault::ImportResult imp = vault::importPending(apppaths::coreImportDir(), apppaths::coreStoreDir());
+        if (imp.attempted) std::printf("core vault: %s\n", imp.message.c_str());
+    }
     if (!opt.dirs.empty()) {
         app.dataRoot = opt.dirs[0];
     } else if (const char* e = std::getenv("ZDROID_DATA"); e && *e) {

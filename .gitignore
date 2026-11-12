@@ -10,3 +10,11 @@ local.properties
 *.pafx
 pafx.key
 *.key
+
+# signing keys and sealed material are never committed
+*.jks
+*.keystore
+*.vault
+pafx.key
+*.pafx
+core_import/

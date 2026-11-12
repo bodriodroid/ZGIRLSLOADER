@@ -31,25 +31,82 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/SteamRE/DepotDownloader.git
           ./tools/build_depotdownloader_android.sh out
-      - name: Build APK
+      - name: Build debug APK (kept as a CI artifact / fallback)
         working-directory: android
         run: ./gradlew -PsdlDir="$RUNNER_TEMP/SDL" assembleDebug
       - uses: actions/upload-artifact@v4
         with: { name: zgirlsmobile-debug-apk, path: android/app/build/outputs/apk/debug/*.apk }
-      # The APK as a GitHub release (prerelease: it is a debug build), named after versionName in android/app/build.gradle.
+      # The release APK is signed as "Destroyer And Nitro" (the name on the signing certificate).  With the repository secrets
+      # ZG_KEYSTORE_B64 (base64 of the .jks) + ZG_KEYSTORE_PASSWORD [+ ZG_KEY_ALIAS, ZG_KEY_PASSWORD] it is signed with the project's own
+      # stable key (tools/make_release_keystore.sh makes one), so every build installs over the previous one.  Without them a new key with
+      # the same name is made for this build only, so the APK still carries the right name but must be uninstalled before a newer one.
+      - name: Signing key (Destroyer And Nitro)
+        id: key
+        env:
+          KS_B64: ${{ secrets.ZG_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ZG_KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.ZG_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ZG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KS="$RUNNER_TEMP/zgirls-release.jks"
+          if [ -n "${KS_B64:-}" ] && [ -n "${KS_PASS:-}" ]; then
+            printf '%s' "$KS_B64" | base64 -d > "$KS"
+            ALIAS="${KS_ALIAS:-zgirls}"; STOREPASS="$KS_PASS"; KEYPASS="${KEY_PASS:-$KS_PASS}"; STABLE=yes
+          else
+            STOREPASS=$(openssl rand -hex 16); KEYPASS="$STOREPASS"; ALIAS=zgirls; STABLE=no
+            keytool -genkeypair -keystore "$KS" -storetype PKCS12 -alias "$ALIAS" -keyalg RSA -keysize 3072 -validity 9125 \
+              -storepass "$STOREPASS" -keypass "$KEYPASS" -dname "CN=Destroyer And Nitro, O=Destroyer And Nitro"
+          fi
+          echo "::add-mask::$STOREPASS"
+          echo "::add-mask::$KEYPASS"
+          {
+            echo "ZG_KS=$KS"; echo "ZG_ALIAS=$ALIAS"; echo "ZG_STOREPASS=$STOREPASS"; echo "ZG_KEYPASS=$KEYPASS"; echo "ZG_STABLE=$STABLE"
+          } >> "$GITHUB_ENV"
+      - name: Build release APK
+        id: release
+        continue-on-error: true
+        working-directory: android
+        run: |
+          ./gradlew -PsdlDir="$RUNNER_TEMP/SDL" -PzgStoreFile="$ZG_KS" -PzgStorePassword="$ZG_STOREPASS" \
+            -PzgKeyAlias="$ZG_ALIAS" -PzgKeyPassword="$ZG_KEYPASS" assembleRelease
+      - name: Check who signed it
+        if: steps.release.outcome == 'success'
+        run: |
+          set -euo pipefail
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/34.0.0/apksigner)
+          OUT=$("$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/*.apk)
+          echo "$OUT" | grep -E "Verifies|Signer #1 certificate (DN|SHA-256)"
+          echo "$OUT" | grep -q "Destroyer And Nitro"
+      - uses: actions/upload-artifact@v4
+        if: steps.release.outcome == 'success'
+        with: { name: zgirlsmobile-release-apk, path: android/app/build/outputs/apk/release/*.apk }
+      # The APK as a GitHub release (prerelease: not yet run on a real phone), named after versionName in android/app/build.gradle.
       # A push that keeps the same versionName replaces the APK of that release instead of making a new one.
       - name: Publish the APK as a release
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_OK: ${{ steps.release.outcome }}
         run: |
           set -euo pipefail
           VERSION=$(sed -n "s/.*versionName '\(.*\)'.*/\1/p" android/app/build.gradle | head -n1)
           [ -n "$VERSION" ] || { echo "versionName not found in android/app/build.gradle"; exit 1; }
           TAG="v${VERSION}"
-          APK="ZGirlsMobile-${VERSION}-debug.apk"
-          cp android/app/build/outputs/apk/debug/*.apk "$APK"
-          NOTES="Debug build of commit ${GITHUB_SHA}. Installs over the previous build (same signing key, higher versionCode)."
+          if [ "$RELEASE_OK" = "success" ]; then
+            APK="ZGirlsMobile-${VERSION}.apk"
+            cp android/app/build/outputs/apk/release/*.apk "$APK"
+            if [ "$ZG_STABLE" = "yes" ]; then
+              KEYNOTE="Signed by Destroyer And Nitro with the project's key: it installs over the previous build."
+            else
+              KEYNOTE="Signed by Destroyer And Nitro with a key made for this build only: uninstall the previous build first."
+            fi
+          else
+            APK="ZGirlsMobile-${VERSION}-debug.apk"
+            cp android/app/build/outputs/apk/debug/*.apk "$APK"
+            KEYNOTE="The release build failed, so this is the debug build (debug key)."
+          fi
+          NOTES="Build of commit ${GITHUB_SHA}. ${KEYNOTE} No storage permission: the app copies your own Core folder into its private storage and seals it with a key that only exists on your phone."
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber
             gh release edit "$TAG" --notes "$NOTES"

@@ -49,6 +49,8 @@ class GameData {
 public:
     // Mounts a folder; returns the number of files indexed.
     size_t mount(const std::string& dir) { return vfs_.mount(dir); }
+    // Mounts the sealed copy of the player's Core (vault.h) like a folder; later mounts still override it.
+    size_t mountVault(std::shared_ptr<const vault::Vault> v) { return vfs_.mountVault(std::move(v)); }
     const Vfs& vfs() const { return vfs_; }
 
     // Mounts <gameDir>/SKGLoader/mods/* on top of everything already mounted, so
