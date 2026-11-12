@@ -17,6 +17,9 @@ std::string prefFile(const std::string& name);
 
 // The app's private folder for sealed material: the effects pack, the per-install key and the Core vault live here (vault.h, fx_store.h).
 std::string coreStoreDir();
+// The rest of the game's data (ui, stages, textures, characters ...) as the Android setup screen copied it out of the folder the player
+// picked, so the app needs no storage permission.  Mounted after the Core vault, before the app's own data folder.
+std::string importedDataDir();
 // Where the Android shell leaves the copy of the folder the player picked, until the loader has sealed it into the vault and deleted it.
 std::string coreImportDir();
 

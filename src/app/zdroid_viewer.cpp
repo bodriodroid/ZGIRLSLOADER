@@ -202,6 +202,15 @@ std::unique_ptr<LoadResult> buildData(const std::string& dataRoot, const std::ve
     if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
     // the sealed Core is the base layer: every folder mounted after it (and every mod) overrides it
     if (const std::shared_ptr<const vault::Vault> v = openCoreVault()) r->gd.mountVault(v);
+    // the data the Android setup screen copied out of the folder the player picked (no storage permission needed for that)
+    {
+        const std::string imported = apppaths::importedDataDir();
+        std::error_code iec;
+        if (!imported.empty() && fs::is_directory(imported, iec) && imported != dataRoot) {
+            const size_t n = r->gd.mount(imported);
+            std::printf("imported data: %zu files\n", n);
+        }
+    }
     r->gd.mount(dataRoot);
     for (const std::string& d : extraDirs) r->gd.mount(d);
     // SKGLoader/mods/* override the base game: mounted last, higher priority last.
@@ -1063,6 +1072,16 @@ int main(int argc, char** argv) {
             if (f && std::getline(f, l) && !l.empty()) app.dataRoot = l;
         }
 #ifdef __ANDROID__
+        // Without the all-files permission a folder outside the app's own ones cannot be read: a path an older build saved there would
+        // only leave the data empty, so it is dropped and the app's own folder is used (the setup screen copies the data there).
+        if (!app.dataRoot.empty()) {
+            const char* ext = SDL_AndroidGetExternalStoragePath();
+            const bool own = (ext && app.dataRoot.rfind(ext, 0) == 0) || (!app.prefsDir.empty() && app.dataRoot.rfind(app.prefsDir, 0) == 0);
+            if (!own) {
+                std::printf("data folder %s is outside the app's own folders: ignored\n", app.dataRoot.c_str());
+                app.dataRoot.clear();
+            }
+        }
         if (app.dataRoot.empty())
             if (const char* ext = SDL_AndroidGetExternalStoragePath()) app.dataRoot = ext;
 #endif

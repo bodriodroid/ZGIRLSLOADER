@@ -8,6 +8,7 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.StatFs;
 import android.provider.DocumentsContract;
 import android.view.Gravity;
 import android.view.View;
@@ -29,15 +30,20 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * First screen of ZGirlsMobile: where the player's own copy of the game's Core comes from.
+ * First screen of ZGirlsMobile: where the player's own copy of the game comes from.
  *
- * The app asks for NO storage permission.  The player picks the Core folder once with Android's own folder picker; this screen copies
- * it into the app's private folder (files/core_import) and starts the game.  The loader (src/core/vault.cpp) seals that copy into
- * one encrypted file, files/fx/core.vault, with a key that only exists on this install, and deletes the plain copy.  Nothing outside
- * the app's own folders is read or changed, and the player's original files are left exactly as they were.
+ * The app asks for NO storage permission.  The player picks the game folder once with Android's own folder picker (the folder that holds
+ * core, ui, stages, characters ... or just the Core).  This screen copies it into the app's private storage:
  *
- * Shown on a fresh install, when the last import failed, or from the "Change Core folder" shortcut (long-press the app icon).
- * "Continue without Core" starts the game as before (it then runs with whatever the app's own folder holds).
+ *  - the Core  -> files/core_import, which the loader seals into one encrypted file, files/fx/core.vault, with a key that only exists on
+ *                 this install, and then deletes the plain copy (src/core/vault.cpp);
+ *  - the rest  -> files/data (ui, stages, textures, characters ...), which the loader mounts next to the vault.
+ *
+ * Nothing outside the app's own folders is read or changed, and the player's original files are left exactly as they were.  Files that
+ * are already copied (same name and size) are skipped, so picking the folder again after an update or an interrupted copy is quick.
+ *
+ * Shown on a fresh install, when the last import failed, or from the "Change game folder" shortcut (long-press the app icon).
+ * "Continue without" starts the game as before (it then runs with whatever the app's own folder holds).
  */
 public class CoreSetupActivity extends Activity {
     static final String ACTION_REIMPORT = "org.bodriodroid.zgirlsmobile.REIMPORT";
@@ -45,17 +51,26 @@ public class CoreSetupActivity extends Activity {
 
     private static final int REQ_PICK = 4201;
     private static final String PREFS = "zg_setup";
-    private static final String KEY_SKIPPED = "skipped";
+    private static final String KEY_SKIPPED = "skipped2";   // v2: builds before the data copy asked only for the Core
 
-    // what a Core copy may weigh: a real Core is ~11 MB / ~900 files; anything near these limits is the wrong folder
-    private static final long MAX_FILE_BYTES = 64L << 20;
-    private static final long MAX_TOTAL_BYTES = 192L << 20;
-    private static final int MAX_FILES = 20000;
-    private static final int MAX_DEPTH = 10;
+    // a real Core is ~11 MB / ~900 files; anything near these limits is the wrong folder
+    private static final long MAX_CORE_FILE_BYTES = 64L << 20;
+    private static final long MAX_CORE_BYTES = 192L << 20;
+    private static final int MAX_CORE_FILES = 20000;
+    // the rest of the game's data
+    private static final long MAX_DATA_BYTES = 8L << 30;
+    private static final int MAX_DATA_FILES = 200000;
+    private static final int MAX_DEPTH = 12;
+
+    // things a loader never reads (installers, executables, archives): skipped when copying the data
+    private static final String[] SKIP_EXT = { ".exe", ".dll", ".bat", ".msi", ".iso", ".zip", ".7z", ".rar", ".apk" };
+    // folders that tell "this is the game's data" (besides a Core)
+    private static final String[] DATA_DIRS = { "ui", "stages", "textures", "characters", "sprites", "sounds", "music", "mods", "levels" };
 
     private TextView status;
-    private Button pick, skip, remove;
+    private Button pick, skip, remove, cancel;
     private volatile boolean busy;
+    private volatile boolean cancelled;
 
     // ---------------------------------------------------------------- life cycle
 
@@ -71,11 +86,21 @@ public class CoreSetupActivity extends Activity {
         showIdleStatus();
     }
 
-    /** A fresh install (no vault yet, not skipped before), or the last import failed and there is still no vault. */
+    /** A fresh install (nothing copied yet, not skipped before), or the last import failed and there is still no vault. */
     private boolean needsSetup() {
-        if (vaultFile().isFile()) return false;
-        if (lastStatus().startsWith("error ")) return true;
+        if (externalHasData()) return false;   // the app's own folder already holds the game: nothing to ask
+        if (vaultFile().isFile() && dataDoneFile().isFile()) return false;
+        if (!vaultFile().isFile() && lastStatus().startsWith("error ")) return true;
         return !prefs().getBoolean(KEY_SKIPPED, false);
+    }
+
+    /** Game data the player put in Android/data/<package>/files by hand (it needs no permission): the old way still works. */
+    private boolean externalHasData() {
+        File ext = getExternalFilesDir(null);
+        if (ext == null) return false;
+        for (String n : new String[] { "core", "ui", "characters" })
+            if (new File(ext, n).isDirectory()) return true;
+        return false;
     }
 
     private SharedPreferences prefs() {
@@ -92,6 +117,14 @@ public class CoreSetupActivity extends Activity {
 
     private File importDir() {
         return new File(getFilesDir(), "core_import");
+    }
+
+    private File dataDir() {
+        return new File(getFilesDir(), "data");
+    }
+
+    private File dataDoneFile() {
+        return new File(dataDir(), ".import_done");
     }
 
     /** The one-line result the loader left after the last sealing ("ok ..." / "error ..."), or "". */
@@ -152,16 +185,18 @@ public class CoreSetupActivity extends Activity {
         col.setPadding(dp(24), dp(32), dp(24), dp(24));
 
         col.addView(text("ZGirlsMobile", 26, Color.WHITE, true));
-        col.addView(text(t("Tu copia del Core del juego", "Your copy of the game's Core"), 18, Color.rgb(0xE8, 0xC5, 0xFF), true));
+        col.addView(text(t("Tu copia del juego", "Your copy of the game"), 18, Color.rgb(0xE8, 0xC5, 0xFF), true));
         col.addView(text(t(
-                "Elige una sola vez la carpeta \"core\" de tu juego. La app hace una copia dentro de su propia carpeta privada y la guarda cifrada "
-                        + "con una clave que solo existe en este teléfono. No pide permiso de almacenamiento, no toca ni borra tus archivos originales "
-                        + "y no sale nada de aquí.",
-                "Pick your game's \"core\" folder once. The app makes a copy inside its own private folder and keeps it encrypted with a key that "
-                        + "only exists on this phone. It asks for no storage permission, never changes or deletes your original files, and nothing "
-                        + "leaves the device."), 15, Color.rgb(0xDD, 0xDD, 0xDD), false));
+                "Elige una sola vez la carpeta de tu juego (la que contiene core, ui, stages, characters...). La app hace una copia dentro de su "
+                        + "propia carpeta privada: el Core se guarda cifrado con una clave que solo existe en este teléfono y el resto "
+                        + "(menús, escenarios, personajes) en la carpeta privada de la app. No pide permiso de almacenamiento, no toca ni borra tus "
+                        + "archivos originales y no sale nada de aquí. Ocupa lo mismo que los datos; si ya copiaste algo, no se repite.",
+                "Pick your game folder once (the one that holds core, ui, stages, characters...). The app makes a copy inside its own private "
+                        + "folder: the Core is kept encrypted with a key that only exists on this phone, the rest (menus, stages, characters) in the "
+                        + "app's private folder. It asks for no storage permission, never changes or deletes your original files, and nothing leaves "
+                        + "the device. It takes as much space as the data; what is already copied is not copied again."), 15, Color.rgb(0xDD, 0xDD, 0xDD), false));
 
-        pick = button(t("Elegir carpeta Core", "Choose Core folder"));
+        pick = button(t("Elegir carpeta del juego", "Choose game folder"));
         pick.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -176,7 +211,7 @@ public class CoreSetupActivity extends Activity {
         });
         col.addView(pick);
 
-        skip = button(t("Continuar sin Core", "Continue without Core"));
+        skip = button(t("Continuar sin copiar", "Continue without copying"));
         skip.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -188,18 +223,43 @@ public class CoreSetupActivity extends Activity {
         });
         col.addView(skip);
 
-        remove = button(t("Borrar el Core cifrado", "Delete the encrypted Core"));
+        remove = button(t("Borrar lo copiado (Core cifrado y datos)", "Delete what was copied (encrypted Core and data)"));
         remove.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 if (busy) return;
-                vaultFile().delete();
-                new File(storeDir(), "core_import_status.txt").delete();
-                prefs().edit().putBoolean(KEY_SKIPPED, true).apply();
-                showIdleStatus();
+                setBusy(true);
+                setStatus(t("Borrando…", "Deleting…"));
+                new Thread(new Runnable() {
+                    @Override
+                    public void run() {
+                        vaultFile().delete();
+                        new File(storeDir(), "core_import_status.txt").delete();
+                        deleteTree(importDir());
+                        deleteTree(dataDir());
+                        prefs().edit().putBoolean(KEY_SKIPPED, true).apply();
+                        setBusy(false);
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                showIdleStatus();
+                            }
+                        });
+                    }
+                }).start();
             }
         });
         col.addView(remove);
+
+        cancel = button(t("Cancelar", "Cancel"));
+        cancel.setVisibility(View.GONE);
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cancelled = true;
+            }
+        });
+        col.addView(cancel);
 
         status = text("", 14, Color.rgb(0xFF, 0xE0, 0x82), false);
         status.setGravity(Gravity.CENTER_HORIZONTAL);
@@ -232,16 +292,17 @@ public class CoreSetupActivity extends Activity {
                 if (pick != null) pick.setEnabled(!b);
                 if (skip != null) skip.setEnabled(!b);
                 if (remove != null) remove.setEnabled(!b);
+                if (cancel != null) cancel.setVisibility(b ? View.VISIBLE : View.GONE);
             }
         });
     }
 
     private void showIdleStatus() {
-        boolean has = vaultFile().isFile();
+        boolean has = vaultFile().isFile() || dataDoneFile().isFile();
         String last = lastStatus();
         if (remove != null) remove.setVisibility(has ? View.VISIBLE : View.GONE);
-        if (has) setStatus(t("Ya hay un Core cifrado en este teléfono. Puedes cambiarlo eligiendo otra carpeta.",
-                "An encrypted Core is already stored on this phone. You can replace it by picking another folder."));
+        if (has) setStatus(t("Ya hay una copia en este teléfono. Puedes actualizarla eligiendo la carpeta otra vez.",
+                "A copy is already stored on this phone. You can update it by picking the folder again."));
         else if (last.startsWith("error ")) setStatus(t("La última importación falló: ", "The last import failed: ") + last.substring(6));
         else setStatus("");
     }
@@ -253,14 +314,15 @@ public class CoreSetupActivity extends Activity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode != REQ_PICK || resultCode != RESULT_OK || data == null || data.getData() == null) return;
         final Uri tree = data.getData();
+        cancelled = false;
         setBusy(true);
-        setStatus(t("Copiando…", "Copying…"));
+        setStatus(t("Mirando la carpeta…", "Looking at the folder…"));
         new Thread(new Runnable() {
             @Override
             public void run() {
                 String err = null;
                 try {
-                    copyCore(tree);
+                    copyGame(tree);
                 } catch (Failure f) {
                     err = f.getMessage();
                 } catch (Exception e) {
@@ -271,7 +333,7 @@ public class CoreSetupActivity extends Activity {
                     setStatus(err);
                     return;
                 }
-                // the loader seals the copy on its next start
+                // the loader seals the Core on its next start
                 prefs().edit().remove(KEY_SKIPPED).apply();
                 runOnUiThread(new Runnable() {
                     @Override
@@ -283,7 +345,7 @@ public class CoreSetupActivity extends Activity {
         }).start();
     }
 
-    /** A problem the player can act on (wrong folder, too big ...): the message is shown as is. */
+    /** A problem the player can act on (wrong folder, too big, no space ...): the message is shown as is. */
     private static final class Failure extends Exception {
         Failure(String m) {
             super(m);
@@ -296,9 +358,10 @@ public class CoreSetupActivity extends Activity {
         long size;
     }
 
-    private static final class Counter {
-        long bytes;
-        int files;
+    /** One file to copy: where it is, where it goes (relative), how big. */
+    private static final class Item {
+        String id, rel;
+        long size;
     }
 
     private List<Child> children(Uri tree, String docId) {
@@ -323,93 +386,239 @@ public class CoreSetupActivity extends Activity {
         return out;
     }
 
+    private static String lower(String s) {
+        return s.toLowerCase(Locale.ROOT);
+    }
+
     private static boolean isCore(List<Child> kids) {
         for (Child k : kids) {
-            String n = k.name.toLowerCase(Locale.ROOT);
+            String n = lower(k.name);
             if (k.dir && n.equals("shaders")) return true;
             if (!k.dir && (n.equals("stages.ini") || n.equals("music.ini") || n.equals("toc.ini"))) return true;
         }
         return false;
     }
 
-    private static Child coreChild(List<Child> kids) {
+    private static boolean isGameData(List<Child> kids) {
+        if (isCore(kids)) return true;
+        for (Child k : kids) {
+            if (!k.dir) continue;
+            String n = lower(k.name);
+            if (n.equals("core")) return true;
+            for (String d : DATA_DIRS)
+                if (n.equals(d)) return true;
+        }
+        return false;
+    }
+
+    private static Child childDir(List<Child> kids, String name) {
         for (Child k : kids)
-            if (k.dir && k.name.toLowerCase(Locale.ROOT).equals("core")) return k;
+            if (k.dir && lower(k.name).equals(name)) return k;
         return null;
     }
 
-    /** Copies the picked folder (or the "core" folder inside it, up to two levels down) into files/core_import, all or nothing. */
-    private void copyCore(Uri tree) throws Failure, IOException {
-        String rootId = DocumentsContract.getTreeDocumentId(tree);
+    private static boolean unsafeName(String name) {
+        // a name that could climb out of the destination folder is never followed
+        return name.isEmpty() || name.equals(".") || name.equals("..") || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0;
+    }
+
+    private static boolean skippedExt(String name) {
+        String n = lower(name);
+        for (String e : SKIP_EXT)
+            if (n.endsWith(e)) return true;
+        return false;
+    }
+
+    /** Lists every file below docId (relative paths with '/'), skipping the folder whose document id is `skipId`. */
+    private void scan(Uri tree, String docId, String rel, int depth, boolean skipJunk, List<Item> out, String skipId, int maxFiles, long maxBytes,
+            long[] total) throws Failure {
+        if (cancelled) throw new Failure(t("Cancelado.", "Cancelled."));
+        if (depth > MAX_DEPTH) throw new Failure(t("Esa carpeta es demasiado profunda para ser un juego.", "That folder is too deep to be a game."));
+        for (Child k : children(tree, docId)) {
+            if (unsafeName(k.name) || k.id.equals(skipId)) continue;
+            String r = rel.isEmpty() ? k.name : rel + "/" + k.name;
+            if (k.dir) {
+                scan(tree, k.id, r, depth + 1, skipJunk, out, skipId, maxFiles, maxBytes, total);
+                continue;
+            }
+            if (skipJunk && skippedExt(k.name)) continue;
+            Item it = new Item();
+            it.id = k.id;
+            it.rel = r;
+            it.size = k.size;
+            out.add(it);
+            total[0] += Math.max(0, k.size);
+            if (out.size() > maxFiles || total[0] > maxBytes) throw tooBig();
+        }
+        setStatus(t("Mirando la carpeta… ", "Looking at the folder… ") + out.size());
+    }
+
+    /** The shallowest folder (up to two levels down) that looks like the game's data root; its children are returned through kidsOut. */
+    private String findGameRoot(Uri tree, String rootId, List<Child>[] kidsOut) {
         List<Child> kids = children(tree, rootId);
-        if (!isCore(kids)) {
-            for (int level = 0; level < 2 && !isCore(kids); ++level) {
-                Child c = coreChild(kids);
-                if (c == null) break;
-                rootId = c.id;
-                kids = children(tree, rootId);
+        if (isGameData(kids)) {
+            kidsOut[0] = kids;
+            return rootId;
+        }
+        for (Child c : kids) {
+            if (!c.dir || unsafeName(c.name)) continue;
+            List<Child> k2 = children(tree, c.id);
+            if (isGameData(k2)) {
+                kidsOut[0] = k2;
+                return c.id;
             }
         }
-        if (!isCore(kids))
-            throw new Failure(t("Esa carpeta no parece un Core (no tiene la carpeta shaders ni stages.ini / music.ini / toc.ini). "
-                    + "Elige la carpeta llamada \"core\".", "That folder does not look like a Core (no shaders folder and no stages.ini / "
-                    + "music.ini / toc.ini). Pick the folder named \"core\"."));
+        for (Child c : kids) {
+            if (!c.dir || unsafeName(c.name)) continue;
+            for (Child c2 : children(tree, c.id)) {
+                if (!c2.dir || unsafeName(c2.name)) continue;
+                List<Child> k3 = children(tree, c2.id);
+                if (isGameData(k3)) {
+                    kidsOut[0] = k3;
+                    return c2.id;
+                }
+            }
+        }
+        return null;
+    }
 
-        File tmp = new File(getFilesDir(), "core_import.tmp");
-        deleteTree(tmp);
-        deleteTree(importDir());
-        if (!tmp.mkdirs()) throw new Failure(t("No se pudo crear la carpeta privada de la app.", "Could not create the app's private folder."));
-        Counter n = new Counter();
-        try {
-            copyDir(tree, rootId, tmp, 0, n);
-            if (!tmp.renameTo(importDir())) throw new Failure(t("No se pudo guardar la copia.", "Could not store the copy."));
-        } finally {
-            deleteTree(tmp);   // still there only when something above failed
+    /** Copies the picked game folder: the Core to files/core_import (all or nothing), the rest to files/data (resumable). */
+    @SuppressWarnings("unchecked")
+    private void copyGame(Uri tree) throws Failure, IOException {
+        List<Child>[] holder = new List[1];
+        String rootId = findGameRoot(tree, DocumentsContract.getTreeDocumentId(tree), holder);
+        if (rootId == null)
+            throw new Failure(t("Esa carpeta no parece el juego (no encuentro core, ui, stages, characters...). Elige la carpeta que los contiene.",
+                    "That folder does not look like the game (no core, ui, stages, characters ...). Pick the folder that holds them."));
+        List<Child> kids = holder[0];
+
+        // the Core: the folder itself, or the "core" folder in it (once or twice, the way extractions nest it)
+        String coreId = null;
+        if (isCore(kids)) {
+            coreId = rootId;
+        } else {
+            Child c = childDir(kids, "core");
+            for (int level = 0; level < 2 && c != null; ++level) {
+                List<Child> k = children(tree, c.id);
+                if (isCore(k)) {
+                    coreId = c.id;
+                    break;
+                }
+                c = childDir(k, "core");
+            }
+        }
+
+        // what to copy
+        List<Item> core = new ArrayList<Item>();
+        long[] coreTotal = new long[1];
+        if (coreId != null) scan(tree, coreId, "", 0, false, core, null, MAX_CORE_FILES, MAX_CORE_BYTES, coreTotal);
+        List<Item> data = new ArrayList<Item>();
+        long[] dataTotal = new long[1];
+        if (coreId == null || !coreId.equals(rootId))   // the picked folder is the Core itself: nothing else to copy
+            scan(tree, rootId, "", 0, true, data, coreId, MAX_DATA_FILES, MAX_DATA_BYTES, dataTotal);
+        if (core.isEmpty() && data.isEmpty()) throw new Failure(t("No hay nada que copiar en esa carpeta.", "There is nothing to copy in that folder."));
+
+        // space: what is not copied yet (same name and size = already there)
+        long need = coreTotal[0];
+        File dd = dataDir();
+        for (Item it : data) {
+            File f = new File(dd, it.rel);
+            if (!(f.isFile() && it.size >= 0 && f.length() == it.size)) need += Math.max(0, it.size);
+        }
+        dd.mkdirs();
+        long free = new StatFs(getFilesDir().getPath()).getAvailableBytes();
+        if (need + (64L << 20) > free)
+            throw new Failure(t("No hay espacio: hacen falta " + mb(need) + " MB y hay " + mb(free) + " MB libres.",
+                    "Not enough space: " + mb(need) + " MB are needed and " + mb(free) + " MB are free."));
+
+        long[] done = new long[2];   // files, bytes
+        long[] lastUi = new long[1];
+        long all = coreTotal[0] + dataTotal[0];
+        int count = core.size() + data.size();
+
+        if (!core.isEmpty()) {
+            File tmp = new File(getFilesDir(), "core_import.tmp");
+            deleteTree(tmp);
+            deleteTree(importDir());
+            if (!tmp.mkdirs()) throw new Failure(t("No se pudo crear la carpeta privada de la app.", "Could not create the app's private folder."));
+            try {
+                for (Item it : core) copyOne(tree, it, new File(tmp, it.rel), MAX_CORE_FILE_BYTES, false, done, lastUi, count, all);
+                if (!tmp.renameTo(importDir())) throw new Failure(t("No se pudo guardar la copia.", "Could not store the copy."));
+            } finally {
+                deleteTree(tmp);   // still there only when something above failed
+            }
+        }
+        if (!data.isEmpty()) {
+            dataDoneFile().delete();   // not complete until the loop below ends
+            for (Item it : data) copyOne(tree, it, new File(dd, it.rel), Integer.MAX_VALUE * 2L, true, done, lastUi, count, all);
+            if (!dataDoneFile().createNewFile() && !dataDoneFile().isFile()) throw new Failure(t("No se pudo terminar la copia.", "Could not finish the copy."));
         }
     }
 
-    private void copyDir(Uri tree, String docId, File dest, int depth, Counter n) throws Failure, IOException {
-        if (depth > MAX_DEPTH) throw new Failure(t("Esa carpeta es demasiado profunda para ser un Core.", "That folder is too deep to be a Core."));
-        ContentResolver cr = getContentResolver();
-        for (Child k : children(tree, docId)) {
-            String name = k.name;
-            // a name that could climb out of the destination folder is never followed
-            if (name.isEmpty() || name.equals(".") || name.equals("..") || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0) continue;
-            File out = new File(dest, name);
-            if (k.dir) {
-                if (!out.mkdirs() && !out.isDirectory()) throw new Failure(t("No se pudo crear una carpeta.", "Could not create a folder."));
-                copyDir(tree, k.id, out, depth + 1, n);
-                continue;
-            }
-            if (k.size > MAX_FILE_BYTES) throw tooBig();
-            if (++n.files > MAX_FILES) throw tooBig();
-            Uri doc = DocumentsContract.buildDocumentUriUsingTree(tree, k.id);
-            InputStream in = cr.openInputStream(doc);
-            if (in == null) throw new Failure(t("No se pudo leer ", "Could not read ") + name);
-            OutputStream os = new FileOutputStream(out);
-            try {
-                byte[] buf = new byte[64 * 1024];
-                long fileBytes = 0;
-                int r;
-                while ((r = in.read(buf)) > 0) {
-                    fileBytes += r;
-                    n.bytes += r;
-                    if (fileBytes > MAX_FILE_BYTES || n.bytes > MAX_TOTAL_BYTES) throw tooBig();
-                    os.write(buf, 0, r);
-                }
-            } finally {
-                try {
-                    in.close();
-                } catch (IOException ignored) {
-                }
-                os.close();
-            }
+    private static long mb(long bytes) {
+        return bytes >> 20;
+    }
+
+    private void copyOne(Uri tree, Item it, File out, long maxFile, boolean skipSame, long[] done, long[] lastUi, int count, long all)
+            throws Failure, IOException {
+        if (cancelled) throw new Failure(t("Cancelado.", "Cancelled."));
+        if (it.size > maxFile) throw tooBig();
+        if (skipSame && it.size >= 0 && out.isFile() && out.length() == it.size) {
+            done[0]++;
+            done[1] += it.size;
+            progress(done, lastUi, count, all);
+            return;
         }
+        File parent = out.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs() && !parent.isDirectory())
+            throw new Failure(t("No se pudo crear una carpeta.", "Could not create a folder."));
+        Uri doc = DocumentsContract.buildDocumentUriUsingTree(tree, it.id);
+        ContentResolver cr = getContentResolver();
+        InputStream in = cr.openInputStream(doc);
+        if (in == null) throw new Failure(t("No se pudo leer ", "Could not read ") + it.rel);
+        File part = new File(out.getPath() + ".part");
+        OutputStream os = new FileOutputStream(part);
+        boolean ok = false;
+        try {
+            byte[] buf = new byte[128 * 1024];
+            long fileBytes = 0;
+            int r;
+            while ((r = in.read(buf)) > 0) {
+                if (cancelled) throw new Failure(t("Cancelado.", "Cancelled."));
+                fileBytes += r;
+                if (fileBytes > maxFile) throw tooBig();
+                os.write(buf, 0, r);
+                done[1] += r;
+                progress(done, lastUi, count, all);
+            }
+            ok = true;
+        } finally {
+            try {
+                in.close();
+            } catch (IOException ignored) {
+            }
+            os.close();
+            if (!ok) part.delete();
+        }
+        out.delete();
+        if (!part.renameTo(out)) {
+            part.delete();
+            throw new Failure(t("No se pudo guardar ", "Could not store ") + it.rel);
+        }
+        done[0]++;
+        progress(done, lastUi, count, all);
+    }
+
+    private void progress(long[] done, long[] lastUi, int count, long all) {
+        long now = System.currentTimeMillis();
+        if (now - lastUi[0] < 300) return;
+        lastUi[0] = now;
+        setStatus(t("Copiando ", "Copying ") + done[0] + " / " + count + "  (" + mb(done[1]) + " / " + mb(all) + " MB)");
     }
 
     private Failure tooBig() {
-        return new Failure(t("Esa carpeta es demasiado grande para ser un Core (¿elegiste la carpeta de todo el juego?). Elige la carpeta llamada \"core\".",
-                "That folder is far too big to be a Core (did you pick the whole game folder?). Pick the folder named \"core\"."));
+        return new Failure(t("Esa carpeta es demasiado grande o tiene demasiados archivos para ser el juego. Elige la carpeta del juego, no el disco entero.",
+                "That folder is far too big (or has far too many files) to be the game. Pick the game folder, not the whole drive."));
     }
 
     private static void deleteTree(File f) {

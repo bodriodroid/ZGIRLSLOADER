@@ -308,6 +308,23 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.1 Dev_Nov-12 - arreglo: el menú no cargaba (la app ahora copia TODA la carpeta del juego)
+
+- **Qué pasaba**: al quitar el permiso de "todos los archivos" (0.9), la app ya no podía leer la carpeta de datos donde estaban `ui/Win/Main.gbs`, las fuentes, los
+  escenarios, etc. (la bóveda solo guardaba el Core), y una ruta guardada fuera de la carpeta de la app seguía apuntando ahí. Resultado: "no carga los archivos del menú".
+- **Arreglo**: la pantalla de arranque ahora pide la carpeta del JUEGO (la que contiene `core`, `ui`, `stages`, `characters`... o directamente el Core; busca hasta dos niveles
+  hacia dentro). El Core va a la bóveda cifrada y **todo lo demás se copia a la carpeta privada de la app** (`files/data`), que el cargador monta junto a la bóveda
+  (el Core es la capa de abajo; la carpeta de la app y los mods la sobrescriben). Sigue sin pedir ningún permiso de almacenamiento.
+  - Muestra el progreso ("Copiando 123 / 4500 (350 / 900 MB)"), se puede cancelar, comprueba que haya espacio antes de empezar, y lo que ya está copiado (mismo nombre y
+    tamaño) no se repite, así que volver a elegir la carpeta tras una actualización o una copia cortada es rápido. Se omiten `.exe`/`.dll`/instaladores/archivos comprimidos.
+    Límites: 8 GB y 200 000 archivos de datos (para no copiar el disco entero por error).
+  - "Borrar lo copiado" quita la bóveda y los datos copiados. Mantén pulsado el icono de la app -> "Cambiar carpeta del juego" para repetirlo.
+  - Si ya pones los datos a mano en `Android/data/<paquete>/files`, la pantalla ni aparece.
+  - Una ruta guardada fuera de las carpetas de la app (p. ej. `/sdcard/sg_dump`, de versiones anteriores) se ignora en Android en vez de dejar los datos vacíos.
+- Probado con el visor: bóveda (Core) + carpeta de datos copiada, sin ninguna carpeta Core suelta, carga la escena del menú (32 fuentes, 213 texturas, 30 nodos) y la selección de personaje.
+  **La parte Java (selector, copia, progreso) solo la valida el CI; no hay Android SDK en este entorno.**
+- Android: `versionCode 14`, `versionName 0.9.1-zgirls-Dev_Nov-12`.
+
 ## Build 0.9 Dev_Nov-12 - efectos de super conectados, Core cifrado dentro de la app y desarrollador "Destroyer And Nitro"
 - **Qué hace el simulador** (medido con tus datos, no copiado de ningún lado): el luchador que lanza un super levanta dos interruptores. `SUPERSHADOWS`
   queda en 1 durante **todo** el movimiento y `SUPERFLASH` durante su primer tramo (decenas de ticks; el reloj de la ronda se detiene). El valor de

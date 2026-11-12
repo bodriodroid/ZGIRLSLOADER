@@ -55,6 +55,7 @@ std::string prefFile(const std::string& name) {
 }
 
 std::string coreStoreDir() { return prefFile("fx"); }
+std::string importedDataDir() { return prefFile("data"); }
 std::string coreImportDir() { return prefFile("core_import"); }
 
 }  // namespace apppaths

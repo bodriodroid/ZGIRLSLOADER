@@ -3,10 +3,13 @@
 The Android build used to ask for "all files access" so it could read the game's `core` folder from wherever it lived. That permission
 is what makes an app look like something it is not, so it is gone. Instead:
 
-1. **Setup screen** (`CoreSetupActivity`, the first screen). The player picks the `core` folder once with Android's folder picker (no
-   permission). Picking the folder that *contains* `core` works too; the screen goes down into it. A folder that is not a Core
-   (no `shaders/`, no `stages.ini` / `music.ini` / `toc.ini`) or is far too big (> 192 MB, > 64 MB per file, > 20 000 files) is refused with a
-   reason before anything is kept.
+1. **Setup screen** (`CoreSetupActivity`, the first screen). The player picks the **game folder** once with Android's folder picker (no
+   permission): the one that holds `core`, `ui`, `stages`, `characters` ... (the screen looks up to two levels down for it), or just the Core.
+   The Core part (the folder with `shaders/` or `stages.ini` / `music.ini` / `toc.ini`, > 192 MB or > 64 MB per file is refused) takes the vault
+   path below; **everything else is copied as it is to `files/data`**, which the loader mounts next to the vault (menus, stages, textures,
+   characters). Files already copied (same name and size) are skipped, `.exe`/`.dll`/archives are not copied, there is a progress line, a
+   cancel button and a free-space check; limit 8 GB / 200 000 files so a whole drive is not copied by mistake. A folder that looks like
+   nothing of the game is refused with a reason before anything is kept.
 2. **Copy.** The picked files are copied to the app's private storage, `files/core_import` (through `core_import.tmp`, so a half copy is
    never seen). The originals are only read.
 3. **Seal** (`src/core/vault.cpp`, on the next start of the loader). `vault::importPending` packs the copy into `files/fx/core.vault`
@@ -26,7 +29,9 @@ What it is and is not:
 * It is not a way to ship game data: the vault is made on the device from the player's own files and is never part of the repository, the
   public source zips or the APK. Anyone who can read the app's private storage *and* the key (root) can of course read it; this is about not
   being a loose-files app, not about defeating the owner of the phone.
-* The rest of the data (characters, sprites, stages) is not in the vault: it goes in the app's own `Android/data/<package>/files` folder.
+* The rest of the data (menus, stages, textures, characters) is not in the vault: it is a plain copy in the app's private folder
+  (`files/data`), or whatever the player put by hand in `Android/data/<package>/files`. Mount order, lowest first: vault, `files/data`,
+  the app's data folder, extra folders, mods.
 
 Tests: `tests/test_vault.cpp` (`zdroid_vault_tests`): round trip, no plaintext in the file, wrong key / missing key / damaged table / truncated /
 one flipped entry, the virtual file system and its layering, the shaders and effects pack from the vault, the staging import (good, wrong

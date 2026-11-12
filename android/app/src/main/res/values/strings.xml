@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">ZGirlsMobile</string>
-    <string name="shortcut_core_short">Change Core folder</string>
-    <string name="shortcut_core_long">Change the encrypted Core copy</string>
+    <string name="shortcut_core_short">Change game folder</string>
+    <string name="shortcut_core_long">Change the copy of the game</string>
     <!-- shown by some launchers / settings screens -->
     <string name="developer_name">Destroyer And Nitro</string>
 </resources>

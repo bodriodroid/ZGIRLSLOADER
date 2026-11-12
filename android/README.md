@@ -50,15 +50,15 @@ child process (needs the bionic build above). Everything else is the same code p
 ## Using it on a device
 
 1. Install the apk. It asks for **no storage permission** (the only permission is INTERNET, for the Steam screen).
-2. On first start the **Core setup** screen asks for your game's `core` folder. Pick it with Android's own folder picker:
-   the app copies it into its private storage (`files/core_import`), the loader seals the copy into one encrypted file
-   (`files/fx/core.vault`, key = `pafx.key` of this install) and deletes the plain copy. Your original files are never
-   changed. "Continue without Core" skips this; **long-press the app icon -> "Change Core folder"** to redo it later.
+2. On first start the **setup** screen asks for your game folder (the one with `core`, `ui`, `stages`, `characters` ...). Pick it with
+   Android's own folder picker: the app copies it into its private storage. The Core part is sealed by the loader into one encrypted
+   file (`files/fx/core.vault`, key = `pafx.key` of this install) and the plain copy is deleted; the rest (menus, stages, textures,
+   characters) stays as a private copy in `files/data`. Your original files are never changed; what is already copied is not copied
+   again. "Continue without copying" skips this; **long-press the app icon -> "Change game folder"** to redo it later.
    Details: `docs/CORE_VAULT.md`.
-3. The rest of the data (characters, sprites, stages ...) goes in the app's own folder, `Android/data/org.bodriodroid.zgirlsmobile/files`
-   (no permission needed there; a file manager / USB reaches it). That folder is the default data folder of the Home screen.
-   A path outside it (e.g. `/sdcard/sg_dump`) can no longer be read: earlier builds asked for "all files access" for that, this one
-   deliberately does not.
+3. Data you put by hand in the app's own folder, `Android/data/org.bodriodroid.zgirlsmobile/files`, still works (no permission needed there)
+   and is the default data folder of the Home screen. A path outside the app's own folders (e.g. `/sdcard/sg_dump`) can no longer be
+   read: earlier builds asked for "all files access" for that, this one deliberately does not. The setup screen copies it instead.
 4. The Steam screen only works if `libdepotdownloader.so` was bundled; it runs the downloader from the app's
    `nativeLibraryDir` (hence `useLegacyPackaging = true` in `app/build.gradle`).
 
