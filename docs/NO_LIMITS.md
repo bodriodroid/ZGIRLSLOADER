@@ -32,4 +32,4 @@ ZDROID_DEV_NOLIMITS=On ZDROID_PLAY_DEMO=1 ZDROID_PLAY_SYNCLOAD=1 ZDROID_PLAY_NOI
 * Not run on a real phone (touch mapping, notches and cut-outs are untested; the safe area is the centred 16:9 part, not the display cut-out).
 * The software renderer cannot do the premultiplied blend used to lay the 640x360 target over the picture and falls back to plain alpha
   blending (semi-transparent edges come out slightly darker); the GL / GLES renderers use the premultiplied blend.
-* The generated stage's left edge element (when no real `.lvl` is mounted) is anchored at the stage edge, not at the screen edge.
+* On the generated test stage (no real `.lvl` mounted) a platform piece at the left shows cut at the screen edge in the 800-wide capture; not investigated.
