@@ -1,7 +1,9 @@
 # Core vault - the player's own copy of the Core, sealed inside the app
 
-The Android build used to ask for "all files access" so it could read the game's `core` folder from wherever it lived. That permission
-is what makes an app look like something it is not, so it is gone. Instead:
+The Android build used to ask for "all files access" so it could read the game's `core` folder from wherever it lived. 0.9 made that
+unnecessary: the default is now a private copy (below) that needs no permission. 0.9.2 brings "all files access" back as an **optional,
+separate way** (setup screen: "Use my folder without copying"): the player grants it, picks the folder, and the loader reads the game where
+it is (no copy, no vault); nothing is requested until that button is pressed. The private copy stays the default:
 
 1. **Setup screen** (`CoreSetupActivity`, the first screen). The player picks the **game folder** once with Android's folder picker (no
    permission): the one that holds `core`, `ui`, `stages`, `characters` ... (the screen looks up to two levels down for it), or just the Core.

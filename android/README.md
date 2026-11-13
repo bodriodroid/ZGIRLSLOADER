@@ -38,7 +38,7 @@ Gradle wrapper pins 8.9; the Android Gradle Plugin is 8.7.3 (see `build.gradle`)
 | `libmain.so` symbols / deps | exports `SDL_main`; `NEEDED libSDL2.so, libc++_shared.so, liblog.so` |
 | SDL JNI wiring | `libSDL2.so` exports 52 `Java_org_libsdl_app_*` symbols incl. `nativeRunMain`, `nativeSetupJNI` |
 | the Play screen is inside the apk | `libmain.so` strings: `PLAY - CHOOSE YOUR FIGHTERS`, `CPU SKILL: *`, `TRAINING`, `DUMMY` |
-| manifest | package `org.bodriodroid.zgirlsmobile` (antes `org.bodriodroid.sgloader`), minSdk 24, targetSdk 34, INTERNET only (the storage permissions were dropped in 0.9) |
+| manifest | package `org.bodriodroid.zgirlsmobile` (antes `org.bodriodroid.sgloader`), minSdk 24, targetSdk 34, INTERNET, plus the storage permissions (`MANAGE_EXTERNAL_STORAGE`; read / write only on Android <= 12 / <= 10) that are asked for **only** when the player picks "use my folder without copying" (0.9.2; 0.9 / 0.9.1 had none) |
 
 The module needs `android/app/build.gradle` and `android/app/CMakeLists.txt` (both in the repo): the first
 one also compiles SDL's own Java (`SDLActivity`) straight out of the checkout, the second one includes the
@@ -49,16 +49,22 @@ child process (needs the bionic build above). Everything else is the same code p
 
 ## Using it on a device
 
-1. Install the apk. It asks for **no storage permission** (the only permission is INTERNET, for the Steam screen).
-2. On first start the **setup** screen asks for your game folder (the one with `core`, `ui`, `stages`, `characters` ...). Pick it with
+1. Install the apk. Nothing is asked at install or at start-up except INTERNET (for the Steam screen); the storage permission is only requested if you
+   choose the second way below.
+2. On first start the **setup** screen asks for your game folder (the one with `core`, `ui`, `stages`, `characters` ...) and offers two ways:
+   * **Choose game folder** (private copy, no permission): pick it with
    Android's own folder picker: the app copies it into its private storage. The Core part is sealed by the loader into one encrypted
    file (`files/fx/core.vault`, key = `pafx.key` of this install) and the plain copy is deleted; the rest (menus, stages, textures,
    characters) stays as a private copy in `files/data`. Your original files are never changed; what is already copied is not copied
    again. "Continue without copying" skips this; **long-press the app icon -> "Change game folder"** to redo it later.
    Details: `docs/CORE_VAULT.md`.
+   * **Use my folder without copying (all files access)** (0.9.2): Android asks for "all files access" for this app (Android 11+: the system
+   page for the app; Android 7-10: the storage permission dialog), then you pick the game folder and the loader reads it where it is: no extra
+   space, and `mods.ini` / the Steam download folder are written next to it. Only the folder's path is stored (`files/dataroot.txt`). Take the
+   permission back any time in Android's settings; the loader then falls back to the app's own folder (it tries the folder, it does not guess).
 3. Data you put by hand in the app's own folder, `Android/data/org.bodriodroid.zgirlsmobile/files`, still works (no permission needed there)
-   and is the default data folder of the Home screen. A path outside the app's own folders (e.g. `/sdcard/sg_dump`) can no longer be
-   read: earlier builds asked for "all files access" for that, this one deliberately does not. The setup screen copies it instead.
+   and is the default data folder of the Home screen. A path outside the app's own folders (e.g. `/sdcard/sg_dump`) is used only while the
+   app can actually list it (i.e. with all files access); otherwise it is ignored and the app's own folder is used.
 4. The Steam screen only works if `libdepotdownloader.so` was bundled; it runs the downloader from the app's
    `nativeLibraryDir` (hence `useLegacyPackaging = true` in `app/build.gradle`).
 

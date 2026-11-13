@@ -197,6 +197,14 @@ std::shared_ptr<const vault::Vault> openCoreVault() {
     return cached;
 }
 
+// True when `dir` is a folder this process can list and it has at least one entry.  On Android a shared-storage folder the app has no
+// access to either fails to open or lists as empty, so this is how "can the game be read there?" is answered.
+[[maybe_unused]] bool folderHasEntries(const std::string& dir) {
+    std::error_code ec;
+    fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec);
+    return !ec && it != fs::directory_iterator();
+}
+
 std::unique_ptr<LoadResult> buildData(const std::string& dataRoot, const std::vector<std::string>& extraDirs, int delayMs, bool jpVoices = false) {
     auto r = std::make_unique<LoadResult>();
     if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
@@ -1072,13 +1080,14 @@ int main(int argc, char** argv) {
             if (f && std::getline(f, l) && !l.empty()) app.dataRoot = l;
         }
 #ifdef __ANDROID__
-        // Without the all-files permission a folder outside the app's own ones cannot be read: a path an older build saved there would
-        // only leave the data empty, so it is dropped and the app's own folder is used (the setup screen copies the data there).
+        // A folder outside the app's own ones can be read only when the player gave the app "all files access" (the setup screen's second
+        // choice).  Instead of guessing from the permission, the folder itself is tried: one that lists nothing (never granted, taken back
+        // since, or gone) would only leave the data empty, so it is dropped and the app's own folder is used.
         if (!app.dataRoot.empty()) {
             const char* ext = SDL_AndroidGetExternalStoragePath();
             const bool own = (ext && app.dataRoot.rfind(ext, 0) == 0) || (!app.prefsDir.empty() && app.dataRoot.rfind(app.prefsDir, 0) == 0);
-            if (!own) {
-                std::printf("data folder %s is outside the app's own folders: ignored\n", app.dataRoot.c_str());
+            if (!own && !folderHasEntries(app.dataRoot)) {
+                std::printf("data folder %s cannot be read (no all-files access, or it is gone): ignored\n", app.dataRoot.c_str());
                 app.dataRoot.clear();
             }
         }

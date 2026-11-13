@@ -308,6 +308,19 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.2 Dev_Nov-13 - acceso a todos los archivos (opcional), como pediste
+
+- **Nuevo botón en la pantalla de arranque: "Usar mi carpeta sin copiar (acceso a todos los archivos)"**. Android pide el permiso (Android 11+: la pantalla de
+  "Acceso a todos los archivos" de esta app; Android 7-10: el permiso de almacenamiento), eliges la carpeta del juego con el selector del sistema y **el juego la lee donde está**:
+  no duplica espacio, y `mods.ini` / la carpeta de descargas de Steam se escriben junto a ella. Solo se guarda la ruta (`files/dataroot.txt`).
+  - La ruta se saca de la carpeta elegida (almacenamiento interno, tarjeta SD, ids `raw:`); si viene de otra app de archivos y no se puede saber la ruta, lo dice y ofrece la copia privada.
+    Busca el juego hasta dos niveles hacia dentro, igual que la copia.
+  - **La copia privada (Core cifrado en la bóveda) sigue siendo la opción de siempre**; el permiso no se pide hasta pulsar el botón nuevo.
+  - Si quitas el permiso en los ajustes de Android, el cargador lo nota (prueba si puede listar la carpeta, no lo adivina) y vuelve a la carpeta propia de la app.
+- Manifiesto: `MANAGE_EXTERNAL_STORAGE` (+ lectura/escritura solo para Android <= 12 / <= 10) y `requestLegacyExternalStorage` para Android 10.
+- Nativo: antes se ignoraba cualquier carpeta fuera de la app; ahora se usa si se puede listar.
+- Android: `versionCode 15`, `versionName 0.9.2-zgirls-Dev_Nov-13`. **La parte Java (permiso, selector, conversión de ruta) solo la valida el CI; no hay Android SDK aquí.**
+
 ## Build 0.9.1 Dev_Nov-12 - arreglo: el menú no cargaba (la app ahora copia TODA la carpeta del juego)
 
 - **Qué pasaba**: al quitar el permiso de "todos los archivos" (0.9), la app ya no podía leer la carpeta de datos donde estaban `ui/Win/Main.gbs`, las fuentes, los
