@@ -308,6 +308,25 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.3 Dev_Nov-13 - efectos de paleta (PALFX) y "No Limits Screen"
+
+- **PALFX conectado** (`src/core/palfx.*`, `docs/PALFX.md`): los destellos y tintes de color de los luchadores (golpe, estado, super...) ahora se leen de la tabla de efectos del propio
+  juego (`characters/_palette_effects.ini`) y se reproducen un fotograma por tick. Los scripts no nombran el efecto: guardan su hash de 32 bits en los slots `PALFX*`, y el
+  cargador busca el efecto por ese hash. Hoy se pinta como un lavado de color sobre todo el sprite (ruta CPU); la ruta GPU (tinte por píxel) sigue pendiente.
+  Dudas abiertas, dichas claras: `HiMult` / `LoMult` se interpretan como la fuerza en cada extremo (documentado, sin confirmar) y 2 hashes que aparecen en los scripts no coinciden con ningún efecto de la tabla.
+- **Nueva opción de desarrollador: "No Limits Screen"** (Ajustes → Desarrollador, apagada por defecto). Rompe el 16:9 **solo dentro de la pelea**: usa la forma de la pantalla del
+  teléfono sin girarla ni estirar nada.
+  - La altura lógica se queda en 360 y el ancho crece con la pantalla (un móvil 20:9 pasa de 640 a 800; tope 960). El escenario, el fondo, las sombras y los luchadores ven más a cada
+    lado (la cámara no deja que se vea fuera del escenario: si el escenario es más estrecho que la pantalla, se acerca lo justo).
+  - **El HUD, los carteles de ronda (K.O., etc.) y los menús de pausa/opciones siguen siendo 16:9 y se quedan en el centro** ("zona segura"). Las barras y el oscurecimiento del
+    fondo continúan hasta los bordes. Los botones táctiles de la derecha se mueven al borde real; el stick y lo de la izquierda no.
+  - Los menús, la carga y el resto de pantallas siguen en 16:9. Una pantalla que no es más ancha que 16:9 queda igual que antes.
+  - Los toques se convierten con el ancho lógico actual, así que el stick y los botones responden donde se dibujan.
+  - Probado con capturas a 640 y 800 de ancho (cámara, fondo, HUD, pausa, botones) y 168 comprobaciones de la fórmula de tamaño (`zdroid_layout_tests`).
+    **No probado en un teléfono real.**
+  - Para capturas de escritorio: `ZDROID_DEV_NOLIMITS=On` y `--smoke-width 800`.
+- Android: `versionCode 16`, `versionName 0.9.3-zgirls-Dev_Nov-13`.
+
 ## Build 0.9.2 Dev_Nov-13 - acceso a todos los archivos (opcional), como pediste
 
 - **Nuevo botón en la pantalla de arranque: "Usar mi carpeta sin copiar (acceso a todos los archivos)"**. Android pide el permiso (Android 11+: la pantalla de

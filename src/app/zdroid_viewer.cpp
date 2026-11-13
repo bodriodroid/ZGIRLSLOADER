@@ -44,6 +44,7 @@
 #include "modloader.h"
 #include "modsdir.h"
 #include "play.h"
+#include "screen_layout.h"
 #include "vault.h"
 #include "credits.h"
 #include "gallery.h"
@@ -85,7 +86,7 @@ enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits }; 
 struct Options {
     std::vector<std::string> dirs;
     std::string story, fight, csP2, smokePng, screen, character, cat, pal, zoom, exe, steamUser, steamPassEnv, steamCode, smokePhase, lang;
-    int frame = 0, bg = -1, smokeFrames = 4, loadDelayMs = 0, smokeScale = 1, fixedDtMs = 0;
+    int frame = 0, bg = -1, smokeFrames = 4, loadDelayMs = 0, smokeScale = 1, fixedDtMs = 0, smokeW = 640;   // smokeW: capture window width in logical units (No Limits Screen)
     bool steamAutostart = false, skipTitle = false, acceptNotice = false, smokeLoading = false, gallery = false, credits = false, contributors = false;
     int csStep = 0, csPal = 0;
     bool storyAudit = false;                 // --story-audit: check every story node, print the problems, exit (smoke)
@@ -999,6 +1000,7 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--smoke-frames") o.smokeFrames = std::atoi(val(i).c_str());
         else if (a == "--dt") o.fixedDtMs = std::clamp(std::atoi(val(i).c_str()), 0, 100);  // fixed frame time (captures: 1 frame = N ms)
         else if (a == "--smoke-scale") o.smokeScale = std::clamp(std::atoi(val(i).c_str()), 1, 4);  // capture at N x 640x360
+        else if (a == "--smoke-width") o.smokeW = std::clamp(std::atoi(val(i).c_str()), 640, 960);  // capture window N x 360 (e.g. 800 = a 20:9 phone)
         else if (a == "--smoke-phase") o.smokePhase = val(i);
         else if (a == "--screen") o.screen = val(i);
         else if (a == "--char") o.character = val(i);
@@ -1130,7 +1132,7 @@ int main(int argc, char** argv) {
     const char* kAppTitle = "ZGirls Loader";
 #endif
     SDL_Window* win = SDL_CreateWindow(kAppTitle, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                       smoke ? kW * opt.smokeScale : 1280, smoke ? kH * opt.smokeScale : 720, wflags);
+                                       smoke ? opt.smokeW * opt.smokeScale : 1280, smoke ? kH * opt.smokeScale : 720, wflags);
     if (!win) {
         std::fprintf(stderr, "SDL_CreateWindow: %s\n", SDL_GetError());
         return 1;
@@ -1146,6 +1148,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     SDL_RenderSetLogicalSize(ren, kW, kH);
+    int logicalW = kW;   // No Limits Screen widens it while a match is on screen
     SDL_RendererInfo rinfo{};
     SDL_GetRendererInfo(ren, &rinfo);
     const bool vsync = (rinfo.flags & SDL_RENDERER_PRESENTVSYNC) != 0;
@@ -1296,7 +1299,8 @@ int main(int argc, char** argv) {
                 case SDL_FINGERUP: {
                     in.touchPointer = true;
                     const uint64_t key = (static_cast<uint64_t>(e.tfinger.touchId) << 32) | static_cast<uint64_t>(e.tfinger.fingerId);
-                    const int fx = static_cast<int>(e.tfinger.x * kW), fy = static_cast<int>(e.tfinger.y * kH);
+                    // SDL has already made x / y fractions of the logical picture, so the current logical width is the right factor
+                    const int fx = static_cast<int>(e.tfinger.x * logicalW), fy = static_cast<int>(e.tfinger.y * kH);
                     auto it = std::find_if(fingers.begin(), fingers.end(), [&](const auto& f) { return std::get<0>(f) == key; });
                     if (e.type == SDL_FINGERUP) {
                         if (it != fingers.end()) fingers.erase(it);
@@ -1389,6 +1393,20 @@ int main(int argc, char** argv) {
         // ---- draw
         // the menu, the match, the story, the gallery and the credits choose their own theme; the other screens are silent
         if (app.screen == Screen::Home || app.screen == Screen::Browse || app.screen == Screen::Steam) app.audio.playMusic(false);
+        // No Limits Screen: a match with the option on takes the shape of the screen (the height stays 360); everything else is 16:9
+        {
+            int wantW = kW;
+            if (app.screen == Screen::Play && app.play.wantsWide()) {
+                int ow = 0, oh = 0;
+                SDL_GetRendererOutputSize(ren, &ow, &oh);
+                wantW = zengine::layout::compute(ow, oh, true).w;
+            }
+            if (wantW != logicalW) {
+                SDL_RenderSetLogicalSize(ren, wantW, kH);
+                logicalW = wantW;
+            }
+            app.play.setViewWidth(logicalW);
+        }
         ui.color(kBg);
         SDL_RenderClear(ren);
         ui.beginFrame();
@@ -1471,7 +1489,7 @@ int main(int argc, char** argv) {
             const SteamTaskState st = app.task.snapshot();
             const bool ready = (opt.smokeLoading || !app.loading) && frameNo >= opt.smokeFrames && clickDone >= opt.clicks.size() * 2 && frameNo > lastClickFrame && phaseMatches(opt.smokePhase, st.phase);
             if (ready || secs > 20) {
-                const int cw = kW * opt.smokeScale, ch = kH * opt.smokeScale;
+                const int cw = opt.smokeW * opt.smokeScale, ch = kH * opt.smokeScale;
                 std::vector<uint8_t> px(static_cast<size_t>(cw) * ch * 4);
                 int w = 0, h = 0;
                 SDL_GetRendererOutputSize(ren, &w, &h);

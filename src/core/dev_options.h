@@ -36,6 +36,7 @@ enum Id : int {
     kStageInfo,
     kRam,
     kGpuFx,
+    kNoLimits,
     kCount
 };
 
@@ -74,6 +75,7 @@ struct Settings {
     bool roundIntro = true, entrances = true;
     bool stageInfo = false;
     bool ramDebug = false;           // the seven-segment RAM / state-hash readout in the corner
+    bool noLimits = false;           // No Limits Screen: a fight uses the phone's whole screen shape instead of 16:9 (screen_layout.h)
     bool gpuFx = false;              // sprites and shadows through the PAFX effect programs (needs an OpenGL ES 2 renderer)
 
     // level (0 full, 1 half, 2 quarter, 3 eighth) for a sprite shown at `pxPerArtPx` screen pixels per art pixel

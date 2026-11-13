@@ -273,6 +273,11 @@ public:
     void render(Ui& ui, SDL_Renderer* r);
     Phase phase() const { return phase_; }
     // Android back / Escape while playing: leave the match. Returns true when it consumed it.
+    // No Limits Screen: true while a match is on screen and the player turned the option on - the viewer then gives it the whole screen's
+    // shape (screen_layout.h) and tells it the width with setViewWidth() before update() / render().  Menus and loading stay 16:9.
+    bool wantsWide() const { return dev_.noLimits && phase_ != Phase::Select && phase_ != Phase::Loading; }
+    void setViewWidth(int w);
+    int viewWidth() const { return viewW_; }
     bool onBack();
     // Main-menu entry point: the menu's Character Select (charselect.cpp) picked the fighters; starts the match straight away.
     // p1 / p2: character ids ("filia"; "" or "random" = any), stage: stage id ("new_meridian", "random", "" = keep),
@@ -413,6 +418,20 @@ private:
     // ---- the picture of a super move (presentation only: stepped per displayed tick, never saved, nothing in the sim reads it)
     fx::SuperFxTimeline superFx_;
     fx::SuperFxState superState_;
+    // ---- No Limits Screen (screen_layout.h): the picture is `viewW_` logical units wide (640 = 16:9).  The world (stage, fighters, pad) uses
+    // all of it; the HUD, the round banners and the menus are designed for 640 and are drawn into a transparent 640x360 target that is then
+    // copied to the middle ("safe area"), with the pointer moved the same way while they are handled.
+    int viewW_ = 640;
+    touch::Layout baseLayout_ = touch::Layout::defaults();   // the pad's layout for a 640-wide picture (the player's own, if any)
+    SDL_Texture* ovRt_ = nullptr;
+    int ovW_ = 0, ovH_ = 0;
+    SDL_Texture* ovPrev_ = nullptr;   // the render target that was active when the overlay began
+    float ovPrevSx_ = 1.0f, ovPrevSy_ = 1.0f;
+    Input ovInput_;                   // the pointer as the viewer gave it, while the overlay shows it in 640-space
+    bool beginOverlay(SDL_Renderer* r, Ui& ui);
+    void endOverlay(SDL_Renderer* r, Ui& ui);   // also copies the outermost columns over the side bands
+    int safeX() const { return (viewW_ - 640) / 2; }
+
     // ---- palette effects (colour washes of a counter hit, a status ...): presentation only, stepped per displayed tick
     palfx::Library palfxLib_;
     bool palfxLoaded_ = false;     // the table was looked for (once per fight)

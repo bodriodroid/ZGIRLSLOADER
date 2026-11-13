@@ -50,6 +50,9 @@ struct Layout {
     int opacity = 150;              // 0..255, drawing only
 
     static Layout defaults();       // arcade layout for a 16:9 phone in landscape
+    // The same layout for a picture `extra` logical units wider than 640 (No Limits Screen): what sits in the right half moves to the real
+    // right edge, the stick and everything on the left stay where they are.
+    static Layout widened(const Layout& base, int extra);
     // One element per line, "key value..." - easy to edit by hand and to save from a layout editor.
     std::string serialize() const;
     static bool parse(const std::string& text, Layout& out);  // false on garbage; `out` keeps defaults for missing keys

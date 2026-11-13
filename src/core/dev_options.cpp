@@ -24,6 +24,7 @@ const Def kDefs[kCount] = {
     {"ZD_DEV_INFO", "info", 2, {"Off", "On"}, 0, "Stage info overlay"},
     {"ZD_DEV_RAM", "ram", 2, {"Off", "On"}, 0, "RAM display"},
     {"ZD_DEV_GPUFX", "gpufx", 2, {"Off", "On"}, 0, "GPU effects (PAFX)"},
+    {"ZD_DEV_NOLIMITS", "nolimits", 2, {"Off", "On"}, 0, "No Limits Screen"},
 };
 
 bool eqi(const std::string& a, const char* b) {
@@ -84,6 +85,9 @@ const Str kText[] = {
     {"dev.gpufx", "GPU effects (PAFX)", "Efectos GPU (PAFX)"},
     {"dev.gpufx.d", "Colours the fighters and their floor shadows on the GPU with the PAFX effect programs (hue shift, super flash and darkening). Built on first use from your own Core; needs an OpenGL ES 2 renderer, otherwise it stays off.",
      "Colorea a los luchadores y sus sombras en la GPU con los programas de efectos PAFX (cambio de tono, destello y oscurecimiento de los supers). Se crea al primer uso con tu propio Core; necesita un renderer OpenGL ES 2, si no se queda apagado."},
+    {"dev.nolimits", "No Limits Screen", "Pantalla sin límites"},
+    {"dev.nolimits.d", "In a fight, uses the phone's whole screen instead of the 16:9 picture: more of the stage shows at both sides (nothing is stretched), the HUD stays in the middle and the touch buttons sit at the real edges. Menus keep 16:9. A screen that is not wider than 16:9 is unchanged.",
+     "En combate usa toda la pantalla del teléfono en vez de la imagen 16:9: se ve más escenario a los lados (nada se estira), la interfaz queda en el centro y los botones táctiles en los bordes reales. Los menús siguen en 16:9. Una pantalla que no es más ancha que 16:9 no cambia."},
     {"dev.back", "Back", "Atrás"},
     // choice names
     {"c.Low", "Low", "Baja"},
@@ -143,6 +147,7 @@ Settings resolve(const std::function<std::string(const char* key)>& get) {
     s.stageInfo = idx(kStageInfo) == 1;
     s.ramDebug = idx(kRam) == 1;
     s.gpuFx = idx(kGpuFx) == 1;
+    s.noLimits = idx(kNoLimits) == 1;
     return s;
 }
 

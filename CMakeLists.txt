@@ -31,6 +31,7 @@ add_library(zengine_core STATIC
   src/core/vfs.cpp
   src/core/vault.cpp
   src/core/palfx.cpp
+  src/core/screen_layout.cpp
   src/core/text_formats.cpp
   src/core/gbs.cpp
   src/core/gbs_scene.cpp
@@ -159,6 +160,9 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   add_test(NAME zdroid_vault_tests COMMAND zdroid_vault_tests)
   set_tests_properties(zdroid_vault_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_DATA=${ZDROID_TEST_DATA}")
   set(ZDROID_TEST_PALFX "" CACHE FILEPATH "Optional _palette_effects.ini of the real game for the palfx tests")
+  add_executable(zdroid_layout_tests tests/test_layout.cpp)
+  target_link_libraries(zdroid_layout_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_layout_tests COMMAND zdroid_layout_tests)
   add_executable(zdroid_palfx_tests tests/test_palfx.cpp)
   target_link_libraries(zdroid_palfx_tests PRIVATE zengine_core)
   add_test(NAME zdroid_palfx_tests COMMAND zdroid_palfx_tests)

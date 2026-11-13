@@ -1263,7 +1263,8 @@ void PlayScreen::finishLoad() {
                 if (touch::Layout::parse(ss.str(), user)) lay = user;
             }
         }
-        touchPad_.setLayout(lay);
+        baseLayout_ = lay;
+        touchPad_.setLayout(touch::Layout::widened(baseLayout_, viewW_ - 640));
     }
     applyOptions();
     hudDemo_ = zgFlag("ZDROID_PLAY_HUDDEMO", "huddemo");
@@ -2010,13 +2011,20 @@ void PlayScreen::render(Ui& ui, SDL_Renderer* r) {
     }
     const bool scaled = beginScaled(r);   // Render resolution < Native: the whole match is drawn smaller, then stretched over the window
     drawWorld(ui, r);
+    // No Limits Screen: the world above used the whole picture; the HUD, the banners and the menus are made for 640x360 and are drawn
+    // into the middle of it (beginOverlay() / endOverlay() do nothing at 640).  The touch pad sits between them in the full width.
+    const bool wide = viewW_ > 640;
+    bool inSafe = wide && beginOverlay(r, ui);
     drawHud(ui, r);
     if (arcadeMode_ && overlay_ == Overlay::None && (phase_ == Phase::Fight || phase_ == Phase::RoundEnd)) drawArcadeTag(ui, r);
+    if (inSafe) endOverlay(r, ui);
     if (padVisible_ && overlay_ == Overlay::None) drawPad(ui, r);
 
+    inSafe = wide && beginOverlay(r, ui);
     if (phase_ == Phase::Fight && (introStage_ == 1 || introStage_ == 2)) drawRoundIntro(ui, r);
     if (phase_ == Phase::RoundEnd && overlay_ == Overlay::None) drawRoundEnd(ui, r);
     if (overlay_ != Overlay::None) drawOverlay(ui, r);
+    if (inSafe) endOverlay(r, ui);
     if (scaled) endScaled(r);
     if (dev_.stageInfo) drawStageInfo(ui);   // outside the smaller picture: readable at any render resolution
     else if (SDL_GetTicks() < stageNoteUntilMs_) {   // the first seconds of a fight that is not on the stage that was asked for
@@ -2024,6 +2032,73 @@ void PlayScreen::render(Ui& ui, SDL_Renderer* r) {
             ui.fill(Rect{3, 340, 4 + Ui::textW(prob), 12}, Col{0, 0, 0, 170});
             ui.text(5, 342, prob, Col{255, 120, 100, 255});
         }
+    }
+}
+
+void PlayScreen::setViewWidth(int w) {
+    w = std::clamp(w, 640, 960);
+    if (w == viewW_) return;
+    viewW_ = w;
+    touchPad_.setLayout(touch::Layout::widened(baseLayout_, viewW_ - 640));   // the buttons on the right follow the real edge
+}
+
+// The 640x360 parts of a wide picture are drawn into a transparent target the size of the safe area on the device (same pixel density as the
+// picture itself) and copied to its middle by endOverlay().  While they are drawn the pointer is expressed in 640-space too, so the menus'
+// own hit tests keep working.  Returns false (and draws nothing special) when the target cannot be made: the parts are then drawn in place.
+bool PlayScreen::beginOverlay(SDL_Renderer* r, Ui& ui) {
+    if (!r) return false;
+    float sx = 1.0f, sy = 1.0f;
+    SDL_RenderGetScale(r, &sx, &sy);
+    const int tw = std::max(64, static_cast<int>(std::lround(640.0 * sx)));
+    const int th = std::max(36, static_cast<int>(std::lround(360.0 * sy)));
+    if (!ovRt_ || ovW_ != tw || ovH_ != th) {
+        if (ovRt_) SDL_DestroyTexture(ovRt_);
+        ovRt_ = SDL_CreateTexture(r, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, tw, th);
+        ovW_ = tw;
+        ovH_ = th;
+        if (ovRt_) {
+            SDL_SetTextureScaleMode(ovRt_, SDL_ScaleModeNearest);
+            // The target holds colours already multiplied by their alpha (what drawing with BLEND over transparent leaves there), so it is
+            // laid over the picture with "one minus source alpha" and no second multiply.  A renderer that cannot do that (the software
+            // one) falls back to plain BLEND: translucent edges come out a little darker, nothing else changes.
+            const SDL_BlendMode premul = SDL_ComposeCustomBlendMode(SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD,
+                                                                    SDL_BLENDFACTOR_ONE, SDL_BLENDFACTOR_ONE_MINUS_SRC_ALPHA, SDL_BLENDOPERATION_ADD);
+            if (SDL_SetTextureBlendMode(ovRt_, premul) != 0) SDL_SetTextureBlendMode(ovRt_, SDL_BLENDMODE_BLEND);
+        }
+    }
+    if (!ovRt_) return false;
+    ovPrev_ = SDL_GetRenderTarget(r);
+    ovPrevSx_ = sx;
+    ovPrevSy_ = sy;
+    if (SDL_SetRenderTarget(r, ovRt_) != 0) return false;
+    SDL_RenderSetScale(r, sx, sy);
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_NONE);
+    SDL_SetRenderDrawColor(r, 0, 0, 0, 0);
+    SDL_RenderClear(r);
+    SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
+    ovInput_ = ui.in;
+    const int dx = safeX();
+    ui.in.mx -= dx;
+    ui.in.pmx -= dx;
+    for (auto& t : ui.in.touches) t.first -= dx;
+    return true;
+}
+
+void PlayScreen::endOverlay(SDL_Renderer* r, Ui& ui) {
+    ui.in = std::move(ovInput_);
+    SDL_SetRenderTarget(r, ovPrev_);
+    if (ovPrev_) SDL_RenderSetScale(r, ovPrevSx_, ovPrevSy_);   // a texture target forgets the scale; the window restores its own
+    if (!ovRt_) return;
+    const int dx = safeX();
+    const SDL_Rect mid{dx, 0, 640, 360};
+    SDL_RenderCopy(r, ovRt_, nullptr, &mid);
+    // Full-width bars and dimming (menus, banners) continue into the side bands: the outermost column is stretched out over them.  Parts
+    // that stop short of the edge leave that column transparent, so nothing is added there.
+    if (dx > 0) {
+        const SDL_Rect colL{0, 0, 1, ovH_}, colR{ovW_ - 1, 0, 1, ovH_};
+        const SDL_Rect bandL{0, 0, dx, 360}, bandR{dx + 640, 0, viewW_ - 640 - dx, 360};
+        SDL_RenderCopy(r, ovRt_, &colL, &bandL);
+        SDL_RenderCopy(r, ovRt_, &colR, &bandR);
     }
 }
 
@@ -2038,7 +2113,7 @@ bool PlayScreen::beginScaled(SDL_Renderer* r) {
     }
     float sx = 1.0f, sy = 1.0f;
     SDL_RenderGetScale(r, &sx, &sy);   // window pixels per logical pixel
-    const int tw = std::max(64, static_cast<int>(std::lround(640.0 * sx * dev_.renderScale)));
+    const int tw = std::max(64, static_cast<int>(std::lround(viewW_ * sx * dev_.renderScale)));
     const int th = std::max(36, static_cast<int>(std::lround(360.0 * sy * dev_.renderScale)));
     if (!rt_ || rtW_ != tw || rtH_ != th) {
         if (rt_) SDL_DestroyTexture(rt_);
@@ -2048,7 +2123,7 @@ bool PlayScreen::beginScaled(SDL_Renderer* r) {
         if (rt_) SDL_SetTextureScaleMode(rt_, dev_.smooth ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
     }
     if (!rt_ || SDL_SetRenderTarget(r, rt_) != 0) return false;
-    SDL_RenderSetScale(r, static_cast<float>(tw) / 640.0f, static_cast<float>(th) / 360.0f);   // keep drawing in 640x360 units
+    SDL_RenderSetScale(r, static_cast<float>(tw) / static_cast<float>(viewW_), static_cast<float>(th) / 360.0f);   // keep drawing in logical units
     SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
     SDL_RenderClear(r);
     return true;
@@ -2058,7 +2133,7 @@ void PlayScreen::endScaled(SDL_Renderer* r) {
     SDL_SetRenderTarget(r, nullptr);   // restores the window's logical size and scale
     if (!rt_) return;
     SDL_SetTextureBlendMode(rt_, SDL_BLENDMODE_NONE);
-    const SDL_Rect full{0, 0, 640, 360};
+    const SDL_Rect full{0, 0, viewW_, 360};
     SDL_RenderCopy(r, rt_, nullptr, &full);
 }
 
@@ -2189,8 +2264,9 @@ void PlayScreen::drawGeneratedStage(Ui& ui, const LevelInfo* lv, double cx, doub
     const Col skyMid = mixCol(ambient, Col{255, 214, 190, 255}, 0.18);
     const Col skyBot = mixCol(ambient, Col{255, 226, 200, 255}, 0.34);
     const float fy = static_cast<float>(floorY);
-    gradientRect(r, 0, 0, 640, fy * 0.62f, skyTop, skyMid);
-    gradientRect(r, 0, fy * 0.62f, 640, fy * 0.38f + 1, skyMid, skyBot);
+    const float vw = static_cast<float>(viewW_);   // the picture's width (640, or wider with No Limits Screen)
+    gradientRect(r, 0, 0, vw, fy * 0.62f, skyTop, skyMid);
+    gradientRect(r, 0, fy * 0.62f, vw, fy * 0.38f + 1, skyMid, skyBot);
 
     // skyline: far (hazy, slow) to near (dark, faster); the buildings are fixed per stage
     struct Layer { double par, hMin, hRange, wMin, wRange, haze; };
@@ -2198,15 +2274,16 @@ void PlayScreen::drawGeneratedStage(Ui& ui, const LevelInfo* lv, double cx, doub
     uint32_t rs = 0x1234u + static_cast<uint32_t>(stageIdx_) * 7919u;
     for (int li = 0; li < 3; ++li) {
         const Layer& L = layers[li];
-        double wx = -560.0;   // layer space: the layer slides by `par` of the camera's pan, so 560 px either side is always enough
+        const double reach = 560.0 + 0.5 * (viewW_ - 640);
+        double wx = -reach;   // layer space: the layer slides by `par` of the camera's pan, so 560 px either side of the picture is always enough
         const Col body = mixCol(Col{16, 16, 26, 255}, skyBot, L.haze);
         const Col lit = Col{255, 226, 150, static_cast<uint8_t>(210 - 120 * L.haze)};
-        while (wx < 560.0) {
+        while (wx < reach) {
             rs = rs * 1103515245u + 12345u;
             const double bw = L.wMin + static_cast<double>((rs >> 16) % static_cast<uint32_t>(L.wRange));
             const double bh = L.hMin + static_cast<double>((rs >> 9) % static_cast<uint32_t>(L.hRange));
-            const double px = 320.0 + wx - (cx * s) * L.par;
-            if (px + bw >= 0 && px <= 640) {
+            const double px = 0.5 * vw + wx - (cx * s) * L.par;
+            if (px + bw >= 0 && px <= vw) {
                 fillRectF(r, px, fy - bh, bw, bh + 1, body);
                 // a few lit windows
                 for (int k = 0; k < 4; ++k) {
@@ -2226,29 +2303,29 @@ void PlayScreen::drawGeneratedStage(Ui& ui, const LevelInfo* lv, double cx, doub
         }
     }
     // haze where the sky meets the floor
-    gradientRect(r, 0, fy - 40.0f, 640, 40.0f, Col{skyBot.r, skyBot.g, skyBot.b, 0}, Col{skyBot.r, skyBot.g, skyBot.b, 120});
+    gradientRect(r, 0, fy - 40.0f, vw, 40.0f, Col{skyBot.r, skyBot.g, skyBot.b, 0}, Col{skyBot.r, skyBot.g, skyBot.b, 120});
 
     // floor: lit near the horizon, dark towards the camera, with perspective lines
     const Col floorFar = mixCol(Col{26, 22, 30, 255}, skyBot, 0.18);
     const Col floorNear = Col{8, 7, 11, 255};
-    gradientRect(r, 0, fy, 640, 360.0f - fy + 1, floorFar, floorNear);
-    fillRectF(r, 0, fy, 640, 1.5, mixCol(Col{120, 108, 120, 255}, skyBot, 0.35));
-    const double vpX = 320.0 - cx * s * 0.2;   // vanishing point of the floor lines
+    gradientRect(r, 0, fy, vw, 360.0f - fy + 1, floorFar, floorNear);
+    fillRectF(r, 0, fy, vw, 1.5, mixCol(Col{120, 108, 120, 255}, skyBot, 0.35));
+    const double vpX = 0.5 * vw - cx * s * 0.2;   // vanishing point of the floor lines
     for (int gx = -4000; gx <= 4000; gx += 200) {
-        const double bx = 320.0 + (gx - cx) * s;
+        const double bx = 0.5 * vw + (gx - cx) * s;
         const double tx = vpX + (bx - vpX) * 0.30;
-        if (std::max(bx, tx) < -20 || std::min(bx, tx) > 660) continue;
+        if (std::max(bx, tx) < -20 || std::min(bx, tx) > vw + 20) continue;
         SDL_SetRenderDrawBlendMode(r, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(r, 150, 140, 160, 46);
         SDL_RenderDrawLineF(r, static_cast<float>(tx), fy, static_cast<float>(bx), 360.0f);
     }
     for (int j = 1; j <= 5; ++j) {
         const double ty = fy + (360.0 - fy) * (1.0 - std::pow(0.55, j));
-        fillRectF(r, 0, ty, 640, 1.0, Col{150, 140, 160, static_cast<uint8_t>(52 - 6 * j)});
+        fillRectF(r, 0, ty, vw, 1.0, Col{150, 140, 160, static_cast<uint8_t>(52 - 6 * j)});
     }
     // vignette
     gradientRectH(r, 0, 0, 90, 360, Col{0, 0, 0, 110}, Col{0, 0, 0, 0});
-    gradientRectH(r, 550, 0, 90, 360, Col{0, 0, 0, 0}, Col{0, 0, 0, 110});
+    gradientRectH(r, vw - 90, 0, 90, 360, Col{0, 0, 0, 0}, Col{0, 0, 0, 110});
 }
 
 void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
@@ -2268,6 +2345,9 @@ void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
         bound = kStageHalf;
     }
     if (bgPano_ && lv && duelMode_) bound = std::min(bound, lv->width * 0.5);   // the picture ends at the stage's edge: never show beyond it
+    // No Limits Screen: a wider picture shows more stage at both sides; when even the whole stage is narrower than the picture, zoom in
+    // just enough that it is not (nothing is stretched, the stage is never shown past its edges)
+    if (viewW_ > 640 && 2.0 * bound * s < viewW_) s = viewW_ / (2.0 * bound);
     double lift = 0;
     if (duelMode_) {
         // somebody high up (a launch, a jump): the floor sinks a little to keep them in the picture, and past that the camera zooms out
@@ -2277,20 +2357,20 @@ void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
         const double room = kFloorY + lift - kSkyTop - 6;
         if (top * s > room) s = std::max(0.22, room / top);
     }
-    const double halfSpan = 320.0 / s;
+    const double halfSpan = 0.5 * viewW_ / s;
     double cx = (x0 + x1) * 0.5;
     if (halfSpan < bound) cx = std::clamp(cx, -bound + halfSpan, bound - halfSpan);
     const double floorYd = kFloorY + lift;
     const int floorY = static_cast<int>(floorYd);
     const int shx = shake_ ? ((shake_ % 2) ? 2 : -2) : 0;
-    auto sx = [&](double ux) { return 320.0 + (ux - cx) * s + shx; };
+    auto sx = [&](double ux) { return 0.5 * viewW_ + (ux - cx) * s + shx; };
     auto sy = [&](double uy) { return floorYd - uy * s * vex; };
 
     if (bg_.tex) {
         // ---- sky behind the picture (visible only where the picture does not reach)
         const int amb[3] = {lv ? lv->ambient[0] : 85, lv ? lv->ambient[1] : 96, lv ? lv->ambient[2] : 122};
         const Col ambient{static_cast<uint8_t>(amb[0]), static_cast<uint8_t>(amb[1]), static_cast<uint8_t>(amb[2]), 255};
-        gradientRect(r, 0, 0, 640, static_cast<float>(floorYd), mixCol(Col{10, 10, 16, 255}, ambient, 0.35), mixCol(ambient, Col{255, 210, 180, 255}, 0.25));
+        gradientRect(r, 0, 0, static_cast<float>(viewW_), static_cast<float>(floorYd), mixCol(Col{10, 10, 16, 255}, ambient, 0.35), mixCol(ambient, Col{255, 210, 180, 255}, 0.25));
 
         // ---- pre-rendered 2D backdrop from the .lvl (decoded while the loading screen was up, see beginLoad)
         // The picture is the whole stage seen from the front, so it is locked to the stage like every prop in the 3D level: its width
@@ -2302,7 +2382,7 @@ void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
         // BottomClearance units above its bottom edge.  The generated / Character Select pictures keep the measured 0.897.
         const bool pano = bgPano_ && lv;
         const double kGround = pano ? 1.0 - static_cast<double>(lv->bottomClearance) / std::max(1, lv->height) : 0.897;
-        double dw = pano ? (duelMode_ ? static_cast<double>(lv->width) : 2.0 * bound) * s : std::max(640.0, 2.0 * bound * s);
+        double dw = pano ? (duelMode_ ? static_cast<double>(lv->width) : 2.0 * bound) * s : std::max(static_cast<double>(viewW_), 2.0 * bound * s);
         double dh = dw / aspect;
         if (dh * kGround < floorYd) {   // zoomed far out and lifted: still cover the top of the screen
             dh = floorYd / kGround;
@@ -2319,7 +2399,7 @@ if (bgBottom < 360) {
                 const SDL_FRect fill{dst.x, static_cast<float>(fy) - 1.0f, dst.w, static_cast<float>(360 - fy) + 2.0f};
                 SDL_RenderCopyF(r, bg_.tex, &strip, &fill);
             } else {
-                ui.fill(Rect{0, fy, 640, 360 - fy}, Col{6, 5, 8, 255});   // picture ends above the screen's bottom edge
+                ui.fill(Rect{0, fy, viewW_, 360 - fy}, Col{6, 5, 8, 255});   // picture ends above the screen's bottom edge
             }
         }
     } else {

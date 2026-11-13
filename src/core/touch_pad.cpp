@@ -34,6 +34,14 @@ Layout Layout::defaults() {
     return l;
 }
 
+Layout Layout::widened(const Layout& base, int extra) {
+    Layout l = base;
+    if (extra <= 0) return l;
+    for (PadButton& b : l.buttons)
+        if (b.x + b.w / 2 >= 320) b.x += extra;
+    return l;
+}
+
 PadButton Layout::scaled(const PadButton& b) const {
     if (scale == 1.0f) return b;
     PadButton r = b;
