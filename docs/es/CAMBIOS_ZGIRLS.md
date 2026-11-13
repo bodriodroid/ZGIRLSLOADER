@@ -308,6 +308,16 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.4 Dev_Nov-13 - la carga es la del juego, y las imágenes volteadas de los .gbs
+
+- **Una sola pantalla de carga, la del juego**: la carga de la pelea usaba una versión mía (pantalla negra con el corazón de `LoadingScreen.gbs`, el texto "Preparando sprites..." y una barra).
+  Ahora es la misma que al arrancar: "LOADING..." con la bombita "8" sobre la presentación lenta de dibujos de línea (`loading_<idioma>`). No se dibuja nada encima.
+  Lo único que puede aparecer, pequeño y abajo, es el aviso de por qué no se usó el escenario elegido (por ejemplo "NO .lvl in the mounted data"). Si faltan los
+  `loading_<idioma>` en tus datos, cae a `LoadingScreen.gbs` y, si tampoco está, a un texto simple.
+- **.gbs: tamaños negativos**: una clave de animación puede dar un ancho o alto negativo (el corazón de `LoadingScreen.gbs` se voltea así: `139,31 -95x98`). SDL ignora un rectángulo
+  con tamaño negativo, así que esa imagen desaparecía a mitad de la animación. Ahora se dibuja desde la esquina contraria con el volteo correspondiente (`GameUi`, sprites normales).
+- Android: `versionCode 17`, `versionName 0.9.4-zgirls-Dev_Nov-13`.
+
 ## Build 0.9.3 Dev_Nov-13 - efectos de paleta (PALFX) y "No Limits Screen"
 
 - **PALFX conectado** (`src/core/palfx.*`, `docs/PALFX.md`): los destellos y tintes de color de los luchadores (golpe, estado, super...) ahora se leen de la tabla de efectos del propio

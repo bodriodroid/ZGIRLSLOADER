@@ -2165,55 +2165,26 @@ void PlayScreen::drawStageInfo(Ui& ui) {
 // names of the two fighters; without the loading_<lang> files a plain version of it.
 void PlayScreen::drawLoading(Ui& ui, SDL_Renderer* r) {
     const int ms = job_ ? job_->ms : 0;
-    // The stage is loaded first and shows as soon as it is in (cover-fitted, dimmed), with the loading animation over it while the
-    // fighters and their sprites come in.
-    const bool overStage = bg_.tex != nullptr;
-    if (overStage) {
+    // The game's own loading screen - "LOADING..." with the little bomb over the slow slideshow of line drawings - is the one the whole game
+    // uses between screens, so it is the one here too (the same as the first start).  Nothing else is drawn on top of it.
+    if (!splashTried_ && gd_) {
+        splashTried_ = true;
+        hud_.attach(r, &gd_->vfs());
+        splash_.load(r, gd_->vfs(), lang_);
+    }
+    if (splash_.ok()) {
+        hud_.setViewport(0, 0, 0.5f);
+        splash_.draw(hud_, ms);
+    } else if (!drawLoadingScene(r, ms, false)) {   // no loading_<lang> in the data: LoadingScreen.gbs, else a plain text
         ui.fill(Rect{0, 0, 640, 360}, Col{0, 0, 0, 255});
-        const double ba = static_cast<double>(bg_.w) / std::max(1, bg_.h), sa = 640.0 / 360.0;
-        SDL_Rect src{0, 0, bg_.w, bg_.h};
-        if (ba > sa) {   // wider than the screen: the middle of the stage
-            src.w = static_cast<int>(std::lround(bg_.h * sa));
-            src.x = static_cast<int>(std::lround(std::clamp(bgCenterU_ * bg_.w - src.w / 2.0, 0.0, static_cast<double>(bg_.w - src.w))));
-        } else {
-            src.h = static_cast<int>(std::lround(bg_.w / sa));
-            src.y = std::max(0, bg_.h - src.h);   // the floor end of the picture
-        }
-        const SDL_Rect full{0, 0, 640, 360};
-        SDL_RenderCopy(r, bg_.tex, &src, &full);
-        ui.fill(Rect{0, 0, 640, 360}, Col{0, 0, 0, 60});
+        const std::string t = ms % 900 < 450 ? "LOADING..." : "LOADING";
+        ui.text(320 - Ui::textW(t, 3) / 2, 150, t, kAccent, 3);
     }
-    if (drawLoadingScene(r, ms, overStage)) {
-        // LoadingScreen.gbs (the game's loader between screens): black + the heart bug
-    } else {
-        if (!splashTried_ && gd_) {   // no LoadingScreen.gbs: the first-boot splash, else a plain text
-            splashTried_ = true;
-            hud_.attach(r, &gd_->vfs());
-            splash_.load(r, gd_->vfs(), lang_);
-        }
-        if (splash_.ok()) {
-            hud_.setViewport(0, 0, 0.5f);
-            splash_.draw(hud_, ms);
-        } else {
-            if (!overStage) ui.fill(Rect{0, 0, 640, 360}, Col{6, 6, 10, 255});
-            const std::string t = ms % 900 < 450 ? "LOADING..." : "LOADING";
-            ui.text(320 - Ui::textW(t, 3) / 2, 150, t, kAccent, 3);
-        }
+    // Not part of the game: when the stage that was picked could not be used (no .lvl in the data, ...) say why, small, at the bottom.
+    if (const std::string prob = stageProblem(); !prob.empty()) {
+        ui.fill(Rect{14, 338, 4 + Ui::textW(prob), 12}, Col{0, 0, 0, 170});
+        ui.text(16, 340, prob, Col{255, 120, 100, 255});
     }
-    const float p = loadProgress();
-    const bool es = lang_ == "es";
-    const std::string st = job_ ? (std::string(loadStageName()) == "stage" ? (es ? "Cargando escenario..." : "Loading stage...")
-                                   : std::string(loadStageName()) == "fighters" ? (es ? "Cargando luchadores..." : "Loading fighters...")
-                                                                                : (es ? "Preparando sprites..." : "Preparing sprites..."))
-                                : std::string();
-    ui.text(22, 310, st, Col{232, 200, 120, 255});
-    ui.text(22, 322, loadLabel_, Col{214, 208, 190, 255});
-    if (const std::string prob = stageProblem(); !prob.empty()) {   // why this is not the stage that was picked
-        ui.fill(Rect{14, 291, 4 + Ui::textW(prob), 12}, Col{0, 0, 0, 170});
-        ui.text(16, 293, prob, Col{255, 120, 100, 255});
-    }
-    ui.fill(Rect{20, 338, 330, 5}, Col{30, 30, 38, 220});
-    ui.fill(Rect{20, 338, static_cast<int>(330 * p), 5}, Col{232, 200, 120, 255});
 }
 
 namespace {

@@ -578,11 +578,25 @@ void GameUi::drawNodesXf(const std::vector<GbsNode>& nodes, const Xf& parent, co
                 SDL_SetTextureColorMod(t, tint.r, tint.g, tint.b);
                 SDL_SetTextureAlphaMod(t, static_cast<Uint8>(std::clamp(tint.a * alpha, 0.0f, 255.0f)));
                 if (st.additive) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_ADD);
-                const int flip = (n.flipX ? SDL_FLIP_HORIZONTAL : 0) | (n.flipY ? SDL_FLIP_VERTICAL : 0);
+                int flip = (n.flipX ? SDL_FLIP_HORIZONTAL : 0) | (n.flipY ? SDL_FLIP_VERTICAL : 0);
+                // A key can give a size below zero ("139,31 -95x98"): the picture is mirrored and reaches back from its position.  SDL ignores
+                // a rectangle with a negative size, so it is drawn from the far corner with the matching flip.
+                SDL_FPoint center{0, 0};
+                if (dst.w < 0) {
+                    dst.x += dst.w;
+                    dst.w = -dst.w;
+                    center.x = dst.w;
+                    flip ^= SDL_FLIP_HORIZONTAL;
+                }
+                if (dst.h < 0) {
+                    dst.y += dst.h;
+                    dst.h = -dst.h;
+                    center.y = dst.h;
+                    flip ^= SDL_FLIP_VERTICAL;
+                }
                 if (std::fabs(angle) < 0.001f && flip == 0) {
                     SDL_RenderCopyF(r_, t, nullptr, &dst);
                 } else {
-                    const SDL_FPoint center{0, 0};
                     SDL_RenderCopyExF(r_, t, nullptr, &dst, angle, &center, static_cast<SDL_RendererFlip>(flip));
                 }
                 if (st.additive) SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
