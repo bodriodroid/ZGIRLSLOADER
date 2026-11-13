@@ -42,6 +42,7 @@
 #include "menu_data.h"
 #include "super_fx.h"
 #include "moveset.h"
+#include "palfx.h"
 #include "splash.h"
 #include "touch_pad.h"
 #include "ui.h"
@@ -117,6 +118,9 @@ public:
     // CPU route stand-in for the darkening of ScreenFx (the CPU cannot remap per pixel): a colour multiplier on every sprite drawn
     // afterwards (1, 1, 1 = untouched).  The GPU route ignores it - it has the exact maths in setScreenFx.
     void setTint(float r, float g, float b) { tint_[0] = r, tint_[1] = g, tint_[2] = b; }
+    // CPU route stand-in for a palette effect (palfx.h): the sprite is blended toward colour (r, g, b) by `a` 0..1 (a multiply, plus
+    // an additive pass for bright colours).  `a` 0 = off.  The GPU route ignores it.
+    void setWash(float r, float g, float b, float a) { wash_[0] = r, wash_[1] = g, wash_[2] = b, wash_[3] = a; }
     // The super outline of the GPU route: after the normal sprite, its silhouette in two flat colours blended by `mix`, drawn with
     // `strength` 0..1 (0 = off).  Needs an effect program set that has the outline pass; otherwise nothing is drawn.
     void setSuperOutline(const float a[3], const float b[3], float mix, float strength);
@@ -188,6 +192,7 @@ private:
     fx::ScreenFx screenFx_;
     float hueCos_ = 1, hueSin_ = 0, hueAmount_ = 0;
     float tint_[3] = {1, 1, 1};
+    float wash_[4] = {1, 1, 1, 0};   // CPU route palette effect: colour + strength (0 = off)
     float outA_[3] = {1, 1, 1}, outB_[3] = {1, 1, 1}, outMix_ = 0, outStrength_ = 0;
 };
 
@@ -408,6 +413,12 @@ private:
     // ---- the picture of a super move (presentation only: stepped per displayed tick, never saved, nothing in the sim reads it)
     fx::SuperFxTimeline superFx_;
     fx::SuperFxState superState_;
+    // ---- palette effects (colour washes of a counter hit, a status ...): presentation only, stepped per displayed tick
+    palfx::Library palfxLib_;
+    bool palfxLoaded_ = false;     // the table was looked for (once per fight)
+    palfx::FighterFx palfx_[2];
+    void palFxTick();              // after every tick: reads the bodies' PALFX values and moves each effect one frame
+    void applyPalFxToSkin(Skin& sk, const fight::FoitView& v);
     int superOwner_ = -1;          // side whose super is on screen (kept while the dark stage fades out), -1 = none
     fx::FxTuning neutralTun_ = fx::neutralTuning();
     bool superDemo_ = false;       // capture aid (ZDROID_PLAY_SUPERDEMO / 'superdemo'): player 1 casts a super half a second into the fight, player 2 stands still

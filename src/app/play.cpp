@@ -382,8 +382,18 @@ int Skin::drawFrame(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, d
     }
     int drawn = 0;
     const auto c8 = [](float v) { return static_cast<Uint8>(std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f)); };
-    const Uint8 tr = c8(tint_[0]), tg = c8(tint_[1]), tb = c8(tint_[2]);
+    // the palette effect of this object (a wash toward a colour): a multiply for the darker colours ...
+    const float wa = std::clamp(wash_[3], 0.0f, 1.0f);
+    float mul[3], add[3];
+    for (int i = 0; i < 3; ++i) {
+        const float wc = std::clamp(wash_[i], 0.0f, 1.0f);
+        mul[i] = tint_[i] * ((1.0f - wa) + wa * wc);
+        add[i] = wa * std::max(0.0f, wc - 0.5f) * 2.0f;   // ... and an additive pass for the brighter ones
+    }
+    const Uint8 tr = c8(mul[0]), tg = c8(mul[1]), tb = c8(mul[2]);
     const bool tinted = tr != 255 || tg != 255 || tb != 255;
+    const Uint8 ar = c8(add[0]), ag = c8(add[1]), ab = c8(add[2]);
+    const bool additive = (ar | ag | ab) > 4;
     for (int slot = 0; slot < foit::kSlots; ++slot) {
         if (fr->img[slot].placeholder()) continue;
         const Tex& t = image(r, idx, slot);
@@ -409,7 +419,15 @@ int Skin::drawFrame(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, d
         if (a8 != 255) SDL_SetTextureAlphaMod(t.t, a8);
         if (tinted) SDL_SetTextureColorMod(t.t, tr, tg, tb);
         SDL_RenderCopyExF(r, t.t, nullptr, &dst, 0, nullptr, faceRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL);
-        if (tinted) SDL_SetTextureColorMod(t.t, 255, 255, 255);
+        if (additive) {
+            SDL_BlendMode old = SDL_BLENDMODE_BLEND;
+            SDL_GetTextureBlendMode(t.t, &old);
+            SDL_SetTextureBlendMode(t.t, SDL_BLENDMODE_ADD);
+            SDL_SetTextureColorMod(t.t, ar, ag, ab);
+            SDL_RenderCopyExF(r, t.t, nullptr, &dst, 0, nullptr, faceRight ? SDL_FLIP_NONE : SDL_FLIP_HORIZONTAL);
+            SDL_SetTextureBlendMode(t.t, old);
+        }
+        if (tinted || additive) SDL_SetTextureColorMod(t.t, 255, 255, 255);
         if (a8 != 255) SDL_SetTextureAlphaMod(t.t, 255);
         ++drawn;
     }
@@ -1300,6 +1318,8 @@ void PlayScreen::startRound() {
         superFx_.reset();
         superState_ = fx::SuperFxState();
         superOwner_ = -1;
+        palfx_[0].reset();
+        palfx_[1].reset();
         endTimer_ = 0;
         endReason_ = 0;
         endText_.clear();
@@ -1524,6 +1544,45 @@ void PlayScreen::applySuperToSkin(Skin& sk, const fight::FoitView& v) {
     }
 }
 
+// Palette effects.  The script of a fighter keeps the 32-bit hash of an effect's name in four values (status / self / self2 / hit); the
+// table of effects (_palette_effects.ini of the player's own data) is looked up by it and each effect plays one frame per tick.
+void PlayScreen::palFxTick() {
+    if (!palfxLoaded_) {
+        palfxLoaded_ = true;
+        std::string txt;
+        if (gd_ && gd_->vfs().readText("_palette_effects.ini", txt)) std::printf("[play] palette effects: %zu\n", palfxLib_.parse(txt));
+    }
+    if (!foit_ || palfxLib_.size() == 0) return;
+    static const bool log = zgFlag("ZDROID_PLAY_PALFXLOG", "palfxlog");   // capture aid: say when an effect starts
+    for (int i = 0; i < 2; ++i) {
+        const std::array<uint32_t, 4> h = foit_->palFx(i);
+        if (log)
+            for (int l = 0; l < palfx::kLayers; ++l)
+                if (h[static_cast<size_t>(l)] != palfx_[i].layer(l).hash()) {
+                    const palfx::Effect* e = palfxLib_.find(h[static_cast<size_t>(l)]);
+                    std::printf("[palfx] side %d layer %d -> %08x %s\n", i, l, h[static_cast<size_t>(l)], e ? e->name.c_str() : (h[static_cast<size_t>(l)] ? "(not in the table)" : "(off)"));
+                }
+        palfx_[i].update(h, palfxLib_);
+    }
+}
+
+// The wash of a body for the CPU route: the character's palette gives the "PAL n" colours (band n, middle tone).
+void PlayScreen::applyPalFxToSkin(Skin& sk, const fight::FoitView& v) {
+    if (!v.body || palfxLib_.size() == 0 || !palfx_[v.side].any()) {
+        sk.setWash(1, 1, 1, 0);
+        return;
+    }
+    const Palette& pal = sk.palette();
+    const palfx::PalLookup lookup = [&pal](int band, float out[3]) {
+        if (pal.tones <= 0 || band < 0 || band >= pal.bands) return false;
+        const uint8_t* c = pal.at(band, pal.tones / 2);
+        for (int i = 0; i < 3; ++i) out[i] = c[i] / 255.0f;
+        return true;
+    };
+    const palfx::Flat f = palfx_[v.side].flat(lookup);
+    sk.setWash(f.rgb[0], f.rgb[1], f.rgb[2], f.a);
+}
+
 void PlayScreen::clearSuperOnSkins() {
     for (Skin& sk : skin_) {
         sk.setScreenFx(fx::ScreenFx());
@@ -1714,6 +1773,7 @@ void PlayScreen::stepSim(uint16_t p1, uint16_t p2) {
         syncFoitFlow();
         hitFlashTick();
         superFxTick();
+        palFxTick();
         return;
     }
     if (introStage_ == 3) {   // the entrances: until both fighters are on their feet (or somebody presses an attack)
@@ -2398,6 +2458,7 @@ void PlayScreen::drawFoitView(Ui& ui, SDL_Renderer* r, const fight::FoitView& v,
     if (v.frame < 0 || v.xscale == 0 || v.yscale == 0 || v.alpha <= 0) return;   // nothing to show (yet)
     Skin& sk = skin_[v.side];
     applySuperToSkin(sk, v);
+    applyPalFxToSkin(sk, v);
     if (sk.drawFrame(r, static_cast<uint16_t>(v.frame), fx, fy, s, v.faceRight, v.xscale, v.yscale, v.alpha) > 0) return;
     if (v.body) drawDummy(ui, st_.p[v.side], animFor(st_.p[v.side]), static_cast<int>(fx), static_cast<int>(fy), 330.0 * s, v.side);   // frame with no picture
 }

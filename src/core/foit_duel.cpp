@@ -16,6 +16,7 @@ constexpr int kSlotHitStun = 53;
 constexpr int kSlotLife = 64;
 constexpr int kSlotRedLife = 65;
 constexpr int kSlotSuperBar = 66, kSlotSuperFlash = 71, kSlotSuperShadows = 72;
+constexpr int kSlotPalFxSelf = 73, kSlotPalFxSelf2 = 75, kSlotPalFxHit = 77, kSlotPalFxStatus = 79;
 constexpr int kSlotXVel = 158, kSlotYVel = 159;
 constexpr int kSlotXScale = 164, kSlotYScale = 165, kSlotAlpha = 166;
 constexpr int kSlotComboHits = 11;   // hits the fighter has landed in the combo that is running
@@ -244,6 +245,14 @@ float FoitDuel::lifeFraction(int side) const {
 void FoitDuel::fillMeter(int side) {
     rt::Object& o = *obj_[side & 1];
     if (o.slots[kSlotSuperBar] < 500.0f) o.slots[kSlotSuperBar] = 500.0f;
+}
+
+std::array<uint32_t, 4> FoitDuel::palFx(int side) const {
+    const rt::Object& o = *obj_[side & 1];
+    std::array<uint32_t, 4> h{};
+    const int slots[4] = {kSlotPalFxStatus, kSlotPalFxSelf, kSlotPalFxSelf2, kSlotPalFxHit};   // palfx::LayerId order
+    for (int i = 0; i < 4; ++i) std::memcpy(&h[static_cast<size_t>(i)], &o.slots[slots[i]], sizeof(uint32_t));   // the slots hold raw hash bits
+    return h;
 }
 
 FoitSuper FoitDuel::superState() const {

@@ -17,6 +17,7 @@
 //
 // Not part of the snapshot: the characters (immutable, shared), the configuration, `events()`.
 #pragma once
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -107,6 +108,9 @@ public:
     // The super in progress, if any: which side owns it and whether the flash / the dark stage are on.  Scans every object, so a
     // helper that raises the flag counts for its fighter.
     FoitSuper superState() const;
+    // What a fighter's own body keeps in its four PALFX values (status, self, self2, hit): 32-bit hashes of effect names from the
+    // palette-effects table (0 = none).  Presentation only (palfx.h).
+    std::array<uint32_t, 4> palFx(int side) const;
     // Tops up a fighter's super bar.  A capture / test aid (changes the simulation: never use it in a networked match).
     void fillMeter(int side);
     // Everything on screen, the two bodies first.  Fills `out` (cleared first).
