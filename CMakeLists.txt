@@ -47,6 +47,8 @@ add_library(zengine_core STATIC
   src/core/dds.cpp
   src/core/msb.cpp
   src/core/warp.cpp
+  src/core/sgmesh.cpp
+  src/core/sgscene.cpp
   src/core/level.cpp
   src/core/fight.cpp
   src/core/moveset.cpp
@@ -163,6 +165,15 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   add_executable(zdroid_layout_tests tests/test_layout.cpp)
   target_link_libraries(zdroid_layout_tests PRIVATE zengine_core)
   add_test(NAME zdroid_layout_tests COMMAND zdroid_layout_tests)
+  add_executable(zdroid_sgmesh_tests tests/test_sgmesh.cpp)
+  target_link_libraries(zdroid_sgmesh_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_sgmesh_tests COMMAND zdroid_sgmesh_tests)
+  set(ZDROID_TEST_STAGES "" CACHE PATH "Optional folder of stage meshes and scenes (*.sgm.msb, *.sgi.msb) of the real game for the sgmesh / sgscene tests")
+  set_tests_properties(zdroid_sgmesh_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_STAGES=${ZDROID_TEST_STAGES}")
+  add_executable(zdroid_sgscene_tests tests/test_sgscene.cpp)
+  target_link_libraries(zdroid_sgscene_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_sgscene_tests COMMAND zdroid_sgscene_tests)
+  set_tests_properties(zdroid_sgscene_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_STAGES=${ZDROID_TEST_STAGES}")
   add_executable(zdroid_palfx_tests tests/test_palfx.cpp)
   target_link_libraries(zdroid_palfx_tests PRIVATE zengine_core)
   add_test(NAME zdroid_palfx_tests COMMAND zdroid_palfx_tests)
