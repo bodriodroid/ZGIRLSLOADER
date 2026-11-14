@@ -49,6 +49,7 @@ add_library(zengine_core STATIC
   src/core/warp.cpp
   src/core/sgmesh.cpp
   src/core/sgscene.cpp
+  src/core/stage3d.cpp
   src/core/level.cpp
   src/core/fight.cpp
   src/core/moveset.cpp
@@ -174,6 +175,10 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   target_link_libraries(zdroid_sgscene_tests PRIVATE zengine_core)
   add_test(NAME zdroid_sgscene_tests COMMAND zdroid_sgscene_tests)
   set_tests_properties(zdroid_sgscene_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_STAGES=${ZDROID_TEST_STAGES}")
+  add_executable(zdroid_stage3d_tests tests/test_stage3d.cpp)
+  target_link_libraries(zdroid_stage3d_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_stage3d_tests COMMAND zdroid_stage3d_tests)
+  set_tests_properties(zdroid_stage3d_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_STAGES=${ZDROID_TEST_STAGES}")
   add_executable(zdroid_palfx_tests tests/test_palfx.cpp)
   target_link_libraries(zdroid_palfx_tests PRIVATE zengine_core)
   add_test(NAME zdroid_palfx_tests COMMAND zdroid_palfx_tests)
