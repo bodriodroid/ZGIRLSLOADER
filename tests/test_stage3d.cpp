@@ -245,6 +245,65 @@ int main() {
         stage3d::render(one, cam, few, f3);
         CHECK(f3.emitted <= 3 && f3.truncated);
     }
+    {   // a tiled texture (uv 0..3 across a quad): cut at the whole numbers, every piece inside 0..1, nothing lost
+        std::map<std::string, std::vector<uint8_t>> tf;
+        tf["plane.sgm.msb"] = files["plane.sgm.msb"];
+        {
+            // the wall's mesh with its uv scaled by hand: rebuild it from the quad writer by patching the stored coordinates
+            std::vector<uint8_t> m = quadMesh("tile", -150, -20, 150, 160);
+            // header: str "2.0" (8+3) + str material (8+4) + 13 f32 + str decl + 4 u64; vertices start after
+            const std::string decl = "float p[3],n[3],uv[2]; uchar4 c;";
+            const size_t vstart = 11 + 12 + 13 * 4 + 8 + decl.size() + 32;
+            for (int i = 0; i < 4; ++i) {
+                const size_t o = vstart + static_cast<size_t>(i) * 36 + 24;   // uv
+                for (int k = 0; k < 2; ++k) {
+                    uint32_t bits;
+                    std::memcpy(&bits, &m[o + 4 * static_cast<size_t>(k)], 4);
+                    bits = (bits >> 24) | ((bits >> 8) & 0xff00) | ((bits << 8) & 0xff0000) | (bits << 24);
+                    float f;
+                    std::memcpy(&f, &bits, 4);
+                    f = f * 3.0f - 0.5f;   // 0..1 -> -0.5..2.5
+                    std::memcpy(&bits, &f, 4);
+                    bits = (bits >> 24) | ((bits >> 8) & 0xff00) | ((bits << 8) & 0xff0000) | (bits << 24);
+                    std::memcpy(&m[o + 4 * static_cast<size_t>(k)], &bits, 4);
+                }
+            }
+            tf["tile.sgm.msb"] = m;
+        }
+        W s;
+        s.str("2.0");
+        s.u64(2);
+        instance(s, "FightPlane", "plane", 0, 0, 0);
+        instance(s, "|Tile", "tile", 0, 0, -100);
+        tf["background.sgi.msb"] = s.b;
+        stage3d::Stage ts;
+        CHECK(stage3d::load(readerOf(&tf), ts, &err));
+        const stage3d::Cam tc = stage3d::fitCamera(ts, fit);
+        stage3d::Options wo = opt;
+        wo.maxEdgePx = 1e9;
+        stage3d::Frame tfr;
+        stage3d::render(ts, tc, wo, tfr);
+        CHECK(!tfr.batches.empty());
+        CHECK(ts.pieces.size() == 1 && ts.pieces[0].tiled);
+        CHECK(!st.pieces[0].tiled && !st.pieces[1].tiled);   // 0..1 quads
+        bool inside = true;
+        double area = 0;
+        size_t n = 0;
+        for (const auto& b : tfr.batches)
+            for (const auto& t : b.tris) {
+                ++n;
+                for (int k = 0; k < 3; ++k) inside = inside && t.u[k] >= 0 && t.u[k] <= 1 && t.v[k] >= 0 && t.v[k] <= 1;
+                area += 0.5 * std::fabs((t.x[1] - t.x[0]) * (t.y[2] - t.y[0]) - (t.x[2] - t.x[0]) * (t.y[1] - t.y[0]));
+            }
+        CHECK(inside);
+        CHECK(n >= 9 * 2 / 2);   // 3x3 cells, each at least a triangle
+        double sx0, sy0, sx1, sy1;
+        proj(tc, -150, -20, -100, sx0, sy0);
+        proj(tc, 150, 160, -100, sx1, sy1);
+        // the part of the quad that is on screen only: compare against the same quad clipped to the picture is overkill; check area never exceeds the quad
+        CHECK(area <= std::fabs((sx1 - sx0) * (sy1 - sy0)) * 1.001);
+        CHECK(area > 0);
+    }
     {   // behind the eye: nothing
         stage3d::Cam behind = cam;
         behind.z = -1000;

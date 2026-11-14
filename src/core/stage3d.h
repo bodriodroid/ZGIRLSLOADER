@@ -32,6 +32,7 @@ struct Piece {
     std::vector<Vtx> v;              // world space
     std::vector<uint16_t> idx;       // 3 per triangle
     float lo[3] = {0, 0, 0}, hi[3] = {0, 0, 0};   // world bounding box
+    bool tiled = false;              // its texture coordinates run well past 0..1: the texture repeats (floors, water, fog); a mere overshoot is a baked picture's edge
     bool skinned = false;            // drawn in its bind pose
     bool animated = false;           // the scene gives it an animation (not played yet)
 };

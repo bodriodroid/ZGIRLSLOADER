@@ -44,6 +44,7 @@
 #include "moveset.h"
 #include "palfx.h"
 #include "splash.h"
+#include "stage3d_gfx.h"
 #include "touch_pad.h"
 #include "ui.h"
 
@@ -350,6 +351,9 @@ private:
     using WarmBatch = std::future<std::vector<WarmResult>>;
     struct LoadJob {
         std::future<bool> bg;           // 1. the stage picture (decoded + upscaled off-thread)
+        std::future<bool> bg3;          //    and the stage's 3D scene (meshes + textures), when the stage has one
+        Stage3DGfx::Cpu cpu3;
+        std::string err3;
         std::future<bool> skin[2];      // 2. the fighters' .foit / .art / palette, started once the stage is in
         std::future<int> music;         //    the stage theme decoded beside them (MusicPlayer::load)
         DdsImage bgImg;
@@ -371,6 +375,7 @@ private:
         ~LoadJob() {
             for (auto& f : skin) if (f.valid()) f.wait();
             if (bg.valid()) bg.wait();
+            if (bg3.valid()) bg3.wait();
             if (music.valid()) music.wait();
             for (auto& b : inflight) if (b.f.valid()) b.f.wait();
         }
@@ -522,6 +527,11 @@ private:
     double spritePx_ = 1.0;           // screen pixels per art pixel at the closest camera zoom (picks the sprite level)
     std::string bgFile_;              // which picture the stage backdrop came from ("" = the generated stage)
     int bgSrcW_ = 0, bgSrcH_ = 0;     // its size as stored
+    // the stage's 3D scene (stage3d_gfx.h): drawn instead of the 2D picture while use3d() is true
+    Stage3DGfx stage3d_;
+    bool stage3dSlow_ = false;        // Auto: the 3D pass was too slow on this device, the 2D picture takes over for the rest of the match
+    int stage3dSlowFrames_ = 0;
+    bool use3d() const { return stage3d_.usable() && dev_.stage3d != devopt::Stage3d::Off && !stage3dSlow_; }
     bool bgPano_ = false;             // a real 2D backdrop (3750x2000 = the .lvl's StageSize): laid over the stage 1 pixel = 1 stage unit
     // render resolution < 100 %: the match is drawn into this smaller texture, then stretched over the window
     SDL_Texture* rt_ = nullptr;

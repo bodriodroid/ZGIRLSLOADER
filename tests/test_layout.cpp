@@ -73,6 +73,11 @@ int main() {
     CHECK(std::string(def(kNoLimits).name) == "nolimits" && def(kNoLimits).nChoices == 2 && def(kNoLimits).def == 0);
     CHECK(!resolve([](const char*) { return std::string(); }).noLimits);
     CHECK(resolve([](const char* k) { return std::string(std::string(k) == def(kNoLimits).key ? "On" : ""); }).noLimits);
+    // 3D stages: Off / Auto / On, Auto by default
+    CHECK(std::string(def(kStage3d).name) == "stage3d" && def(kStage3d).nChoices == 3 && def(kStage3d).def == 1);
+    CHECK(resolve(nullptr).stage3d == Stage3d::Auto);
+    CHECK(resolve([](const char* k) { return std::string(std::string(k) == def(kStage3d).key ? "Off" : ""); }).stage3d == Stage3d::Off);
+    CHECK(resolve([](const char* k) { return std::string(std::string(k) == def(kStage3d).key ? "on" : ""); }).stage3d == Stage3d::On);
     CHECK(text("dev.nolimits", true) != nullptr && text("dev.nolimits.d", false) != nullptr);
 
     std::printf("%d checks, %d failed\n", g_checks, g_fail);

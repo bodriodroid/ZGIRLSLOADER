@@ -82,6 +82,13 @@ bool load(const ReadFn& read, Stage& out, std::string* err) {
             }
             continue;
         }
+        float uvLo[2] = {1e30f, 1e30f}, uvHi[2] = {-1e30f, -1e30f};
+        for (const Vtx& v : pc.v)
+            for (int k = 0; k < 2; ++k) {
+                uvLo[k] = std::min(uvLo[k], v.uv[k]);
+                uvHi[k] = std::max(uvHi[k], v.uv[k]);
+            }
+        pc.tiled = uvLo[0] < -0.35f || uvLo[1] < -0.35f || uvHi[0] > 1.35f || uvHi[1] > 1.35f;
         pc.idx = mesh->idx;
         out.pieces.push_back(std::move(pc));
     }
@@ -135,12 +142,101 @@ struct Ctx {
     Frame* frame;
     Batch* batch;
     double margin;
+    bool tiled;
 };
 
 void project(const Ctx& c, const VV& a, double& sx, double& sy) {
     const double k = c.cam->f / a.d;
     sx = 0.5 * c.cam->viewW + a.x * k + c.opt->offsetX;
     sy = 0.5 * c.cam->viewH - a.y * k + c.opt->offsetY;
+}
+
+struct P {   // a polygon corner on the picture
+    float x, y, u, v;
+    uint8_t c[4];
+};
+
+P lerpP(const P& a, const P& b, float t) {
+    P r;
+    r.x = a.x + (b.x - a.x) * t;
+    r.y = a.y + (b.y - a.y) * t;
+    r.u = a.u + (b.u - a.u) * t;
+    r.v = a.v + (b.v - a.v) * t;
+    for (int k = 0; k < 4; ++k) r.c[k] = static_cast<uint8_t>(a.c[k] + (b.c[k] - a.c[k]) * t + 0.5f);
+    return r;
+}
+
+// Keeps the part of a polygon whose u (axis 0) or v (axis 1) is >= bound (above) or <= bound (below).
+int clipUv(const P* in, int n, P* out, int axis, float bound, bool above) {
+    int m = 0;
+    for (int i = 0; i < n; ++i) {
+        const P& a = in[i];
+        const P& b = in[(i + 1) % n];
+        const float av = (axis ? a.v : a.u) - bound, bv = (axis ? b.v : b.u) - bound;
+        const bool ai = above ? av >= 0 : av <= 0, bi = above ? bv >= 0 : bv <= 0;
+        if (ai) out[m++] = a;
+        if (ai != bi) out[m++] = lerpP(a, b, av / (av - bv));
+    }
+    return m;
+}
+
+// The textures are repeating: a triangle whose coordinates run past 0..1 (tiled floors, water, fog) is cut along the whole numbers and each
+// piece moved into 0..1, because the renderer only samples inside one copy of the picture.  A coordinate that only overshoots a little is left alone
+// (the texture's edge pixel is repeated).
+void put(Ctx& c, const Tri& t) {
+    constexpr float kSlack = 0.03f;
+    if (!c.tiled) {
+        c.batch->tris.push_back(t);
+        ++c.frame->emitted;
+        return;
+    }
+    const float minU = std::min({t.u[0], t.u[1], t.u[2]}), maxU = std::max({t.u[0], t.u[1], t.u[2]});
+    const float minV = std::min({t.v[0], t.v[1], t.v[2]}), maxV = std::max({t.v[0], t.v[1], t.v[2]});
+    const bool wrapU = minU < -kSlack || maxU > 1.0f + kSlack, wrapV = minV < -kSlack || maxV > 1.0f + kSlack;
+    if (!wrapU && !wrapV) {
+        c.batch->tris.push_back(t);
+        ++c.frame->emitted;
+        return;
+    }
+    const int u0 = static_cast<int>(std::floor(minU + kSlack * 0.5f)), u1 = static_cast<int>(std::ceil(maxU - kSlack * 0.5f));
+    const int v0 = static_cast<int>(std::floor(minV + kSlack * 0.5f)), v1 = static_cast<int>(std::ceil(maxV - kSlack * 0.5f));
+    if ((u1 - u0) * (v1 - v0) > 64 || u1 <= u0 || v1 <= v0) {   // a texture repeated absurdly often (a rounding glitch): draw it once
+        c.batch->tris.push_back(t);
+        ++c.frame->emitted;
+        return;
+    }
+    P poly[3];
+    for (int i = 0; i < 3; ++i) {
+        poly[i] = P{t.x[i], t.y[i], t.u[i], t.v[i], {t.c[i][0], t.c[i][1], t.c[i][2], t.c[i][3]}};
+    }
+    for (int iv = v0; iv < v1; ++iv) {
+        for (int iu = u0; iu < u1; ++iu) {
+            P a[10], b[10];
+            int n = 3;
+            std::copy(poly, poly + 3, a);
+            n = clipUv(a, n, b, 0, static_cast<float>(iu), true);
+            if (n >= 3) n = clipUv(b, n, a, 0, static_cast<float>(iu + 1), false);
+            else continue;
+            if (n >= 3) n = clipUv(a, n, b, 1, static_cast<float>(iv), true);
+            else continue;
+            if (n >= 3) n = clipUv(b, n, a, 1, static_cast<float>(iv + 1), false);
+            else continue;
+            if (n < 3) continue;
+            for (int i = 1; i + 1 < n; ++i) {
+                const P* q[3] = {&a[0], &a[i], &a[i + 1]};
+                Tri o;
+                for (int k = 0; k < 3; ++k) {
+                    o.x[k] = q[k]->x;
+                    o.y[k] = q[k]->y;
+                    o.u[k] = std::clamp(q[k]->u - static_cast<float>(iu), 0.0f, 1.0f);
+                    o.v[k] = std::clamp(q[k]->v - static_cast<float>(iv), 0.0f, 1.0f);
+                    for (int j = 0; j < 4; ++j) o.c[k][j] = q[k]->c[j];
+                }
+                c.batch->tris.push_back(o);
+                ++c.frame->emitted;
+            }
+        }
+    }
 }
 
 void emit(Ctx& c, const VV& a, const VV& b, const VV& d, int level) {
@@ -181,8 +277,7 @@ void emit(Ctx& c, const VV& a, const VV& b, const VV& d, int level) {
         t.v[i] = v[i]->v;
         for (int k = 0; k < 4; ++k) t.c[i][k] = c.opt->vertexColour ? v[i]->c[k] : 255;
     }
-    c.batch->tris.push_back(t);
-    ++c.frame->emitted;
+    put(c, t);
 }
 
 }  // namespace
@@ -223,7 +318,7 @@ void render(const Stage& st, const Cam& cam, const Options& opt, Frame& out) {
     }
     std::stable_sort(order.begin(), order.end(), [](const Order& a, const Order& b) { return a.depth > b.depth; });
 
-    Ctx ctx{&cam, &opt, &out, nullptr, 8.0};
+    Ctx ctx{&cam, &opt, &out, nullptr, 8.0, false};
     std::vector<VV> vv;
     std::vector<std::pair<float, uint32_t>> keys;
     for (const Order& o : order) {
@@ -252,6 +347,7 @@ void render(const Stage& st, const Cam& cam, const Options& opt, Frame& out) {
         Batch& batch = out.batches.back();
         batch.piece = o.piece;
         ctx.batch = &batch;
+        ctx.tiled = p.tiled;
         for (const auto& k : keys) {
             const size_t t = k.second;
             VV tri[3] = {vv[p.idx[3 * t]], vv[p.idx[3 * t + 1]], vv[p.idx[3 * t + 2]]};

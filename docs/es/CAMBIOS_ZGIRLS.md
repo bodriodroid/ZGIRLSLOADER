@@ -308,6 +308,21 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.5 Dev_Nov-14 - escenarios 3D: el fondo ya es la escena 3D del juego
+
+- **El escenario se dibuja como escena 3D** (`src/core/sgmesh.*`, `sgscene.*`, `stage3d.*`, `src/app/stage3d_gfx.*`, `docs/STAGES_3D.md`): cada carpeta de escenario trae `background.sgi.msb`
+  (qué mallas y dónde) y una `.sgm.msb` por malla. Los dos formatos están descifrados y comprobados con los 29 escenarios y las 1793 mallas de los datos de prueba, sin excepciones.
+  Las mallas se dibujan con sus texturas (`<material>.dds`) detrás de los luchadores, con perspectiva real; en pantalla ancha ("No Limits Screen") se ve más escenario a los lados porque la geometría sigue.
+- **Cámara enganchada a la 2D**: todas las escenas llevan un rectángulo llamado `FightPlane`, que es la vista frontal completa del escenario (3750x2000 unidades de escenario).
+  La cámara 3D se coloca para que ese rectángulo caiga exactamente donde la cámara 2D (zoom, desplazamiento, línea del suelo) pone el escenario, así los luchadores siguen pisando donde siempre.
+- **Si faltan datos, sigue el fondo 2D**: sin la escena, o con menos del 60% de los triángulos con textura, se queda la imagen plana de antes (se nota en el registro: `[play] stage 3D unavailable ...`).
+  Las texturas se limitan a 2048 y a 160 MB en total (se reducen a la mitad las más grandes hasta que cabe).
+- **Opción nueva "Escenarios 3D"** (Opciones de Desarrollador): No / **Auto** (por defecto: 3D, y si el dispositivo tarda más de ~9 ms por cuadro durante 2,5 s seguidos vuelve a la imagen en esa pelea) / Sí (nunca vuelve por velocidad).
+  El recuadro de "Info del escenario" muestra mallas, triángulos y milisegundos.
+- Lo que **todavía no** hace: animaciones (`.sga`/`.sgs`: NPC, humo, pantallas, desplazamientos de UV), iluminación del `.lvl` (`Light:`), inclinación de cámara (`3D`) ni color de vértice (los datos lo traen casi todo en blanco). Las mallas con esqueleto salen en pose de reposo.
+  Solo se verificó con los datos de ASG Labs (los otros 28 escenarios no tienen sus texturas en los datos de prueba, así que caen al fondo 2D). **No probado todavía en un teléfono**.
+- Android: `versionCode 18`, `versionName 0.9.5-zgirls-Dev_Nov-14`.
+
 ## Build 0.9.4 Dev_Nov-13 - la carga es la del juego, y las imágenes volteadas de los .gbs
 
 - **Una sola pantalla de carga, la del juego**: la carga de la pelea usaba una versión mía (pantalla negra con el corazón de `LoadingScreen.gbs`, el texto "Preparando sprites..." y una barra).

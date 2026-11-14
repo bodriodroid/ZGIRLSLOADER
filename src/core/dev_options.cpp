@@ -25,6 +25,7 @@ const Def kDefs[kCount] = {
     {"ZD_DEV_RAM", "ram", 2, {"Off", "On"}, 0, "RAM display"},
     {"ZD_DEV_GPUFX", "gpufx", 2, {"Off", "On"}, 0, "GPU effects (PAFX)"},
     {"ZD_DEV_NOLIMITS", "nolimits", 2, {"Off", "On"}, 0, "No Limits Screen"},
+    {"ZD_DEV_STAGE3D", "stage3d", 3, {"Off", "Auto", "On"}, 1, "3D stages"},
 };
 
 bool eqi(const std::string& a, const char* b) {
@@ -88,6 +89,9 @@ const Str kText[] = {
     {"dev.nolimits", "No Limits Screen", "Pantalla sin límites"},
     {"dev.nolimits.d", "In a fight, uses the phone's whole screen instead of the 16:9 picture: more of the stage shows at both sides (nothing is stretched), the HUD stays in the middle and the touch buttons sit at the real edges. Menus keep 16:9. A screen that is not wider than 16:9 is unchanged.",
      "En combate usa toda la pantalla del teléfono en vez de la imagen 16:9: se ve más escenario a los lados (nada se estira), la interfaz queda en el centro y los botones táctiles en los bordes reales. Los menús siguen en 16:9. Una pantalla que no es más ancha que 16:9 no cambia."},
+    {"dev.stage3d", "3D stages", "Escenarios 3D"},
+    {"dev.stage3d.d", "Draws the stage as the 3D scene the PC game uses (meshes + textures from your own Core) instead of its flat picture, seen through the same camera. Auto falls back to the picture when the device cannot keep up or the stage's textures are missing; On never falls back for speed.",
+     "Dibuja el escenario como la escena 3D que usa el juego de PC (mallas + texturas de tu propio Core) en vez de su imagen plana, vista con la misma cámara. Auto vuelve a la imagen si el dispositivo no puede con ello o faltan las texturas del escenario; Sí nunca vuelve por velocidad."},
     {"dev.back", "Back", "Atrás"},
     // choice names
     {"c.Low", "Low", "Baja"},
@@ -148,6 +152,7 @@ Settings resolve(const std::function<std::string(const char* key)>& get) {
     s.ramDebug = idx(kRam) == 1;
     s.gpuFx = idx(kGpuFx) == 1;
     s.noLimits = idx(kNoLimits) == 1;
+    s.stage3d = static_cast<Stage3d>(idx(kStage3d));
     return s;
 }
 

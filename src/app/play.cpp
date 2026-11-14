@@ -802,7 +802,7 @@ std::string PlayScreen::stageProblem() const {
     if (stageUnresolved_)
         return (es ? "el escenario '" : "stage '") + stageAsked_ + (es ? "' no coincide con ningun .lvl (" : "' matches no .lvl (") +
                std::to_string(levels_.size()) + (es ? "): se usa " : "): using ") + cur;
-    if (!job_ && !bg_.tex && have && dev_.stage != devopt::StageSource::Generated) {
+    if (!job_ && !bg_.tex && !use3d() && have && dev_.stage != devopt::StageSource::Generated) {
         const std::string want = basename(levels_[static_cast<size_t>(stageIdx_)].background2D);
         return (es ? "sin imagen de fondo para " : "no backdrop picture for ") + cur + (want.empty() ? "" : (es ? " (pide " : " (wants ") + want + ")") +
                (es ? ": escenario generado" : ": generated stage");
@@ -984,6 +984,9 @@ void PlayScreen::beginLoad(const std::string& key) {
     for (int i = 0; i < 2; ++i) skin_[i].reset(ren_);
     applyDevToSkins(ren_);
     bg_.reset(ren_);
+    stage3d_.reset(ren_);
+    stage3dSlow_ = false;
+    stage3dSlowFrames_ = 0;
     shadow_.reset(ren_);
     hudPortraitsReset();
     bgName_.clear();
@@ -1064,6 +1067,15 @@ void PlayScreen::beginLoad(const std::string& key) {
             return false;
         });
     }
+    // the stage's 3D scene decodes beside the picture (the picture stays the fallback when the data lacks the meshes or their textures)
+    if (lv && gd_ && dev_.stage3d != devopt::Stage3d::Off && dev_.stage != devopt::StageSource::Generated) {
+        LoadJob* jp = job.get();
+        const GameData* gd = gd_;
+        const std::string name = lv->name;
+        int maxTex = 2048;
+        if (const char* e = std::getenv("ZDROID_STAGE3D_MAXTEX")) maxTex = std::clamp(std::atoi(e), 256, 4096);
+        job->bg3 = std::async(std::launch::async, [jp, gd, name, maxTex]() { return Stage3DGfx::loadCpu(*gd, name, maxTex, jp->cpu3, &jp->err3); });
+    }
     // the stage's theme (music.ini) decodes beside everything else; it starts with the match
     musicIdx_ = (music_ && music_->lib() && lv) ? music_->lib()->forFight(lv->name) : -1;
     if (musicIdx_ >= 0) {
@@ -1086,7 +1098,7 @@ float PlayScreen::loadProgress() const {
     const LoadJob& j = *job_;
     auto done = [](const auto& f) { return !f.valid() || f.wait_for(std::chrono::seconds(0)) == std::future_status::ready; };
     float p;
-    if (!j.skinsStarted) p = done(j.bg) ? 0.25f : 0.08f;                                       // 1. stage
+    if (!j.skinsStarted) p = done(j.bg) && done(j.bg3) ? 0.25f : 0.08f;                                       // 1. stage
     else if (!j.collected) p = 0.25f + 0.2f * ((done(j.skin[0]) ? 1 : 0) + (done(j.skin[1]) ? 1 : 0)) / 2.0f;   // 2. fighters
     else p = 0.45f + 0.55f * (j.warm.empty() ? 1.0f : static_cast<float>(j.warmDone) / static_cast<float>(j.warm.size()));   // 3. sprites
     return std::clamp(p, 0.0f, 1.0f);
@@ -1108,8 +1120,17 @@ void PlayScreen::updateLoading(int dtMs) {
     const bool sync = zgFlag("ZDROID_PLAY_SYNCLOAD", "syncload");
 
     // ---- 1. the stage is in: show it, then start the fighters
-    if (!j.skinsStarted && ready(j.bg)) {
+    if (!j.skinsStarted && ready(j.bg) && ready(j.bg3)) {
         j.skinsStarted = true;
+        if (j.bg3.valid()) {
+            const bool ok3 = j.bg3.get();
+            if (ok3 && ren_ && stage3d_.upload(ren_, j.cpu3, dev_.smooth)) {
+                std::printf("[play] stage 3D: %s\n", stage3d_.note().c_str());
+            } else if (!j.err3.empty()) {
+                std::printf("[play] stage 3D unavailable, keeping the 2D picture: %s\n", j.err3.c_str());
+            }
+            j.cpu3 = Stage3DGfx::Cpu{};
+        }
         const bool haveBg = j.bg.valid() && j.bg.get();
         if (haveBg && ren_ && bg_.set(ren_, j.bgImg, dev_.smooth)) {
             bgName_ = j.bgLevel;
@@ -2140,7 +2161,12 @@ void PlayScreen::endScaled(SDL_Renderer* r) {
 void PlayScreen::drawStageInfo(Ui& ui) {
     char a[200], b[200];
     const std::string stage = (stageIdx_ >= 0 && stageIdx_ < static_cast<int>(levels_.size())) ? levels_[static_cast<size_t>(stageIdx_)].name : "?";
-    if (bg_.tex)
+    if (use3d())
+        std::snprintf(a, sizeof a, "STAGE %s  3D scene: %zu meshes, %zu tris drawn, %.1f ms%s", stage.c_str(), stage3d_.stage().pieces.size(), stage3d_.lastTris(),
+                      stage3d_.drawMs(), dev_.stage3d == devopt::Stage3d::Auto ? "  (auto)" : "");
+    else if (stage3dSlow_)
+        std::snprintf(a, sizeof a, "STAGE %s  3D scene too slow here: 2D picture %s", stage.c_str(), bgFile_.c_str());
+    else if (bg_.tex)
         std::snprintf(a, sizeof a, "STAGE %s  backdrop %s  %dx%d%s", stage.c_str(), bgFile_.c_str(), bgSrcW_, bgSrcH_,
                       (bg_.w > bgSrcW_ && bgSrcW_ > 0) ? (" -> " + std::to_string(bg_.w) + "x" + std::to_string(bg_.h) + " enhanced").c_str() : "");
     else
@@ -2301,6 +2327,7 @@ void PlayScreen::drawGeneratedStage(Ui& ui, const LevelInfo* lv, double cx, doub
 
 void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
     const LevelInfo* lv = (stageIdx_ >= 0 && stageIdx_ < static_cast<int>(levels_.size())) ? &levels_[stageIdx_] : nullptr;
+    const bool stage3d = use3d();
 
     // ---- camera: keep both fighters on screen, stay inside the stage; lift it when somebody jumps high
     const double x0 = fight::fromFixed(st_.p[0].x), x1 = fight::fromFixed(st_.p[1].x);
@@ -2315,7 +2342,7 @@ void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
         s = std::clamp(600.0 / std::clamp(sep + 700.0, 1000.0, 2500.0), 0.15, 0.42);
         bound = kStageHalf;
     }
-    if (bgPano_ && lv && duelMode_) bound = std::min(bound, lv->width * 0.5);   // the picture ends at the stage's edge: never show beyond it
+    if ((bgPano_ || stage3d) && lv && duelMode_) bound = std::min(bound, lv->width * 0.5);   // the picture ends at the stage's edge: never show beyond it
     // No Limits Screen: a wider picture shows more stage at both sides; when even the whole stage is narrower than the picture, zoom in
     // just enough that it is not (nothing is stretched, the stage is never shown past its edges)
     if (viewW_ > 640 && 2.0 * bound * s < viewW_) s = viewW_ / (2.0 * bound);
@@ -2337,7 +2364,33 @@ void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
     auto sx = [&](double ux) { return 0.5 * viewW_ + (ux - cx) * s + shx; };
     auto sy = [&](double uy) { return floorYd - uy * s * vex; };
 
-    if (bg_.tex) {
+    if (stage3d) {
+        // ---- the stage's 3D scene, seen through the camera the 2D picture would have had (stage3d.h): the fight plane is where the
+        // fighters stand, everything else of the scene is in front of / behind it with real perspective
+        const int amb[3] = {lv ? lv->ambient[0] : 85, lv ? lv->ambient[1] : 96, lv ? lv->ambient[2] : 122};
+        const Col ambient{static_cast<uint8_t>(amb[0]), static_cast<uint8_t>(amb[1]), static_cast<uint8_t>(amb[2]), 255};
+        gradientRect(r, 0, 0, static_cast<float>(viewW_), static_cast<float>(floorYd), mixCol(Col{10, 10, 16, 255}, ambient, 0.35), mixCol(ambient, Col{255, 210, 180, 255}, 0.25));
+        ui.fill(Rect{0, static_cast<int>(floorYd), viewW_, 360 - static_cast<int>(floorYd)}, Col{6, 5, 8, 255});
+        stage3d::Fit fit;
+        fit.viewW = viewW_;
+        fit.viewH = 360;
+        fit.fovDeg = lv ? lv->cameraFov : 66.0;
+        fit.stageW = lv ? lv->width : 3750;
+        fit.bottomClearance = lv ? lv->bottomClearance : 64;
+        const double units = (duelMode_ || !lv) ? 1.0 : static_cast<double>(lv->width) / (2.0 * bound);   // stage units per play unit
+        fit.s = s / units;
+        fit.cx = cx * units;
+        fit.floorY = floorYd;
+        stage3d_.draw(r, fit, shx, 0);
+        // Auto: a device that spends too long on the 3D pass goes back to the picture (the match is never slowed for a backdrop)
+        if (dev_.stage3d == devopt::Stage3d::Auto && !stage3dSlow_) {
+            stage3dSlowFrames_ = stage3d_.drawMs() > 9.0 ? stage3dSlowFrames_ + 1 : std::max(0, stage3dSlowFrames_ - 2);
+            if (stage3dSlowFrames_ > 150) {
+                stage3dSlow_ = true;
+                std::printf("[play] stage 3D: %.1f ms per frame is too slow here, back to the 2D picture\n", stage3d_.drawMs());
+            }
+        }
+    } else if (bg_.tex) {
         // ---- sky behind the picture (visible only where the picture does not reach)
         const int amb[3] = {lv ? lv->ambient[0] : 85, lv ? lv->ambient[1] : 96, lv ? lv->ambient[2] : 122};
         const Col ambient{static_cast<uint8_t>(amb[0]), static_cast<uint8_t>(amb[1]), static_cast<uint8_t>(amb[2]), 255};

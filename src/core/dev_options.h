@@ -13,6 +13,7 @@
 //   Backdrop upscale   Off / Smooth / Enhanced (bicubic 2x + light sharpening) for stage pictures smaller than the screen
 //   Preloading         how many animation frames are turned into textures behind the loading screen
 //   FPS, boxes, round intro, entrances, stage info, RAM display: switches   (RAM display = the seven-segment memory readout, err_overlay.h)
+//   3D stages          Off (the 2D picture) / Auto (the stage's 3D scene, back to the picture when the device cannot keep up) / On (always 3D)
 //   GPU effects        On: fighters and floor shadows are coloured by the PAFX effect programs on the GPU (fx_gl.h, docs/PAFX.md); Off: the CPU route
 #pragma once
 #include <functional>
@@ -37,6 +38,7 @@ enum Id : int {
     kRam,
     kGpuFx,
     kNoLimits,
+    kStage3d,
     kCount
 };
 
@@ -59,6 +61,7 @@ enum class StageSource { Auto, Portrait, Generated };
 enum class Upscale { Off, Smooth, Enhanced };
 enum class ShadowMode { Off, Low, Medium, High, Game };
 enum class Preload { Minimal, Standard, Full };
+enum class Stage3d { Off, Auto, On };
 
 // Everything the Play screen reads, resolved from the save.
 struct Settings {
@@ -76,6 +79,7 @@ struct Settings {
     bool stageInfo = false;
     bool ramDebug = false;           // the seven-segment RAM / state-hash readout in the corner
     bool noLimits = false;           // No Limits Screen: a fight uses the phone's whole screen shape instead of 16:9 (screen_layout.h)
+    Stage3d stage3d = Stage3d::Auto; // the stage's 3D scene (stage3d.h) behind the fighters: Off = the 2D picture, Auto = 3D unless the device is too slow for it, On = always
     bool gpuFx = false;              // sprites and shadows through the PAFX effect programs (needs an OpenGL ES 2 renderer)
 
     // level (0 full, 1 half, 2 quarter, 3 eighth) for a sprite shown at `pxPerArtPx` screen pixels per art pixel
