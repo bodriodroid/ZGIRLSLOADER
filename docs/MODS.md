@@ -83,6 +83,8 @@ Track: My Tune
 Stage: Training_Stage, Arena          # stage ids as in stages.ini (optional)
 Files: my_tune_intro, my_tune_loop    # intro played once, then the loop; .wav only
 ```
+A stage's own `.lvl` wins: its `Music_Intro` / `Music_Loop` lines name the theme it plays (file stems, matched the same way), and `music.ini` only fills in for a stage whose `.lvl`
+names none (or whose files are not in your data).  To change a stage's music with a mod, ship its `.lvl` with the lines changed, or give the stage no music lines and a `Stage:` entry here.
 File names are matched by their letters and digits only, so `My Tune Intro .wav` also answers to `my_tune_intro`.  The loader's own
 test-level theme ("Hymn For The Weekend (Final Remake)" for Training Stage, test1 and test2) plays when its two files are in your data.
 

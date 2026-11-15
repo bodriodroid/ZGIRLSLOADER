@@ -4,7 +4,8 @@
 // the sound-effect / voice folders (the menu and character-select themes, the attract tune, anything extra).  The class
 // only decides WHICH theme goes where; decoding and playing is audio.h.
 //
-//   fight   forFight(level name)  the theme music.ini gives that stage, else a stable pick among the themes on disk
+//   fight   forFight(level name)  the theme the stage's own .lvl names (Music_Intro / Music_Loop), else the one music.ini gives it, else a
+//                                 stable pick among the themes on disk (only for a stage that names no music at all)
 //   story   forCue("24")          MUSIC_24 / MUSIC_NEWS / MUSIC_K ... of the story scripts, matched by file names
 //   screens menu() select() credits() ending() gallery()   with fallbacks, so no screen is silent while any theme exists
 #pragma once
@@ -19,20 +20,28 @@ struct MusicEntry {
     enum class Kind { Menu, Select, Stage, Cutscene, Other } kind = Kind::Other;
     std::string title;                 // "Moonlit Melee"
     std::vector<std::string> stages;   // normalised world names ("newmeridian")
+    std::vector<std::string> levels;   // normalised .lvl names ("asglabs3d") whose Music_Intro / Music_Loop lines name exactly this theme
     std::string introStem, loopStem;   // as written in music.ini
     std::string introFile, loopFile;   // names the Vfs resolves ("skull02_1.wav"); loopFile empty = not in the data
     int rank = 0;                      // who wins when two themes claim a stage: a music.ini of the user's > the game's > the loader's own
     bool present() const { return !loopFile.empty(); }
 };
 
+// What a stage's .lvl says about its music (LevelInfo::musicIntro / musicLoop): file stems, "" = none.
+struct LevelMusic {
+    std::string level, intro, loop;
+};
+
 class MusicLibrary {
 public:
-    // Call after every (re)scan of the data folder.
-    void scan(const Vfs& vfs);
+    // Call after every (re)scan of the data folder.  `levels` are the stages' own music lines: they decide what a fight plays, music.ini only
+    // fills in for a stage whose .lvl names no music (or whose files are not on disk).
+    void scan(const Vfs& vfs, const std::vector<LevelMusic>& levels = {});
     const std::vector<MusicEntry>& entries() const { return entries_; }
     size_t presentCount() const;
 
-    // Index of the theme for a stage (.lvl name such as "new_meridian_3d"); -1 when music.ini has none or its files are missing.
+    // Index of the theme for a stage (.lvl name such as "new_meridian_3d"): the one its .lvl names, else the one music.ini gives that stage;
+    // -1 when neither has it or the files are missing.
     int forLevel(const std::string& levelName) const;
     // forLevel, else a stable pick among the stage themes that are on disk (the same stage always gets the same one), else the
     // character-select / menu theme; -1 = the data has no music at all.

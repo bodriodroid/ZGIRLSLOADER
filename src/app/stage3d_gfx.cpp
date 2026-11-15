@@ -148,13 +148,14 @@ bool Stage3DGfx::upload(SDL_Renderer* r, Cpu& cpu, bool smooth) {
     return usable_;
 }
 
-int Stage3DGfx::draw(SDL_Renderer* r, const stage3d::Fit& fit, double shakeX, double shakeY) {
+int Stage3DGfx::draw(SDL_Renderer* r, const stage3d::Fit& fit, double shakeX, double shakeY, double timeSec) {
     if (!usable_ || !r) return 0;
     const Uint64 t0 = SDL_GetPerformanceCounter();
     const stage3d::Cam cam = stage3d::fitCamera(stage_, fit);
     stage3d::Options opt;
     opt.offsetX = shakeX;
     opt.offsetY = shakeY;
+    opt.time = timeSec;
     stage3d::render(stage_, cam, opt, frame_);
     int drawn = 0;
     for (const stage3d::Batch& b : frame_.batches) {

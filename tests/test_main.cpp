@@ -221,6 +221,95 @@ static void testMusicLibrary() {
     CHECK_EQ(none.forCue("24"), -1);
 }
 
+// A stage's own .lvl names its music (Music_Intro / Music_Loop): that decides what a fight plays, music.ini only fills in for a stage that
+// names none (or whose files are not on disk).
+static void testLevelMusic() {
+    std::printf("[music: the .lvl names the stage's theme]\n");
+    // the lines themselves: comments, a value with blanks, NONE, any case, the cut-intro flag
+    const LevelInfo a = parseLevel("StageSize: 3750 2000\n"
+                                   "Music_Intro skull04_1           #Intro- the music\n"
+                                   "Music_Loop skull04_2            #Loop- music\n"
+                                   "Music_InterruptIntro 1          #CutIntro\n"
+                                   "Music_Outro sg_r2_loop\n"
+                                   "Music_Alt_Intro NONE\n"
+                                   "Music_Alt_Loop Skull End In A Moment\n",
+                                   "asg_labs_3d");
+    CHECK_EQ(a.musicIntro, std::string("skull04_1"));
+    CHECK_EQ(a.musicLoop, std::string("skull04_2"));
+    CHECK(a.musicCutIntro);
+    CHECK_EQ(a.musicOutro, std::string("sg_r2_loop"));
+    CHECK(a.musicAltIntro.empty());
+    CHECK_EQ(a.musicAltLoop, std::string("Skull End In A Moment"));
+    const LevelInfo b = parseLevel("music_loop  Some_Loop\nMUSIC_INTRO NONE\nMusic_InterruptIntro 0\nMusic_Intro\n", "b");
+    CHECK_EQ(b.musicLoop, std::string("Some_Loop"));
+    CHECK(b.musicIntro.empty() && !b.musicCutIntro);
+    const LevelInfo none = parseLevel("StageSize: 3750 2000\n", "none");
+    CHECK(none.musicIntro.empty() && none.musicLoop.empty() && !none.musicCutIntro);
+
+    const size_t big = 200 * 1024;
+    const std::string root = makeTempDir("music_lvl");
+    // music.ini maps Boardwalk to the wrong theme (and Gehenna to files that are not there); the .lvl files know better
+    writeText(root + "/core/music.ini",
+              "Track: Moonlit Melee\nStage: New_Meridian, Boardwalk\nFiles: skull02_1, skull02_2\n\n"
+              "Track: Clear Breeze\nStage: Meridian_Rooftops\nFiles: skull_rooftops_1, skull_rooftops_2\n\n"
+              "Track: Not On Disk\nStage: Gehenna\nFiles: sg_gehenna_1, sg_gehenna_2\n");
+    for (const char* f : {"skull02_1", "skull02_2", "skull_rooftops_1", "skull_rooftops_2", "SG_umbrella_intro", "SG_umbrella_loop", "sg_other_loop"})
+        writeBlob(root + "/music/" + f + ".wav", big);
+    Vfs v;
+    v.mount(root);
+    MusicLibrary lib;
+    const std::vector<LevelMusic> lvls = {
+        {"boardwalk_3d", "SG_umbrella_intro", "SG_umbrella_loop"},    // not in music.ini at all: a theme of its own
+        {"new_meridian_3d", "skull02_1", "skull02_2"},                // the same theme music.ini lists: shared, not doubled
+        {"gehenna_3d", "sg_gehenna_1", "sg_gehenna_2"},               // named by the .lvl, files missing
+        {"rooftops_night_3d", "skull_rooftops_1", "sg_other_loop"},   // the same intro with another loop: another theme
+        {"under_the_bridge", "", "sg_other_loop"},                    // a loop without an intro
+        {"test1", "", ""},                                            // no music lines
+    };
+    lib.scan(v, lvls);
+    auto stem = [&](int i) { return i >= 0 ? lib.entries()[static_cast<size_t>(i)].loopStem : std::string("<none>"); };
+    CHECK_EQ(stem(lib.forLevel("boardwalk_3d")), std::string("SG_umbrella_loop"));     // not Moonlit Melee, which music.ini gave Boardwalk
+    CHECK_EQ(stem(lib.forFight("boardwalk_3d")), std::string("SG_umbrella_loop"));
+    const int bw = lib.forLevel("boardwalk_3d");
+    CHECK(bw >= 0 && lib.entries()[static_cast<size_t>(bw)].introFile == "SG_umbrella_intro.wav");
+    const int nm = lib.forLevel("new_meridian_3d");
+    CHECK(nm >= 0 && lib.entries()[static_cast<size_t>(nm)].title == "Moonlit Melee" && lib.entries()[static_cast<size_t>(nm)].introFile == "skull02_1.wav");
+    int moonlit = 0;
+    for (const MusicEntry& e : lib.entries()) moonlit += e.loopStem == "skull02_2";
+    CHECK_EQ(moonlit, 1);
+    CHECK_EQ(lib.forLevel("gehenna_3d"), -1);   // the .lvl's files are not on disk: nothing of its own ...
+    CHECK(lib.forFight("gehenna_3d") >= 0);     // ... and the stand-in is the library's business, not a crash
+    const int rn = lib.forLevel("rooftops_night_3d");
+    CHECK(rn >= 0 && stem(rn) == "sg_other_loop" && lib.entries()[static_cast<size_t>(rn)].introFile == "skull_rooftops_1.wav");
+    const int ub = lib.forLevel("under_the_bridge");
+    CHECK(ub >= 0 && stem(ub) == "sg_other_loop" && lib.entries()[static_cast<size_t>(ub)].introFile.empty());
+    CHECK(ub != rn);   // same loop, different intro: two themes
+    CHECK_EQ(stem(lib.forLevel("rooftops_day_3d")), std::string("skull_rooftops_2"));   // no .lvl line: music.ini's mapping still works
+    CHECK_EQ(lib.forLevel("test1"), -1);
+    // levels the scan was not told about keep the old behaviour
+    MusicLibrary plain;
+    plain.scan(v);
+    CHECK_EQ(stem(plain.forLevel("new_meridian_3d")), std::string("skull02_2"));
+    // the game's own .lvl files (ZDROID_TEST_STAGES=<folder>): every one that has a Music_Loop line yields an intro + loop stem
+    if (const char* dir = std::getenv("ZDROID_TEST_STAGES"); dir && *dir) {
+        int files = 0, withMusic = 0, parsed = 0, cut = 0;
+        std::error_code ec;
+        for (auto it = std::filesystem::recursive_directory_iterator(dir, ec); !ec && it != std::filesystem::recursive_directory_iterator(); it.increment(ec)) {
+            if (it->path().extension() != ".lvl") continue;
+            std::ifstream f(it->path(), std::ios::binary);
+            const std::string text((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+            ++files;
+            const LevelInfo l = parseLevel(text, it->path().stem().string());
+            if (text.find("Music_Loop") == std::string::npos) continue;
+            ++withMusic;
+            if (!l.musicLoop.empty() && !l.musicIntro.empty()) ++parsed;
+            cut += l.musicCutIntro;
+        }
+        std::printf("  real .lvl files: %d, %d name music, %d with an intro + loop, %d cut the intro\n", files, withMusic, parsed, cut);
+        CHECK(files == 0 || (withMusic > 0 && parsed == withMusic));
+    }
+}
+
 // The test level (Training Stage, test1, test2) has its own theme - the "Final Remake" files, named the way a person typed them - when
 // the user's data has them; a music.ini of the user's can give any stage a theme, and wins over the loader's own.
 static void testBonusMusic() {
@@ -5124,6 +5213,7 @@ int main() {
     testVfs();
     testMusicLibrary();
     testBonusMusic();
+    testLevelMusic();
     testTextFormats();
     testGbsSynthetic();
     testGbsAnimSynthetic();

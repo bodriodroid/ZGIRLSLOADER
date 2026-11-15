@@ -53,7 +53,11 @@ public:
     // one that is not playing is dropped when more than kMaxCached are loaded, so a long run of fights does not fill the memory.
     int loadTrack(const Vfs& vfs, std::string_view loopName, std::string_view introName = {}, bool keep = false);
     // The id of a theme that is loaded now (by its loop file name), -1 when it is not (or was dropped).
-    int findTrack(std::string_view loopName) const;
+    // The cache key of a theme: its loop file, plus its intro file when it has one (two themes may share a loop and differ in the intro).
+    static std::string trackKey(std::string_view loopName, std::string_view introName = {});
+    int findTrack(std::string_view loopName, std::string_view introName = {}) const;
+    // Music_InterruptIntro: the intro of the playing theme stops now and its loop starts (no effect when no intro is playing).
+    void cutIntro();
     // Frees a theme's samples (not the one that plays / is wanted).  The slot and its name stay.
     void releaseTrack(int id);
     static constexpr int kMaxCached = 3;

@@ -39,7 +39,8 @@ public:
     const stage3d::Stage& stage() const { return stage_; }
 
     // One frame.  Returns the number of triangles handed to the renderer.
-    int draw(SDL_Renderer* r, const stage3d::Fit& fit, double shakeX, double shakeY);
+    // `timeSec` drives the texture-coordinate animations (the NPCs in the background, scrolling water and smoke); 0 = the still pose.
+    int draw(SDL_Renderer* r, const stage3d::Fit& fit, double shakeX, double shakeY, double timeSec = 0);
 
     // How long the last draw() took (smoothed), for the governor that drops back to the 2D picture on a slow device.
     double drawMs() const { return drawMs_; }

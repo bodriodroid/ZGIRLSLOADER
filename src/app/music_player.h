@@ -31,7 +31,7 @@ public:
     int load(int idx) const {
         const MusicEntry* e = entry(idx);
         if (!ready() || !e || !e->present()) return -1;
-        int id = audio_->findTrack(e->loopFile);
+        int id = audio_->findTrack(e->loopFile, e->introFile);
         if (id < 0) id = audio_->loadTrack(*vfs_, e->loopFile, e->introFile, e->kind == MusicEntry::Kind::Menu || e->kind == MusicEntry::Kind::Select);
         return id;
     }
@@ -47,6 +47,10 @@ public:
             std::printf("[music] now playing: %s (%s)\n", e ? e->title.c_str() : "?", e ? e->loopFile.c_str() : "?");
         }
         return true;
+    }
+    // Music_InterruptIntro: the intro is over now, the loop starts.
+    void cutIntro() const {
+        if (audio_) audio_->cutIntro();
     }
     void stop() const {
         if (audio_) audio_->playMusic(false);

@@ -44,6 +44,7 @@
 #include "moveset.h"
 #include "palfx.h"
 #include "splash.h"
+#include "shadow_layer.h"
 #include "stage3d_gfx.h"
 #include "touch_pad.h"
 #include "ui.h"
@@ -190,6 +191,7 @@ private:
     bool gpu_ = false;           // the GPU route is in use (fx_ ready, level 0)
     bool gpuFailed_ = false;     // dropGpu() ran: stay on the CPU route
     FxPaletteTex palGl_;         // this skin's palette on the GPU
+    ShadowLayer shadowLayer_;    // the floor shadow's off-screen layer (CPU route)
     fx::ScreenFx screenFx_;
     float hueCos_ = 1, hueSin_ = 0, hueAmount_ = 0;
     float tint_[3] = {1, 1, 1};
@@ -531,6 +533,7 @@ private:
     Stage3DGfx stage3d_;
     bool stage3dSlow_ = false;        // Auto: the 3D pass was too slow on this device, the 2D picture takes over for the rest of the match
     int stage3dSlowFrames_ = 0;
+    int stage3dTicks_ = 0;            // sim ticks since the match began: the clock of the scene's animations (presentation only, never saved)
     bool use3d() const { return stage3d_.usable() && dev_.stage3d != devopt::Stage3d::Off && !stage3dSlow_; }
     bool bgPano_ = false;             // a real 2D backdrop (3750x2000 = the .lvl's StageSize): laid over the stage 1 pixel = 1 stage unit
     // render resolution < 100 %: the match is drawn into this smaller texture, then stretched over the window
@@ -551,6 +554,7 @@ private:
     Audio* audio_ = nullptr;
     MusicPlayer* music_ = nullptr;
     int musicIdx_ = -1;           // the stage theme of this match (MusicLibrary index), -1 = none
+    bool musicCutIntro_ = false;  // the .lvl's Music_InterruptIntro: cut the intro when the fight starts
     int menuSel_ = 0, overlayT_ = 0, toastT_ = 0;
     std::string toast_, lang_ = "en";
     Localization loc_;

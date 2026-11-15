@@ -228,14 +228,15 @@ int Audio::loadTrack(const Vfs& vfs, std::string_view loopName, std::string_view
     }
     if (dev_) SDL_LockAudioDevice(dev_);
     int id = -1;
+    const std::string key = trackKey(loopName, introName);
     for (size_t k = 0; k < tracks_.size(); ++k)
-        if (tracks_[k].key == loopName) id = static_cast<int>(k);
+        if (tracks_[k].key == key) id = static_cast<int>(k);
     if (id < 0) {
         tracks_.push_back(Track{});
         id = static_cast<int>(tracks_.size()) - 1;
     }
     Track& t = tracks_[static_cast<size_t>(id)];
-    t.key = std::string(loopName);
+    t.key = key;
     t.loop = std::move(loop);
     t.intro = std::move(intro);
     t.keep = t.keep || keep;
@@ -278,11 +279,28 @@ void Audio::evictLocked() {
     }
 }
 
-int Audio::findTrack(std::string_view loopName) const {
+std::string Audio::trackKey(std::string_view loopName, std::string_view introName) {
+    std::string k(loopName);
+    if (!introName.empty()) k += "|" + std::string(introName);
+    return k;
+}
+
+void Audio::cutIntro() {
+    if (dev_) SDL_LockAudioDevice(dev_);
+    if (introPhase_ && cur_ >= 0) {   // the loop begins on the next frame, like the end of an intro that ran out
+        introPhase_ = false;
+        musicPos_ = 0;
+        inIntro_.store(false);
+    }
+    if (dev_) SDL_UnlockAudioDevice(dev_);
+}
+
+int Audio::findTrack(std::string_view loopName, std::string_view introName) const {
     if (dev_) SDL_LockAudioDevice(dev_);
     int id = -1;
+    const std::string key = trackKey(loopName, introName);
     for (size_t k = 0; k < tracks_.size(); ++k)
-        if (tracks_[k].key == loopName && tracks_[k].loop.frames > 0) id = static_cast<int>(k);
+        if (tracks_[k].key == key && tracks_[k].loop.frames > 0) id = static_cast<int>(k);
     if (dev_) SDL_UnlockAudioDevice(dev_);
     return id;
 }

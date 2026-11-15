@@ -308,6 +308,24 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.6 Dev_Nov-15 - la música la decide el .lvl, sombras de una sola capa, animaciones de textura en el 3D
+
+- **Música del escenario = la que dice su `.lvl`** (`src/core/level.*`, `src/core/music_lib.*`): cada `.lvl` trae `Music_Intro` y `Music_Loop` (p. ej. ASG Labs: `skull04_1` + `skull04_2`).
+  Antes se ignoraban: se elegía por `music.ini` y, si el nombre del escenario no coincidía, sonaba una pista "de relleno" de otro nivel (la mezcla de músicas que veías).
+  Ahora manda el `.lvl`; `music.ini` solo rellena si el `.lvl` no nombra música o sus archivos no están. También se leen `Music_InterruptIntro` (el loop empieza en "FIGHT!" aunque el intro no haya acabado),
+  `Music_Outro` y `Music_Alt_*` (leídos, aún sin usar). Si el `.lvl` nombra una música que no está en tus datos, el registro lo dice: `[music] <nivel>: its .lvl names ...`.
+  La caché de pistas ahora distingue dos temas con el mismo loop y distinto intro (`Audio::trackKey`).
+- **Sombras sin manchas** (`src/app/shadow_layer.*`, `Skin::drawShadow`): cada imagen del personaje (cuerpo, pelo, arma...) se dibujaba como su propia silueta translúcida y donde se solapaban salían parches más oscuros.
+  Ahora todas las siluetas van opacas a una capa fuera de pantalla (a mitad de tamaño, con filtro lineal: borde suave) y la capa se pone una sola vez sobre el suelo con la opacidad y el desvanecimiento por altura de siempre: un único tono, y el suelo se ve a través, como en el original.
+  Si el dispositivo no admite render targets, se dibuja como antes. Comprobado con el renderizador por software (`zdroid_shadow_tests`); **las siluetas reales no se han podido ver aquí (no hay sprites en los datos de prueba): falta mirarlo en el móvil**.
+- **Escenarios 3D con animación de textura** (`src/core/sganim.*`, `stage3d.*`): los `.sga.msb` de tipo "uv_track" (577 de 1460) mueven las coordenadas de textura: NPC del fondo a cuadros (flipbook, 279 archivos),
+  cascadas, humo, pantallas. Se distingue el flipbook (cuadros que se mantienen) del scroll (velocidad constante que suma texturas enteras). Las 883 animaciones de esqueleto siguen sin leerse.
+  El reloj de la escena cuenta ticks de combate (no se guarda en las partidas).
+- Confirmado en los shaders del propio juego (sin implementar todavía): las luces del `.lvl` (`Light: Amb/VitaAmb/Dir/Pt`) **no iluminan el escenario 3D** (los shaders de malla dan textura x color de vértice y nada más)
+  sino a **los personajes**: ambiente + difusa + luz de borde con la normal del sprite, solo en los colores marcados "con luz". Nuestra ruta de CPU dibuja a los luchadores sin esa iluminación, que es la diferencia más visible
+  con el original en la pelea (borde naranja de ASG Labs, etc.) y va a ser lo siguiente. Detalle en `docs/RE_NOTES.md`.
+- Android: `versionCode 19`, `versionName 0.9.6-zgirls-Dev_Nov-15`.
+
 ## Build 0.9.5 Dev_Nov-14 - escenarios 3D: el fondo ya es la escena 3D del juego
 
 - **El escenario se dibuja como escena 3D** (`src/core/sgmesh.*`, `sgscene.*`, `stage3d.*`, `src/app/stage3d_gfx.*`, `docs/STAGES_3D.md`): cada carpeta de escenario trae `background.sgi.msb`

@@ -19,8 +19,15 @@ they were checked against every file of the stage folders of the test data (29 s
 
 ## Not done yet
 
-Skeleton and animation files (`.sgs` / `.sga`): NPCs, smoke, screens and scrolling UVs stand still, skinned meshes are drawn in their bind pose. The `.lvl`'s lights and the `3D` tilt line are not used.
+Skeleton animations (`.sga` files with joints, 883 of 1460, and the `.sgs` rigs): skinned meshes are drawn in their bind pose. The `3D` tilt line is not used.
+The `.lvl`'s `Light:` lines are **not** applied to the stage meshes on purpose: the game's own mesh shaders output texture x vertex colour and nothing else (the lights shade the fighters, see `docs/RE_NOTES.md`).
 The meaning of the instance flag bytes is unknown (kept raw).
+
+## Texture animations
+
+A scene instance may name an `idle` animation (`<name>.sga.msb`). The files with no joints (577 of the 1460) hold a "uv_track": scale / rotation / translation of the texture coordinates per key, keys evenly spaced over the duration, looping (`src/core/sganim.*`).
+A flipbook (the NPCs in the background: the translation jumps a sprite cell per key and keys are held) shows each key for duration / n; a scroll (waterfalls, smoke: constant speed that adds up to whole textures) is interpolated.
+The clock is the fight's tick count / 60, so the scene stops with the match and is never saved.
 
 ## Fallback and the developer option
 

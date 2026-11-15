@@ -348,6 +348,20 @@ static void testTracks(const fs::path& dir) {
     CHECK(a.loadTrack(vfs, "a_loop.wav", "a_intro.wav") == 0 && a.trackCount() == 2);  // same loop name: replaced, not added
     CHECK(a.loadTrack(vfs, "nope.wav") == -1 && a.trackCount() == 2);
     CHECK(a.currentTrack() == 0 && a.intro().frames == 50);
+    {   // two themes may share a loop file and differ in the intro: two tracks, each found by both names
+        Audio c;
+        const int t1 = c.loadTrack(vfs, "a_loop.wav", "a_intro.wav");
+        const int t2 = c.loadTrack(vfs, "a_loop.wav", "b_intro.wav");
+        CHECK(t1 == 0 && t2 == 1 && c.trackCount() == 2);
+        CHECK(c.findTrack("a_loop.wav", "a_intro.wav") == 0 && c.findTrack("a_loop.wav", "b_intro.wav") == 1 && c.findTrack("a_loop.wav") == -1);
+        CHECK(Audio::trackKey("a_loop.wav") == "a_loop.wav" && Audio::trackKey("a_loop.wav", "a_intro.wav") != Audio::trackKey("a_loop.wav", "b_intro.wav"));
+        // Music_InterruptIntro: the intro of the current theme ends at once, the loop takes over
+        CHECK(c.musicInIntro());
+        c.cutIntro();
+        CHECK(!c.musicInIntro());
+        c.cutIntro();   // nothing to cut: harmless
+        CHECK(!c.musicInIntro());
+    }
 
     std::vector<int16_t> out(2 * 44100);
     a.playMusic(true, ta);

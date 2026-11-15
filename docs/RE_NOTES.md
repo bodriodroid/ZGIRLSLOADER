@@ -354,3 +354,18 @@ structure.
 * The `PALFX*` slots (73-79, 46) hold 32-bit patterns: the hash of an effect name from `_palette_effects.ini` (case-insensitive, `h = 5381; h = toupper(c) ^ (h * 33)`;
   the earlier hash attempts failed because they were additive variants).  Scripts copy them around (`PALFXHIT = set-ifnot(FLAG0, BLOCKED)`, `PALFXSELF2 = set(FLAG0, 0)`),
   so the value is chosen by data.  Resolved: see `docs/PALFX.md` (format, playback, what is drawn, what is still interpretation).
+
+## Stage lights, stage meshes, stage music (measured 15-nov)
+
+* **Stage meshes are not lit.** The mesh shaders of a Core (`renderer_*-Rigid`, `-Skin`) output `texture * vertex colour` plus the same super flash / super shadow
+  maths as the sprites, and nothing else: the `.lvl`'s `Light:` lines never reach them. (The vertex colours are nearly all white in the data we have; the shader does multiply by them.)
+* **The `.lvl` lights are for the fighters.** `Amb` = ambient colour, `Dir` (up to 4: colour + direction of travel, unit length), `Pt` (up to 4: colour, position in stage units, radius);
+  colours are 0..255 integers. In the `PaletteGradient` fragment shader a lit texel becomes `base * (ambient + diffuse) + specular`, mixed in by the palette entry's lit flag.
+  Diffuse of a directional light is `clamp(-dir.z, 0, 1) * colour` (the normal is NOT used: fighters are flat planes facing the camera); the rim ("specular") is
+  `clamp(-dot(normal, dir'), 0, 1) * colour` with `dir'` = the direction with its z squashed to >= 0 and renormalised. Point lights: attenuation `1 - clamp(dist / radius)`, diffuse `clamp(dirToLight.z, 0, 1)`,
+  rim from the direction with z squashed to <= 0, damped near the sprite when the light is behind it. `VitaAmb` (values may exceed 255) is the fighters' ambient in the shipped files.
+  The loader does not apply any of this yet (the CPU path is "the same gradient / line maths without lighting").
+* **Music lines of a `.lvl`:** `Music_Intro` / `Music_Loop` name the stage's own theme (file stems), `Music_InterruptIntro N` (>0: the loop starts at FIGHT! even if the intro has not ended),
+  `Music_Outro`, `Music_Alt_Intro` / `Music_Alt_Loop` (replace the intro / loop when the game option "alternate stage music" is Yes; `NONE` = no intro). The value NONE means none.
+  A stage that names none falls back to the music table.
+

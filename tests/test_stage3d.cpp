@@ -30,6 +30,7 @@ namespace {
 struct W {
     std::vector<uint8_t> b;
     void u64(uint64_t v) { for (int i = 7; i >= 0; --i) b.push_back(static_cast<uint8_t>(v >> (8 * i))); }
+    void u32(uint32_t v) { for (int i = 3; i >= 0; --i) b.push_back(static_cast<uint8_t>(v >> (8 * i))); }
     void u16(uint16_t v) { b.push_back(static_cast<uint8_t>(v >> 8)); b.push_back(static_cast<uint8_t>(v)); }
     void u8(uint8_t v) { b.push_back(v); }
     void str(const std::string& s) { u64(s.size()); b.insert(b.end(), s.begin(), s.end()); }
@@ -313,6 +314,78 @@ int main() {
         stage3d::Cam bad;   // not ok
         stage3d::render(st, bad, opt, f1);
         CHECK(f1.emitted == 0);
+    }
+    {   // texture-coordinate animation: the scene gives a piece an "idle" animation, its file moves the texture coordinates with the clock
+        std::map<std::string, std::vector<uint8_t>> af;
+        af["plane.sgm.msb"] = files["plane.sgm.msb"];
+        af["wall.sgm.msb"] = files["wall.sgm.msb"];
+        af["sprite.sgm.msb"] = quadMesh("npc", -50, 0, 50, 80);
+        {
+            W a;   // 3 keys, u = 0, 0.1, 0.2 over 2 s: a flipbook (each key held 2/3 s)
+            a.str("3.0");
+            for (uint32_t v : {3u, 0u, 0u, 0u, 1u}) a.u32(v);   // a, b, joints, c, tracks
+            a.f32(2.0f);
+            a.str("uv_track");
+            a.u64(3);
+            for (int i = 0; i < 3; ++i) { a.f32(1); a.f32(1); }
+            a.u64(3);
+            for (int i = 0; i < 3; ++i) a.f32(0);
+            a.u64(3);
+            for (float u : {0.0f, 0.1f, 0.2f}) { a.f32(u); a.f32(0); }
+            af["walk.sga.msb"] = a.b;
+        }
+        W s2;   // a 2.1 scene: 6 flag bytes per instance, then the animation list
+        s2.str("2.1");
+        s2.u64(3);
+        auto inst21 = [&](const std::string& path, const std::string& mesh, float tz, bool anim) {
+            s2.str(path);
+            s2.str(mesh);
+            matrixTo(s2, 0, 0, tz);
+            for (int i = 0; i < 6; ++i) s2.u8(0);
+            if (anim) {
+                s2.u64(1);
+                s2.str("idle");
+                s2.str("walk");
+            } else {
+                s2.u64(0);
+            }
+        };
+        inst21("FightPlane", "plane", 0, false);
+        inst21("|Wall", "wall", -100, false);
+        inst21("|Sprite", "sprite", -50, true);
+        af["background.sgi.msb"] = s2.b;
+        stage3d::Stage as;
+        std::string aerr;
+        CHECK(stage3d::load(readerOf(&af), as, &aerr));
+        CHECK(as.pieces.size() == 2 && as.anims.size() == 1);
+        CHECK(as.pieces[0].anim == -1 && as.pieces[1].anim == 0 && as.pieces[1].animated);
+        const stage3d::Cam ac = stage3d::fitCamera(as, fit);
+        auto minU = [&](double t, int piece) {
+            stage3d::Options o;
+            o.time = t;
+            o.maxEdgePx = 1e9;
+            stage3d::Frame f;
+            stage3d::render(as, ac, o, f);
+            double m = 1e9;
+            for (const auto& b : f.batches)
+                if (b.piece == piece)
+                    for (const auto& tr : b.tris)
+                        for (int k = 0; k < 3; ++k) m = std::min(m, static_cast<double>(tr.u[k]));
+            return m;
+        };
+        CHECK(NEAR(minU(0.0, 1), 0.0, 1e-6));
+        CHECK(NEAR(minU(0.7, 1), 0.1, 1e-6));
+        CHECK(NEAR(minU(1.4, 1), 0.2, 1e-6));
+        CHECK(NEAR(minU(2.0, 1), 0.0, 1e-6));    // loops
+        CHECK(NEAR(minU(0.7, 0), 0.0, 1e-6));    // the wall has no animation: untouched at every time
+        CHECK(NEAR(minU(1.4, 0), 0.0, 1e-6));
+        // a skeleton animation (joint count > 0) is ignored: the piece stays in its pose
+        std::vector<uint8_t> skel = af["walk.sga.msb"];
+        skel[8 + 3 + 8 + 3] = 7;   // third header word's low byte: joints = 7 (after str "3.0" and words a, b)
+        af["walk.sga.msb"] = skel;
+        stage3d::Stage ks;
+        CHECK(stage3d::load(readerOf(&af), ks, &aerr));
+        CHECK(ks.anims.empty() && ks.pieces.size() == 2 && ks.pieces[1].anim == -1 && ks.pieces[1].animated);
     }
     {   // loading failures
         std::map<std::string, std::vector<uint8_t>> none;

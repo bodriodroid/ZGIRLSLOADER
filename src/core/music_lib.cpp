@@ -122,7 +122,7 @@ static const char* const kBonusMusicIni =
     "Stage: Training_Stage, Test1, Test2\n"
     "Files: Hymn For The Weekend Final Remake Intro, Hymn For The Weekend Final Remake Loop\n";
 
-void MusicLibrary::scan(const Vfs& vfs) {
+void MusicLibrary::scan(const Vfs& vfs, const std::vector<LevelMusic>& levelMusic) {
     entries_.clear();
     unsupported_ = 0;
     std::set<std::string> used;   // loop / intro stems music.ini already names (letters and digits only)
@@ -166,6 +166,39 @@ void MusicLibrary::scan(const Vfs& vfs) {
         if (readFile(winner, bytes)) addTracks(std::string(bytes.begin(), bytes.end()), 1, false);
     }
     addTracks(kBonusMusicIni, -1, true);
+    // The stages' own music lines.  A theme music.ini already lists (same intro + loop) just learns which levels name it; anything else is
+    // a new theme of its own, so that a stage never plays a neighbour's music because music.ini spells its name differently.
+    for (const LevelMusic& lm : levelMusic) {
+        std::string loopStem = trimmed(lm.loop), introStem = trimmed(lm.intro);
+        if (loopStem.empty()) continue;
+        if (normKey(introStem) == "blankmusic") introStem.clear();
+        const std::string lvKey = normalise(lm.level), loopKey = normKey(loopStem), introKey = normKey(introStem);
+        int match = -1;
+        std::string title;
+        for (size_t i = 0; i < entries_.size(); ++i) {
+            const MusicEntry& o = entries_[i];
+            if (o.kind != MusicEntry::Kind::Stage || normKey(o.loopStem) != loopKey) continue;
+            if (title.empty()) title = o.title;
+            if (normKey(o.introStem) == introKey) match = static_cast<int>(i);
+        }
+        if (match < 0) {
+            MusicEntry e;
+            e.title = title.empty() ? titleCase(loopStem) : title;
+            e.kind = MusicEntry::Kind::Stage;
+            e.rank = 1;
+            e.loopStem = loopStem;
+            e.introStem = introStem;
+            e.loopFile = wavs.find(loopStem);
+            if (e.loopFile.empty() && (vfs.exists(loopStem + ".ogg") || vfs.exists(loopStem + ".mp3"))) ++unsupported_;
+            if (!introStem.empty()) e.introFile = wavs.find(introStem);
+            used.insert(loopKey);
+            if (!introKey.empty()) used.insert(introKey);
+            entries_.push_back(std::move(e));
+            match = static_cast<int>(entries_.size()) - 1;
+        }
+        std::vector<std::string>& lv = entries_[static_cast<size_t>(match)].levels;
+        if (std::find(lv.begin(), lv.end(), lvKey) == lv.end()) lv.push_back(lvKey);
+    }
     // every other long .wav that is not a sound effect or a voice: grouped by name into intro + loop
     struct Group { std::string intro, loop, any; };
     std::map<std::string, Group> groups;
@@ -239,6 +272,11 @@ std::string MusicLibrary::stems(size_t max) const {
 }
 
 int MusicLibrary::forLevel(const std::string& levelName) const {
+    const std::string own = normalise(levelName);
+    for (size_t i = 0; i < entries_.size(); ++i) {   // the stage's own .lvl decides
+        const MusicEntry& e = entries_[i];
+        if (e.kind == MusicEntry::Kind::Stage && e.present() && std::find(e.levels.begin(), e.levels.end(), own) != e.levels.end()) return static_cast<int>(i);
+    }
     const std::string world = levelWorld(levelName);
     int best = -1;
     for (size_t i = 0; i < entries_.size(); ++i) {

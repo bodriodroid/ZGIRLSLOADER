@@ -355,7 +355,9 @@ struct App {
         story.setGameData(&gd);
         gallery.setGameData(&gd);
         credits.setGameData(&gd);
-        musicLib.scan(gd.vfs());
+        std::vector<LevelMusic> levelMusic;   // what each stage's own .lvl says about its music: it decides what a fight plays
+        for (const LevelInfo& l : inv.levels) levelMusic.push_back(LevelMusic{l.name, l.musicIntro, l.musicLoop});
+        musicLib.scan(gd.vfs(), levelMusic);
         musicPlayer.setup(&audio, &musicLib, &gd.vfs());
         std::printf("play: %zu character(s), %zu stage(s)\n", inv.characters.size(), inv.levels.size());
     }

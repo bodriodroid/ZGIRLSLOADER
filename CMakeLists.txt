@@ -49,6 +49,7 @@ add_library(zengine_core STATIC
   src/core/warp.cpp
   src/core/sgmesh.cpp
   src/core/sgscene.cpp
+  src/core/sganim.cpp
   src/core/stage3d.cpp
   src/core/level.cpp
   src/core/fight.cpp
@@ -175,6 +176,10 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   target_link_libraries(zdroid_sgscene_tests PRIVATE zengine_core)
   add_test(NAME zdroid_sgscene_tests COMMAND zdroid_sgscene_tests)
   set_tests_properties(zdroid_sgscene_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_STAGES=${ZDROID_TEST_STAGES}")
+  add_executable(zdroid_sganim_tests tests/test_sganim.cpp)
+  target_link_libraries(zdroid_sganim_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_sganim_tests COMMAND zdroid_sganim_tests)
+  set_tests_properties(zdroid_sganim_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_STAGES=${ZDROID_TEST_STAGES}")
   add_executable(zdroid_stage3d_tests tests/test_stage3d.cpp)
   target_link_libraries(zdroid_stage3d_tests PRIVATE zengine_core)
   add_test(NAME zdroid_stage3d_tests COMMAND zdroid_stage3d_tests)
@@ -232,7 +237,7 @@ if(ZDROID_BUILD_VIEWER)
   endif()
   if(ZDROID_SDL2_TARGET)
     # viewer sources: the loader screens (zdroid_viewer.cpp) + the UI layer + the Play screen
-    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/gallery.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/audio.cpp src/app/splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp src/app/fx_gl.cpp src/app/stage3d_gfx.cpp)
+    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/gallery.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/audio.cpp src/app/splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp src/app/fx_gl.cpp src/app/stage3d_gfx.cpp src/app/shadow_layer.cpp)
     if(ANDROID)
       # SDLActivity calls SDL_main() inside a library that must be called "main"
       add_library(main SHARED ${ZDROID_VIEWER_SOURCES})
@@ -262,6 +267,14 @@ if(ZDROID_BUILD_VIEWER)
         target_link_libraries(zdroid_overlay_tests PRIVATE zengine_core ${ZDROID_SDL2_TARGET})
         if(NOT WIN32)
           target_link_libraries(zdroid_overlay_tests PRIVATE dl)
+        endif()
+        # the floor shadow layer: overlapping silhouettes stay one even tone, fade with height (software renderer on an off-screen surface)
+        add_executable(zdroid_shadow_tests tests/test_shadow_layer.cpp src/app/shadow_layer.cpp)
+        target_include_directories(zdroid_shadow_tests PRIVATE src/app)
+        target_link_libraries(zdroid_shadow_tests PRIVATE zengine_core ${ZDROID_SDL2_TARGET})
+        add_test(NAME zdroid_shadow_tests COMMAND zdroid_shadow_tests)
+        if(NOT WIN32)
+          target_link_libraries(zdroid_shadow_tests PRIVATE dl)
         endif()
         # the PAFX programs inside SDL's real GLES2 renderer (needs Mesa / EGL surfaceless; prints SKIP without it)
         add_executable(zdroid_fx_gl_tests tests/test_fx_gl.cpp src/app/fx_gl.cpp)

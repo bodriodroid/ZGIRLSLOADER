@@ -33,6 +33,19 @@ int toInt(const std::string& s, int def = 0) {
     }
 }
 
+std::string lowerKey(std::string s) {
+    for (char& c : s)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c + 32);
+    return s;
+}
+
+// "Music_Intro Some Name With Spaces" names one file; the tokens were split on blanks, so put them back together
+std::string joined(const std::vector<std::string>& tk) {
+    std::string o;
+    for (const std::string& t : tk) o += (o.empty() ? "" : " ") + t;
+    return o;
+}
+
 double toDbl(const std::string& s, double def = 0) {
     try {
         return std::stod(s);
@@ -81,6 +94,15 @@ LevelInfo parseLevel(std::string_view text, const std::string& name, const std::
             lv.shadowDist = toInt(tk[0], lv.shadowDist);
         } else if (key == "2D" && !tk.empty()) {
             lv.background2D = tk[0];
+        } else if (key.size() > 6 && (key[0] == 'M' || key[0] == 'm') && lowerKey(key).compare(0, 6, "music_") == 0 && !tk.empty()) {
+            const std::string k = lowerKey(key);
+            const std::string v = lowerKey(joined(tk)) == "none" ? std::string() : joined(tk);
+            if (k == "music_intro") lv.musicIntro = v;
+            else if (k == "music_loop") lv.musicLoop = v;
+            else if (k == "music_outro") lv.musicOutro = v;
+            else if (k == "music_alt_intro") lv.musicAltIntro = v;
+            else if (k == "music_alt_loop") lv.musicAltLoop = v;
+            else if (k == "music_interruptintro") lv.musicCutIntro = toInt(tk[0], 0) > 0;
         } else if (key == "CAMERA" && !tk.empty()) {
             lv.cameraFov = toDbl(tk[0], lv.cameraFov);
         } else if (key == "Light" && tk.size() >= 4) {

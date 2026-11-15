@@ -32,6 +32,7 @@ bool load(const ReadFn& read, Stage& out, std::string* err) {
     std::string e;
     if (!sgscene::parse(bytes, scene, &e)) return fail("background.sgi.msb: " + e);
 
+    std::map<std::string, int> animIndex;   // animation file name -> Stage::anims (-1: not a texture animation)
     std::map<std::string, std::shared_ptr<const sgmesh::Mesh>> meshes;   // instances share meshes
     for (const sgscene::Instance& in : scene.instances) {
         if (!in.hasGeometry()) continue;
@@ -88,6 +89,33 @@ bool load(const ReadFn& read, Stage& out, std::string* err) {
                 uvLo[k] = std::min(uvLo[k], v.uv[k]);
                 uvHi[k] = std::max(uvHi[k], v.uv[k]);
             }
+        if (pc.animated) {   // the "idle" slot loops; only texture-coordinate animations are played so far
+            const std::string an = in.anim("idle");
+            auto it2 = animIndex.find(an);
+            if (it2 == animIndex.end()) {
+                std::vector<uint8_t> ab;
+                sganim::Anim a;
+                int idx = -1;
+                if (!an.empty() && read(an + ".sga.msb", ab) && sganim::parse(ab, a, nullptr)) {
+                    idx = static_cast<int>(out.anims.size());
+                    out.anims.push_back(std::move(a));
+                }
+                it2 = animIndex.emplace(an, idx).first;
+            }
+            pc.anim = it2->second;
+            if (pc.anim >= 0) {   // a scrolling texture runs past 0..1 and has to repeat
+                const sganim::Anim& a = out.anims[static_cast<size_t>(pc.anim)];
+                const sganim::UvTrack& t = a.tracks[0];
+                const float baseLo[2] = {uvLo[0], uvLo[1]}, baseHi[2] = {uvHi[0], uvHi[1]};
+                for (size_t k = 0; k < t.keys(); ++k)
+                    for (int ax = 0; ax < 2; ++ax) {
+                        const float sc = t.scale[2 * k + static_cast<size_t>(ax)], tr = t.trans[2 * k + static_cast<size_t>(ax)];
+                        const float lo = baseLo[ax] * sc + tr, hi = baseHi[ax] * sc + tr;
+                        uvLo[ax] = std::min({uvLo[ax], lo, hi});
+                        uvHi[ax] = std::max({uvHi[ax], lo, hi});
+                    }
+            }
+        }
         pc.tiled = uvLo[0] < -0.35f || uvLo[1] < -0.35f || uvHi[0] > 1.35f || uvHi[1] > 1.35f;
         pc.idx = mesh->idx;
         out.pieces.push_back(std::move(pc));
@@ -324,14 +352,18 @@ void render(const Stage& st, const Cam& cam, const Options& opt, Frame& out) {
     for (const Order& o : order) {
         const Piece& p = st.pieces[static_cast<size_t>(o.piece)];
         vv.resize(p.v.size());
+        sganim::Uv uvx;
+        if (p.anim >= 0) uvx = sganim::sample(st.anims[static_cast<size_t>(p.anim)], opt.time);
         for (size_t i = 0; i < p.v.size(); ++i) {
             const Vtx& s = p.v[i];
             VV& d = vv[i];
             d.x = static_cast<double>(s.p[0]) - cam.x;
             d.y = static_cast<double>(s.p[1]) - cam.y;
             d.d = cam.z - static_cast<double>(s.p[2]);
-            d.u = s.uv[0];
-            d.v = s.uv[1];
+            float u = s.uv[0], v = s.uv[1];
+            if (p.anim >= 0) uvx.apply(u, v);
+            d.u = u;
+            d.v = v;
             for (int k = 0; k < 4; ++k) d.c[k] = s.c[k];
         }
         keys.clear();

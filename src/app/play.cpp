@@ -140,6 +140,7 @@ void Skin::freeAll(bool sdlAlive) {
     bytes_ = 0;
     if (palGl_.valid() && fx_) fx_->destroy(palGl_);
     palGl_ = FxPaletteTex{};
+    shadowLayer_.release(sdlAlive);
 }
 
 void Skin::setFx(FxRenderer* fx) {
@@ -451,10 +452,16 @@ int Skin::drawShadow(SDL_Renderer* r, uint16_t idx, double feetX, double floorY,
     }
     int drawn = 0;
     const double dist = std::max(50.0, fadeDist);
-    auto alphaAt = [&](double heightAboveFloor) {
+    // opacity (0..1) of the shadow at a height above the floor
+    auto opacityAt = [&](double heightAboveFloor) {
         const double k = fade ? std::clamp(1.0 - heightAboveFloor / dist, 0.0, 1.0) : std::clamp(1.0 - 0.5 * air / dist, 0.0, 1.0);
-        return static_cast<Uint8>(std::lround(255.0 * std::clamp(alpha * k, 0.0, 1.0)));
+        return std::clamp(alpha * k, 0.0, 1.0);
     };
+    struct Quad {
+        SDL_Texture* tex;
+        double x0, x1, yTop, yBot;
+    };
+    std::vector<Quad> quads;
     for (int slot = 0; slot < foit::kSlots; ++slot) {
         if (fr->img[slot].placeholder()) continue;
         const Tex& t = image(r, idx, slot);
@@ -471,27 +478,62 @@ int Skin::drawShadow(SDL_Renderer* r, uint16_t idx, double feetX, double floorY,
         // heights above the feet of the image's top and bottom edges (stage units; the art's y grows downwards)
         const double hTop = -dy, hBot = -(dy + t.fullH);
         // each point lands on the floor pushed towards the camera by its height above the floor: the silhouette is mirrored and squashed
-        const double yTop = floorY + (air + hTop) * flat * scale, yBot = floorY + (air + hBot) * flat * scale;
-        Uint8 aTop = alphaAt(air + hTop);
-        const Uint8 aBot = alphaAt(air + hBot);
-        if (aTop == 0 && aBot == 0) continue;
+        quads.push_back(Quad{t.t, x0, x1, floorY + (air + hTop) * flat * scale, floorY + (air + hBot) * flat * scale});
+    }
+    if (quads.empty()) return 0;
+    const float u0 = faceRight ? 0.0f : 1.0f, u1 = faceRight ? 1.0f : 0.0f;
+    // One shadow, one tone: the silhouettes go opaque onto a layer that is laid over the picture once (shadow_layer.h), so that the places where
+    // two images overlap do not come out darker, and the floor shows through the way it does in the game.
+    if (flat * scale > 1e-6) {
+        std::vector<ShadowLayer::Piece> pieces;
+        double yMin = 1e30, yMax = -1e30;
+        for (const Quad& q : quads) {
+            ShadowLayer::Piece p;
+            p.tex = q.tex;
+            p.x0 = static_cast<float>(q.x0);
+            p.x1 = static_cast<float>(q.x1);
+            p.yTop = static_cast<float>(q.yTop);
+            p.yBot = static_cast<float>(q.yBot);
+            p.u0 = u0;
+            p.u1 = u1;
+            pieces.push_back(p);
+            yMin = std::min({yMin, q.yTop, q.yBot});
+            yMax = std::max({yMax, q.yTop, q.yBot});
+        }
+        // the opacity is piecewise linear in the height above the floor, and that height is linear in the row (row = floor + height * flat * scale):
+        // stops at the ends and where it bends (at the floor, at the fade distance)
+        auto heightAt = [&](double y) { return (y - floorY) / (flat * scale); };
+        std::vector<double> hs = {heightAt(yMin), heightAt(yMax)};
+        for (double h : {0.0, dist})
+            if (h > hs[0] + 1e-6 && h < hs[1] - 1e-6) hs.push_back(h);
+        std::sort(hs.begin(), hs.end());
+        std::vector<ShadowLayer::Stop> stops;
+        for (double h : hs) stops.push_back(ShadowLayer::Stop{static_cast<float>(floorY + h * flat * scale), static_cast<float>(opacityAt(h))});
+        const int n = shadowLayer_.draw(r, pieces, stops, 0.5f);
+        if (n >= 0) return n;
+    }
+    // no render targets here: every image on its own, the old way
+    for (const Quad& q : quads) {
+        const double hTop = (q.yTop - floorY) / (flat * scale), hBot = (q.yBot - floorY) / (flat * scale);   // heights above the floor
+        Uint8 aTop = static_cast<Uint8>(std::lround(255.0 * opacityAt(hTop)));
+        const Uint8 aBotV = static_cast<Uint8>(std::lround(255.0 * opacityAt(hBot)));
+        if (aTop == 0 && aBotV == 0) continue;
         // SDL's software renderer treats four equal vertex colours as a plain modulation of the texture and leaves it set: the
         // next sprite of that texture would come out as the shadow.  One step of difference keeps it on the per-vertex path.
-        if (aTop == aBot) aTop = aBot > 1 ? static_cast<Uint8>(aBot - 1) : static_cast<Uint8>(aBot + 1);
-        const float u0 = faceRight ? 0.0f : 1.0f, u1 = faceRight ? 1.0f : 0.0f;
+        if (aTop == aBotV) aTop = aBotV > 1 ? static_cast<Uint8>(aBotV - 1) : static_cast<Uint8>(aBotV + 1);
         SDL_Vertex v[4];
         // the mirrored image: its top edge (head) is the one that lies furthest from the feet
-        v[0].position = {static_cast<float>(x0), static_cast<float>(yTop)};
-        v[1].position = {static_cast<float>(x1), static_cast<float>(yTop)};
-        v[2].position = {static_cast<float>(x0), static_cast<float>(yBot)};
-        v[3].position = {static_cast<float>(x1), static_cast<float>(yBot)};
+        v[0].position = {static_cast<float>(q.x0), static_cast<float>(q.yTop)};
+        v[1].position = {static_cast<float>(q.x1), static_cast<float>(q.yTop)};
+        v[2].position = {static_cast<float>(q.x0), static_cast<float>(q.yBot)};
+        v[3].position = {static_cast<float>(q.x1), static_cast<float>(q.yBot)};
         v[0].tex_coord = {u0, 0.0f};
         v[1].tex_coord = {u1, 0.0f};
         v[2].tex_coord = {u0, 1.0f};
         v[3].tex_coord = {u1, 1.0f};
-        for (int i = 0; i < 4; ++i) v[i].color = SDL_Color{0, 0, 0, i < 2 ? aTop : aBot};
+        for (int i = 0; i < 4; ++i) v[i].color = SDL_Color{0, 0, 0, i < 2 ? aTop : aBotV};
         static const int idxs[6] = {0, 1, 2, 2, 1, 3};
-        SDL_RenderGeometry(r, t.t, v, 4, idxs, 6);
+        SDL_RenderGeometry(r, q.tex, v, 4, idxs, 6);
         ++drawn;
     }
     return drawn;
@@ -987,6 +1029,7 @@ void PlayScreen::beginLoad(const std::string& key) {
     stage3d_.reset(ren_);
     stage3dSlow_ = false;
     stage3dSlowFrames_ = 0;
+    stage3dTicks_ = 0;
     shadow_.reset(ren_);
     hudPortraitsReset();
     bgName_.clear();
@@ -1076,8 +1119,15 @@ void PlayScreen::beginLoad(const std::string& key) {
         if (const char* e = std::getenv("ZDROID_STAGE3D_MAXTEX")) maxTex = std::clamp(std::atoi(e), 256, 4096);
         job->bg3 = std::async(std::launch::async, [jp, gd, name, maxTex]() { return Stage3DGfx::loadCpu(*gd, name, maxTex, jp->cpu3, &jp->err3); });
     }
-    // the stage's theme (music.ini) decodes beside everything else; it starts with the match
+    // the stage's theme (the .lvl's Music_Intro / Music_Loop, else music.ini) decodes beside everything else; it starts with the match
     musicIdx_ = (music_ && music_->lib() && lv) ? music_->lib()->forFight(lv->name) : -1;
+    musicCutIntro_ = lv && lv->musicCutIntro;
+    if (lv && !lv->musicLoop.empty() && music_ && music_->lib()) {   // say when the stage's own music is not what plays, and why
+        const MusicEntry* e = music_->entry(musicIdx_);
+        if (!e || MusicLibrary::normalise(e->loopStem) != MusicLibrary::normalise(lv->musicLoop))
+            std::printf("[music] %s: its .lvl names %s / %s, which are not in the mounted data; playing %s instead\n", lv->name.c_str(), lv->musicIntro.c_str(),
+                        lv->musicLoop.c_str(), e ? e->loopStem.c_str() : "nothing");
+    }
     if (musicIdx_ >= 0) {
         const MusicPlayer* mp = music_;
         const int idx = musicIdx_;
@@ -1726,6 +1776,10 @@ void PlayScreen::syncFoitFlow() {
                 break;
             case M::Fight:   // "Action!" after the card; nothing when there was no intro
                 phase_ = Phase::Fight;
+                if (musicCutIntro_ && music_) {   // Music_InterruptIntro: the loop starts at FIGHT! even if the intro has not finished
+                    music_->cutIntro();
+                    musicCutIntro_ = false;
+                }
                 if (introStage_ == 1) {
                     introStage_ = 2;
                     introT_ = kActionTicks;
@@ -1790,6 +1844,7 @@ void PlayScreen::stepSim(uint16_t p1, uint16_t p2) {
     }
     int simulated = 0;
     sess_->addLocalInput(p1, p2, &simulated);
+    ++stage3dTicks_;
     hudTick();
     if (foitMode_) {
         syncFoitFlow();
@@ -2381,7 +2436,7 @@ void PlayScreen::drawWorld(Ui& ui, SDL_Renderer* r) {
         fit.s = s / units;
         fit.cx = cx * units;
         fit.floorY = floorYd;
-        stage3d_.draw(r, fit, shx, 0);
+        stage3d_.draw(r, fit, shx, 0, static_cast<double>(stage3dTicks_) / 60.0);
         // Auto: a device that spends too long on the 3D pass goes back to the picture (the match is never slowed for a backdrop)
         if (dev_.stage3d == devopt::Stage3d::Auto && !stage3dSlow_) {
             stage3dSlowFrames_ = stage3d_.drawMs() > 9.0 ? stage3dSlowFrames_ + 1 : std::max(0, stage3dSlowFrames_ - 2);

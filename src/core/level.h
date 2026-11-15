@@ -9,6 +9,8 @@
 //   2D stages/textures/2D/stage_asg_labs.dds   the pre-rendered backdrop (low-end / 2D mode)
 //   Light: Amb 85 96 122       ambient light, used here to tint the fallback sky
 //   CAMERA 66                  field of view, irrelevant for a 2D renderer
+//   Music_Intro skull04_1      the stage's own music: the file stems of the intro (played once) and the loop (the fight); Music_InterruptIntro 1
+//   Music_Loop  skull04_2      starts the loop at "FIGHT!" even when the intro has not finished; Music_Outro / Music_Alt_* are read, not used
 //
 // Parsing is tolerant: unknown lines are skipped, never fatal.
 #pragma once
@@ -34,6 +36,9 @@ struct LevelInfo {
     double cameraFov = 66;
     int ambient[3] = {85, 96, 122};
     std::string background2D;     // texture named by the "2D <path>" line (may be empty)
+    // the stage's own music (file stems as written in the .lvl, "" = none; the value NONE means none too)
+    std::string musicIntro, musicLoop, musicOutro, musicAltIntro, musicAltLoop;
+    bool musicCutIntro = false;   // Music_InterruptIntro > 0: the loop starts at "FIGHT!" even if the intro has not completed
     std::vector<LevelLight> lights;
     std::vector<std::string> warnings;
     std::string error;            // non-empty if the file could not be read at all
