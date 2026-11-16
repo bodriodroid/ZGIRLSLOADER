@@ -24,12 +24,14 @@ int popcount8(uint8_t x) {
 
 // Assembles the 16x16 blocks of the decoded strips into full planes (sg_extract.place).
 void placeCells(int w, int h, int n, const uint8_t* mask, size_t maskLen, const std::vector<uint8_t>& grad,
-                const std::vector<uint8_t>& band, ArtPlanes& out) {
+                const std::vector<uint8_t>& band, ArtPlanes& out, const std::vector<uint8_t>* normal) {
     const int W = w * 16, H = h * 16, sw = n * 16;
     out.width = W;
     out.height = H;
     out.band.assign(static_cast<size_t>(W) * H, 0);
     out.grad.assign(static_cast<size_t>(W) * H, 0);
+    if (normal) out.normal.assign(static_cast<size_t>(W) * H, 0);
+    else out.normal.clear();
     int k = 0;
     const int cells = w * h;
     for (int j = 0; j < cells; ++j) {
@@ -44,16 +46,32 @@ void placeCells(int w, int h, int n, const uint8_t* mask, size_t maskLen, const 
             const size_t p = base + static_cast<size_t>(row) * W;
             std::memcpy(&out.band[p], &band[s], 16);
             std::memcpy(&out.grad[p], &grad[s], 16);
+            if (normal) std::memcpy(&out.normal[p], &(*normal)[s], 16);
         }
         ++k;
     }
 }
 
 namespace {
-void place(const ArtRecord& r, const std::vector<uint8_t>& grad, const std::vector<uint8_t>& band, ArtPlanes& out) {
-    placeCells(r.w, r.h, r.n, r.mask.data(), r.mask.size(), grad, band, out);
+void place(const ArtRecord& r, const std::vector<uint8_t>& grad, const std::vector<uint8_t>& band, ArtPlanes& out,
+           const std::vector<uint8_t>* normal = nullptr) {
+    placeCells(r.w, r.h, r.n, r.mask.data(), r.mask.size(), grad, band, out, normal);
 }
 }  // namespace
+
+void integrateNormalColumns(std::vector<uint8_t>& strip, size_t sw) {
+    if (sw == 0 || strip.size() < sw * 16) return;
+    for (size_t y = 1; y < 16; ++y) {
+        uint8_t* row = &strip[y * sw];
+        const uint8_t* up = &strip[(y - 1) * sw];
+        for (size_t x = 0; x < sw; ++x) row[x] = static_cast<uint8_t>(row[x] + up[x]);
+    }
+}
+
+void normalOf(uint8_t texel, float& nx, float& ny) {
+    nx = std::max(-1.0f, (static_cast<int>(texel >> 4) - 8) / 7.0f);
+    ny = std::max(-1.0f, (static_cast<int>(texel & 15) - 8) / 7.0f);
+}
 
 bool rleDecode(const uint8_t* src, size_t srcLen, size_t start, size_t end, size_t limit, std::vector<uint8_t>& out) {
     out.clear();
@@ -183,7 +201,7 @@ void interpolateOddToneRows(std::vector<uint8_t>& grad, size_t sw) {
     }
 }
 
-bool ArtFile::decode(size_t idx, ArtPlanes& out) const {
+bool ArtFile::decode(size_t idx, ArtPlanes& out, bool withNormal) const {
     if (idx >= records_.size()) return false;
     const ArtRecord& r = records_[idx];
     const std::vector<uint8_t>& src = (r.src == ArtRecord::Src::Art) ? art_ : artPt_;
@@ -196,7 +214,12 @@ bool ArtFile::decode(size_t idx, ArtPlanes& out) const {
         band.size() != P)
         return false;
     if (r.flagged()) interpolateOddToneRows(grad, static_cast<size_t>(r.n) * 16);
-    place(r, grad, band, out);
+    std::vector<uint8_t> normal;
+    if (withNormal) {
+        if (!rleDecode(src.data(), src.size(), o, o + r.sizeNormal, P, normal) || normal.size() != P) return false;
+        integrateNormalColumns(normal, static_cast<size_t>(r.n) * 16);
+    }
+    place(r, grad, band, out, withNormal ? &normal : nullptr);
     return true;
 }
 
@@ -242,9 +265,15 @@ bool readDds(const uint8_t* d, size_t size, Palette& out, std::string* err) {
         return s;
     };
     const int sr = shift(rm), sg = shift(gm), sb = shift(bm);
+    const uint32_t am = bits == 32 ? rd32(d + 104) : 0;   // the alpha mask: the "lit" flag lives there
+    int sa = 0;
+    if (am)
+        while (!((am >> sa) & 1)) ++sa;
     out.tones = static_cast<int>(w);
     out.bands = static_cast<int>(h);
     out.rgb.resize(static_cast<size_t>(w) * h * 3);
+    out.alpha.clear();
+    if (am) out.alpha.resize(static_cast<size_t>(w) * h);
     for (uint32_t y = 0; y < h; ++y)
         for (uint32_t x = 0; x < w; ++x) {
             const uint32_t p = rd32(d + 128 + (static_cast<size_t>(y) * w + x) * 4);
@@ -252,6 +281,7 @@ bool readDds(const uint8_t* d, size_t size, Palette& out, std::string* err) {
             o[0] = static_cast<uint8_t>((p & rm) >> sr);
             o[1] = static_cast<uint8_t>((p & gm) >> sg);
             o[2] = static_cast<uint8_t>((p & bm) >> sb);
+            if (am) out.alpha[static_cast<size_t>(y) * w + x] = static_cast<uint8_t>((p & am) >> sa);
         }
     return true;
 }
@@ -322,6 +352,53 @@ std::vector<uint8_t> buildRgbaTables(const Palette& pal) {
     const int last = std::max(nb, 1) - 1;
     for (int b = std::max(nb, 1); b < 256; ++b)
         std::memcpy(&t[static_cast<size_t>(b) * 4 * 256], &t[static_cast<size_t>(last) * 4 * 256], 4 * 256);
+    return t;
+}
+
+bool inheritLitMask(Palette& pal, const Palette& base) {
+    if (pal.bands <= 0 || pal.tones <= 0 || pal.bands != base.bands || pal.tones != base.tones) return false;
+    const size_t n = static_cast<size_t>(pal.bands) * pal.tones;
+    if (base.alpha.size() != n) return false;
+    bool baseHasUnlit = false;
+    for (size_t i = 0; i < n; ++i)
+        if (base.alpha[i] < 128) {
+            baseHasUnlit = true;
+            break;
+        }
+    if (!baseHasUnlit) return false;
+    if (pal.alpha.size() == n) {
+        bool palHasUnlit = false;
+        for (size_t i = 0; i < n; ++i)
+            if (pal.alpha[i] < 128) {
+                palHasUnlit = true;
+                break;
+            }
+        if (palHasUnlit) return false;   // it says something of its own
+    } else if (!pal.alpha.empty()) {
+        return false;
+    }
+    pal.alpha.assign(n, 255);
+    for (size_t i = 0; i < n; ++i) pal.alpha[i] = base.alpha[i] >= 128 ? 255 : 0;
+    return true;
+}
+
+std::vector<uint8_t> buildLitTable(const Palette& pal) {
+    std::vector<uint8_t> t(256u * 256u, 0);
+    const int nb = std::min(pal.bands, 256);
+    for (int b = 1; b < nb; ++b)
+        for (int g = 0; g < 256; ++g) {
+            const double tone = (g & 31) / 2.0;
+            int t0 = static_cast<int>(tone);
+            const double fr = tone - t0;
+            const int t1 = std::min(t0 + 1, pal.tones - 1);
+            t0 = std::min(t0, pal.tones - 1);
+            const int row = std::min(b, pal.bands - 1);
+            const double a = (pal.alpha.empty() ? 255.0 : pal.alpha[static_cast<size_t>(row) * pal.tones + t0]) * (1 - fr) +
+                             (pal.alpha.empty() ? 255.0 : pal.alpha[static_cast<size_t>(row) * pal.tones + t1]) * fr;
+            t[static_cast<size_t>(b) * 256 + g] = a >= 127.5 ? 255 : 0;
+        }
+    const int last = std::max(nb, 1) - 1;
+    for (int b = std::max(nb, 1); b < 256; ++b) std::memcpy(&t[static_cast<size_t>(b) * 256], &t[static_cast<size_t>(last) * 256], 256);
     return t;
 }
 

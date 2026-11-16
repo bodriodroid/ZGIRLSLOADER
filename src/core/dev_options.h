@@ -15,6 +15,7 @@
 //   FPS, boxes, round intro, entrances, stage info, RAM display: switches   (RAM display = the seven-segment memory readout, err_overlay.h)
 //   3D stages          Off (the 2D picture) / Auto (the stage's 3D scene, back to the picture when the device cannot keep up) / On (always 3D)
 //   GPU effects        On: fighters and floor shadows are coloured by the PAFX effect programs on the GPU (fx_gl.h, docs/PAFX.md); Off: the CPU route
+//   Stage lighting    On: the stage's lights (.lvl `Light:` lines) colour the fighters: ambient, diffuse and the rim light on their edges (fighter_light.h)
 #pragma once
 #include <functional>
 #include <string>
@@ -39,6 +40,7 @@ enum Id : int {
     kGpuFx,
     kNoLimits,
     kStage3d,
+    kLighting,
     kCount
 };
 
@@ -81,6 +83,7 @@ struct Settings {
     bool noLimits = false;           // No Limits Screen: a fight uses the phone's whole screen shape instead of 16:9 (screen_layout.h)
     Stage3d stage3d = Stage3d::Auto; // the stage's 3D scene (stage3d.h) behind the fighters: Off = the 2D picture, Auto = 3D unless the device is too slow for it, On = always
     bool gpuFx = false;              // sprites and shadows through the PAFX effect programs (needs an OpenGL ES 2 renderer)
+    bool lighting = true;            // the stage's lights on the fighters (fighter_light.h); the GPU route does not have them yet
 
     // level (0 full, 1 half, 2 quarter, 3 eighth) for a sprite shown at `pxPerArtPx` screen pixels per art pixel
     int spriteLevel(double pxPerArtPx) const;

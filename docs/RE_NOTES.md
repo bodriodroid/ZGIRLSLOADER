@@ -363,8 +363,16 @@ structure.
   colours are 0..255 integers. In the `PaletteGradient` fragment shader a lit texel becomes `base * (ambient + diffuse) + specular`, mixed in by the palette entry's lit flag.
   Diffuse of a directional light is `clamp(-dir.z, 0, 1) * colour` (the normal is NOT used: fighters are flat planes facing the camera); the rim ("specular") is
   `clamp(-dot(normal, dir'), 0, 1) * colour` with `dir'` = the direction with its z squashed to >= 0 and renormalised. Point lights: attenuation `1 - clamp(dist / radius)`, diffuse `clamp(dirToLight.z, 0, 1)`,
-  rim from the direction with z squashed to <= 0, damped near the sprite when the light is behind it. `VitaAmb` (values may exceed 255) is the fighters' ambient in the shipped files.
-  The loader does not apply any of this yet (the CPU path is "the same gradient / line maths without lighting").
+  rim from the direction with z squashed to <= 0, damped near the sprite when the light is behind it. The stage carries two ambient lines: `Amb` and `VitaAmb` (values may exceed 255, the handheld build's brighter one).
+  Measured against an original PC screenshot (asg_labs), the fighters' colours only fit **`Amb`** (with `VitaAmb` they come out far too bright), so `Amb` is the default and `VitaAmb` is kept for comparison.
+* **What a sprite carries for the light (measured 16-nov).**
+  - *Lit flag*: the palette texture's alpha, one value per (band, tone); from 128 up the colour takes the light. Band 0 (outline layer) never does.
+  - *Normal plane*: the first RLE plane of each image. It is stored as byte differences down each column of a 16-row cell strip (prefix sum mod 256 per column, restarting in each cell strip);
+    a texel's high nibble is x and its low nibble is y, `(n - 8) / 7` clamped to >= -1 (8 = zero). +y is up, edge normals point outward. A mirrored sprite flips x with it.
+  - The rim side was checked against the original: the warm rim of asg_labs falls on the left edges of both fighters (the flipped one included), so for a sprite that is not mirrored the normal's x is taken the other way round.
+* **Open (honest):** with the shader's own maths our lit fighters come out somewhat more orange than the original (the blue channel of the multiplier is ~0.5 against ~0.7 measured). It is not the stage's point
+  lights: on asg_labs they sit at y = 1500 (stage units) with radius <= 1050, out of reach of a fighter standing on the floor. The screenshot may also carry post-processing we do not know. The `.lvl` `3D` tilt line is not read.
+  Point lights are parsed and `FighterLight::pointDiffuse` exists and is tested, but the game does not call it yet.
 * **Music lines of a `.lvl`:** `Music_Intro` / `Music_Loop` name the stage's own theme (file stems), `Music_InterruptIntro N` (>0: the loop starts at FIGHT! even if the intro has not ended),
   `Music_Outro`, `Music_Alt_Intro` / `Music_Alt_Loop` (replace the intro / loop when the game option "alternate stage music" is Yes; `NONE` = no intro). The value NONE means none.
   A stage that names none falls back to the music table.

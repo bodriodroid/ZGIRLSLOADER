@@ -599,7 +599,7 @@ int popcount(const std::vector<uint8_t>& m) {
 }
 
 bool decodePlanes(const Image& im, const uint8_t* src, size_t srcLen, std::vector<uint8_t>* grad,
-                  std::vector<uint8_t>* band) {
+                  std::vector<uint8_t>* band, std::vector<uint8_t>* normal = nullptr) {
     if (!im.hasData || im.placeholder()) return false;
     if (im.w == 0 || im.h == 0 || im.cells != static_cast<uint32_t>(im.w) * im.h) return false;
     if (im.n == 0 || im.n > im.cells || popcount(im.mask) != im.n) return false;
@@ -614,6 +614,10 @@ bool decodePlanes(const Image& im, const uint8_t* src, size_t srcLen, std::vecto
         if (!rleDecode(src, srcLen, o + im.size[0], o + im.size[0] + im.size[1], P, g) || g.size() != P) return false;
         if (!rleDecode(src, srcLen, o + im.size[0] + im.size[1], static_cast<size_t>(total), P, b) || b.size() != P) return false;
         if (im.flags & 0x40) interpolateOddToneRows(g, static_cast<size_t>(im.n) * 16);  // see art.h (tag bit 6)
+        if (normal) {
+            integrateNormalColumns(scratch, static_cast<size_t>(im.n) * 16);
+            *normal = std::move(scratch);
+        }
         if (grad) *grad = std::move(g);
         if (band) *band = std::move(b);
         return true;
@@ -623,16 +627,20 @@ bool decodePlanes(const Image& im, const uint8_t* src, size_t srcLen, std::vecto
     if (!rleDecode(im.inl[1].data(), im.inl[1].size(), 0, im.inl[1].size(), P, g) || g.size() != P) return false;
     if (!rleDecode(im.inl[2].data(), im.inl[2].size(), 0, im.inl[2].size(), P, b) || b.size() != P) return false;
     if (im.flags & 0x40) interpolateOddToneRows(g, static_cast<size_t>(im.n) * 16);
+    if (normal) {
+        integrateNormalColumns(scratch, static_cast<size_t>(im.n) * 16);
+        *normal = std::move(scratch);
+    }
     if (grad) *grad = std::move(g);
     if (band) *band = std::move(b);
     return true;
 }
 }  // namespace
 
-bool decodeImage(const Image& im, const uint8_t* src, size_t srcLen, ArtPlanes& out) {
-    std::vector<uint8_t> grad, band;
-    if (!decodePlanes(im, src, srcLen, &grad, &band)) return false;
-    placeCells(im.w, im.h, im.n, im.mask.data(), im.mask.size(), grad, band, out);
+bool decodeImage(const Image& im, const uint8_t* src, size_t srcLen, ArtPlanes& out, bool withNormal) {
+    std::vector<uint8_t> grad, band, normal;
+    if (!decodePlanes(im, src, srcLen, &grad, &band, withNormal ? &normal : nullptr)) return false;
+    placeCells(im.w, im.h, im.n, im.mask.data(), im.mask.size(), grad, band, out, withNormal ? &normal : nullptr);
     return true;
 }
 

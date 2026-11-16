@@ -34,6 +34,7 @@
 #include "game_ui.h"
 #include "gbs_anim.h"
 #include "fight.h"
+#include "fighter_light.h"
 #include "foit.h"
 #include "foit_duel.h"
 #include "fx_gl.h"
@@ -92,6 +93,7 @@ public:
         int fullW = 0, fullH = 0;  // size of the art itself (what the frame's geometry is measured in)
         unsigned epoch = 0;        // configure() generation the pixels belong to
         bool ok = false;
+        bool mirrored = false;     // baked for a sprite drawn flipped (only when the stage's lights have a rim: it falls on the other side)
     };
 
     void reset(SDL_Renderer* r);
@@ -143,12 +145,17 @@ public:
                    double alpha, bool fade, double fadeDist);
     // Decodes the images of frame `idx` into the cache ahead of time so a frame never has to be decoded in the
     // middle of a fight.  Returns true when something had to be decoded (the caller spreads these over ticks).
-    bool prefetch(SDL_Renderer* r, uint16_t idx);
-    // Worker-thread half of prefetch: pixels of one slot (ok = false when the slot has nothing to draw).
-    Decoded decode(uint16_t frame, int slot) const;
+    bool prefetch(SDL_Renderer* r, uint16_t idx, bool mirrored = false);
+    // Worker-thread half of prefetch: pixels of one slot (ok = false when the slot has nothing to draw).  `mirrored`: the sprite is going to be drawn
+    // flipped (matters only with stage lighting, whose rim light falls on the other edge of a flipped sprite).
+    Decoded decode(uint16_t frame, int slot, bool mirrored = false) const;
     // Render-thread half: turns decoded pixels into the cached texture (ignored when configure() ran in between).
     void insert(SDL_Renderer* r, uint16_t frame, int slot, Decoded&& d);
-    bool cached(uint16_t frame, int slot) const { return tex_.count(key(frame, slot)) != 0; }
+    bool cached(uint16_t frame, int slot, bool mirrored = false) const;
+    // The stage's lights on this fighter (CPU route; the GPU route draws palette colours only): nullptr or a light that changes nothing = off.
+    // Call between reset() and loadData() / any decode; drops the cached sprites when the lights changed.
+    void setLight(SDL_Renderer* r, const FighterLight* light);
+    bool lightOn() const { return lightOn_; }
     // what a frame costs in texture memory at this level (planning the preload)
     size_t frameBytes(uint16_t frame) const;
     size_t cacheUsed() const { return bytes_; }
@@ -166,8 +173,14 @@ private:
         int fullW = 0, fullH = 0;  // art size
         uint32_t use = 0;          // value of useClock_ when it was last drawn
     };
-    static uint32_t key(uint16_t frame, int slot) { return (static_cast<uint32_t>(frame) << 3) | static_cast<uint32_t>(slot); }
-    const Tex& image(SDL_Renderer* r, uint16_t frame, int slot);
+    // bit 3: the copy baked for a flipped sprite (only exists when the stage's lights have a rim)
+    static uint32_t key(uint16_t frame, int slot, bool mirrored = false) {
+        return (static_cast<uint32_t>(frame) << 4) | (mirrored ? 8u : 0u) | static_cast<uint32_t>(slot);
+    }
+    bool lightsImage(const foit::Image& im) const { return lightOn_ && !gpu_ && !lit_.empty() && !im.silhouette(); }
+    // does the copy of this image depend on the sprite's orientation?
+    bool orientationMatters(const foit::Image& im) const { return lightsImage(im) && !light_.dirs.empty(); }
+    const Tex& image(SDL_Renderer* r, uint16_t frame, int slot, bool mirrored = false);
     void evict();
     void freeTex(Tex& t, bool sdlAlive);   // an SDL texture is destroyed only when the renderer is still there
     void freeAll(bool sdlAlive);           // every cached image and the GPU palette
@@ -181,6 +194,9 @@ private:
     fight::MoveSet ms_;
     std::vector<uint8_t> art_, artPt_, tables_;
     Palette pal_;
+    FighterLight light_;         // the stage's lights (setLight)
+    bool lightOn_ = false;       // light_ changes the colours and the route allows it
+    std::vector<uint8_t> lit_;   // buildLitTable(pal_): which (band, grad) pixels take light
     std::unordered_map<uint32_t, Tex> tex_;
     size_t bytes_ = 0, cacheLimit_ = 160u * 1024u * 1024u;
     uint32_t useClock_ = 0;
@@ -325,6 +341,7 @@ private:
     SDL_Renderer* ren_ = nullptr;
     std::vector<CharacterAssets> roster_;
     std::vector<LevelInfo> levels_;
+    FighterLight fighterLight_;   // the current stage's lights on the fighters (see fighter_light.h)
     std::vector<StageEntry> stageTable_;
     int levelIndexFor(const std::string& stage) const;   // resolveLevel() over levels_ + stageTable_; -1 = not found
     int randomLevelIndex() const;                        // a stage "Random" may pick
@@ -547,7 +564,8 @@ private:
     int devSel_ = 0, devScroll_ = 0;
     void drawDev(Ui& ui, SDL_Renderer* r);
     // worker-thread job shared by the loading screen and the fight's look-ahead: every image slot of the listed (player, frame)
-    static std::vector<WarmResult> decodeItems(const Skin* a, const Skin* b, const std::vector<std::pair<int, uint16_t>>& items);
+    static std::vector<WarmResult> decodeItems(const Skin* a, const Skin* b, const std::vector<std::pair<int, uint16_t>>& items, bool mirror0 = false,
+                                               bool mirror1 = true);
 
     // ---- overlay menus (play_menu.cpp)
     Overlay overlay_ = Overlay::None;

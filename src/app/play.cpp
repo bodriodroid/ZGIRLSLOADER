@@ -191,6 +191,22 @@ void Skin::reset(SDL_Renderer* r) {
     ++epoch_;   // pixels decoded for the old data must not be uploaded into the new one
 }
 
+void Skin::setLight(SDL_Renderer* r, const FighterLight* light) {
+    const bool on = light && light->active();
+    bool same = on == lightOn_;
+    if (same && on) {
+        same = std::equal(light->ambient, light->ambient + 3, light_.ambient) && light->dirs.size() == light_.dirs.size();
+        for (size_t i = 0; same && i < light->dirs.size(); ++i)
+            same = std::equal(light->dirs[i].colour, light->dirs[i].colour + 3, light_.dirs[i].colour) &&
+                   std::equal(light->dirs[i].dir, light->dirs[i].dir + 3, light_.dirs[i].dir);
+    }
+    if (same) return;
+    light_ = on ? *light : FighterLight{};
+    lightOn_ = on;
+    freeAll(r != nullptr);   // the cached sprites carry the old light
+    ++epoch_;
+}
+
 void Skin::configure(SDL_Renderer* r, int level, bool smooth, size_t cacheBytes) {
     level = std::clamp(level, 0, 3);
     cacheBytes = std::max<size_t>(cacheBytes, 8u * 1024u * 1024u);
@@ -237,14 +253,23 @@ bool Skin::loadData(const GameData& gd, const CharacterAssets& c, int palIdx, st
         std::string pe;
         if (!GameData::loadPalette(c.palettes[idx].second, pal, &pe)) pal = fallbackPalette();
     }
+    // a palette made by a tool does not say which of its colours take the stage's light: use the character's own palette for that
+    for (const auto& own : c.palettes) {
+        if (own.first.rfind("mod:", 0) == 0) continue;
+        Palette base;
+        std::string be;
+        if (GameData::loadPalette(own.second, base, &be)) inheritLitMask(pal, base);
+        break;
+    }
     tables_ = buildRgbaTables(pal);
+    lit_ = buildLitTable(pal);
     pal_ = pal;
     if (!ms_.build(ch, &e)) return fail(e);
     ok = true;
     return true;
 }
 
-Skin::Decoded Skin::decode(uint16_t fidx, int slot) const {
+Skin::Decoded Skin::decode(uint16_t fidx, int slot, bool mirrored) const {
     Decoded d;
     d.epoch = epoch_;
     const foit::Frame* fr = ms_.frame(fidx);
@@ -252,7 +277,8 @@ Skin::Decoded Skin::decode(uint16_t fidx, int slot) const {
     static const std::vector<uint8_t> none;
     const std::vector<uint8_t>& src = fr->src == 5 ? art_ : (fr->src == 4 ? artPt_ : none);
     ArtPlanes pl;
-    if (src.empty() || !foit::decodeImage(fr->img[slot], src.data(), src.size(), pl) || pl.width <= 0 || pl.height <= 0) return d;
+    const bool lightIt = lightsImage(fr->img[slot]);
+    if (src.empty() || !foit::decodeImage(fr->img[slot], src.data(), src.size(), pl, lightIt) || pl.width <= 0 || pl.height <= 0) return d;
     if (gpu_) {   // the GPU colours the planes itself: ship them as they are
         d.index = FxRenderer::packIndex(pl.band.data(), pl.grad.data(), pl.width, pl.height);
         d.fullW = d.w = pl.width;
@@ -261,6 +287,10 @@ Skin::Decoded Skin::decode(uint16_t fidx, int slot) const {
         return d;
     }
     std::vector<uint8_t> rgba = toRgba(pl, tables_);
+    if (lightIt) {
+        applyLighting(rgba, pl, lit_, light_, mirrored);
+        d.mirrored = orientationMatters(fr->img[slot]) && mirrored;
+    }
     d.fullW = pl.width;
     d.fullH = pl.height;
     if (level_ > 0) {
@@ -292,7 +322,7 @@ void Skin::evict() {
 
 void Skin::insert(SDL_Renderer* r, uint16_t fidx, int slot, Decoded&& d) {
     if (!r || d.epoch != epoch_) return;
-    const uint32_t k = key(fidx, slot);
+    const uint32_t k = key(fidx, slot, d.mirrored);
     if (tex_.count(k)) return;
     Tex t;
     if (d.ok && gpu_) {
@@ -325,11 +355,19 @@ void Skin::insert(SDL_Renderer* r, uint16_t fidx, int slot, Decoded&& d) {
     evict();
 }
 
-const Skin::Tex& Skin::image(SDL_Renderer* r, uint16_t fidx, int slot) {
-    const uint32_t k = key(fidx, slot);
+bool Skin::cached(uint16_t frame, int slot, bool mirrored) const {
+    const foit::Frame* fr = ms_.frame(frame);
+    const bool m = mirrored && fr && slot >= 0 && slot < foit::kSlots && orientationMatters(fr->img[slot]);
+    return tex_.count(key(frame, slot, m)) != 0;
+}
+
+const Skin::Tex& Skin::image(SDL_Renderer* r, uint16_t fidx, int slot, bool mirrored) {
+    const foit::Frame* fr = ms_.frame(fidx);
+    const bool m = mirrored && fr && slot >= 0 && slot < foit::kSlots && orientationMatters(fr->img[slot]);
+    const uint32_t k = key(fidx, slot, m);
     auto it = tex_.find(k);
     if (it == tex_.end()) {
-        insert(r, fidx, slot, decode(fidx, slot));
+        insert(r, fidx, slot, decode(fidx, slot, mirrored));
         it = tex_.find(k);
         if (it == tex_.end()) {   // nothing was stored (no renderer): an empty entry, valid until the next call
             static Tex none;
@@ -352,14 +390,14 @@ size_t Skin::frameBytes(uint16_t fidx) const {
     return total;
 }
 
-bool Skin::prefetch(SDL_Renderer* r, uint16_t idx) {
+bool Skin::prefetch(SDL_Renderer* r, uint16_t idx, bool mirrored) {
     const foit::Frame* fr = ms_.frame(idx);
     if (!r || !fr) return false;
     bool decoded = false;
     for (int slot = 0; slot < foit::kSlots; ++slot) {
         if (fr->img[slot].placeholder()) continue;
-        if (tex_.count(key(idx, slot))) continue;
-        image(r, idx, slot);
+        if (cached(idx, slot, mirrored)) continue;
+        image(r, idx, slot, mirrored);
         decoded = true;
     }
     return decoded;
@@ -397,7 +435,7 @@ int Skin::drawFrame(SDL_Renderer* r, uint16_t idx, double feetX, double feetY, d
     const bool additive = (ar | ag | ab) > 4;
     for (int slot = 0; slot < foit::kSlots; ++slot) {
         if (fr->img[slot].placeholder()) continue;
-        const Tex& t = image(r, idx, slot);
+        const Tex& t = image(r, idx, slot, !faceRight);
         if (!t.t) continue;
         const double dx = fr->drawX(slot), dy = fr->drawY(slot);
         double x0, x1;
@@ -464,7 +502,7 @@ int Skin::drawShadow(SDL_Renderer* r, uint16_t idx, double feetX, double floorY,
     std::vector<Quad> quads;
     for (int slot = 0; slot < foit::kSlots; ++slot) {
         if (fr->img[slot].placeholder()) continue;
-        const Tex& t = image(r, idx, slot);
+        const Tex& t = image(r, idx, slot, !faceRight);   // the same copy the sprite itself uses
         if (!t.t) continue;
         const double dx = fr->drawX(slot), dy = fr->drawY(slot);
         double x0, x1;
@@ -714,6 +752,7 @@ void PlayScreen::applyDevToSkins(SDL_Renderer* r) {
     spritePx_ = 0.52 * phys;
     const int level = dev_.spriteLevel(spritePx_);
     for (Skin& sk : skin_) sk.configure(r, level, dev_.smooth, dev_.spriteCacheBytes);
+    for (Skin& sk : skin_) sk.setLight(r, dev_.lighting ? &fighterLight_ : nullptr);
 }
 
 const char* PlayScreen::phaseName() const {
@@ -995,7 +1034,8 @@ double findCenterLine(const DdsImage& img) {
 }
 }  // namespace
 
-std::vector<PlayScreen::WarmResult> PlayScreen::decodeItems(const Skin* a, const Skin* b, const std::vector<std::pair<int, uint16_t>>& items) {
+std::vector<PlayScreen::WarmResult> PlayScreen::decodeItems(const Skin* a, const Skin* b, const std::vector<std::pair<int, uint16_t>>& items,
+                                                            bool mirror0, bool mirror1) {
     std::vector<WarmResult> out;
     for (const auto& it : items) {
         const Skin* sk = it.first == 0 ? a : b;
@@ -1007,7 +1047,7 @@ std::vector<PlayScreen::WarmResult> PlayScreen::decodeItems(const Skin* a, const
             w.player = it.first;
             w.frame = it.second;
             w.slot = slot;
-            w.d = sk->decode(it.second, slot);
+            w.d = sk->decode(it.second, slot, it.first == 0 ? mirror0 : mirror1);
             out.push_back(std::move(w));
         }
     }
@@ -1023,6 +1063,10 @@ void PlayScreen::beginLoad(const std::string& key) {
     overlay_ = Overlay::None;
     loadedKey_.clear();
     refreshDev();
+    {   // the stage's lights on the fighters (applyDevToSkins hands them to the skins)
+        const LevelInfo* lv0 = (stageIdx_ >= 0 && stageIdx_ < static_cast<int>(levels_.size())) ? &levels_[stageIdx_] : nullptr;
+        fighterLight_ = lv0 ? FighterLight::fromLevel(*lv0) : FighterLight{};
+    }
     for (int i = 0; i < 2; ++i) skin_[i].reset(ren_);
     applyDevToSkins(ren_);
     bg_.reset(ren_);
@@ -1258,7 +1302,7 @@ void PlayScreen::updateLoading(int dtMs) {
             const Skin *s0 = &skin_[0], *s1 = &skin_[1];
             LoadJob::Inflight b;
             b.items = n;
-            b.f = std::async(std::launch::async, [s0, s1, items]() { return decodeItems(s0, s1, items); });
+            b.f = std::async(std::launch::async, [s0, s1, items]() { return decodeItems(s0, s1, items, false, true); });   // they start facing each other
             j.inflight.push_back(std::move(b));
         }
         for (size_t i = 0; i < j.inflight.size();) {
@@ -2013,13 +2057,25 @@ void PlayScreen::prefetchFrames() {
     }
     // 2. what is coming
     int launched = 0;
+    bool mir[2] = {false, true};   // which way each fighter is facing now (a flipped sprite has its own copy when the stage's lights have a rim)
+    if (foitMode_) {
+        foit_->views(views_);
+        bool seen[2] = {false, false};
+        for (const fight::FoitView& v : views_)
+            if (v.side >= 0 && v.side < 2 && !seen[v.side]) {
+                seen[v.side] = true;
+                mir[v.side] = !v.faceRight;
+            }
+    } else {
+        for (int p = 0; p < 2; ++p) mir[p] = st_.p[p].facing != fight::Facing::kRight;
+    }
     auto want = [&](int p, uint16_t fi) {
         if (fi == fight::kNoFrame || pf_.size() >= 8 || launched >= 3) return;
         const foit::Frame* fr = skin_[p].moves().frame(fi);
         if (!fr) return;
         bool missing = false;
         for (int slot = 0; slot < foit::kSlots && !missing; ++slot)
-            if (!fr->img[slot].placeholder() && !skin_[p].cached(fi, slot)) missing = true;
+            if (!fr->img[slot].placeholder() && !skin_[p].cached(fi, slot, mir[p])) missing = true;
         if (!missing) return;
         for (const Prefetch& q : pf_)
             if (q.player == p && q.frame == fi) return;
@@ -2028,12 +2084,12 @@ void PlayScreen::prefetchFrames() {
         q.frame = fi;
         const Skin *s0 = &skin_[0], *s1 = &skin_[1];
         std::vector<std::pair<int, uint16_t>> items{{p, fi}};
-        q.f = std::async(std::launch::async, [s0, s1, items]() { return decodeItems(s0, s1, items); });
+        const bool m0 = mir[0], m1 = mir[1];
+        q.f = std::async(std::launch::async, [s0, s1, items, m0, m1]() { return decodeItems(s0, s1, items, m0, m1); });
         pf_.push_back(std::move(q));
         ++launched;
     };
     if (foitMode_) {   // the world knows what is on screen and which nodes come next
-        foit_->views(views_);
         for (const fight::FoitView& v : views_)   // spawned objects appear unannounced: their frame is wanted from the first tick
             if (v.frame >= 0) want(v.side, static_cast<uint16_t>(v.frame));
         std::vector<uint16_t> ahead;

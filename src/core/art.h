@@ -56,7 +56,18 @@ struct ArtPlanes {
     int width = 0, height = 0;
     std::vector<uint8_t> band;  // width*height
     std::vector<uint8_t> grad;  // width*height
+    // The surface direction of every pixel, width*height, only when decoding was asked to keep it (otherwise empty): the high nibble is the
+    // x component and the low nibble the y one, both 0..15 with 8 = 0 (see normalOf).  0 = no data (outside the drawing).
+    std::vector<uint8_t> normal;
 };
+
+// The sideways components of a pixel's surface direction as the game's lighting reads them: (nibble - 8) / 7, at least -1.  The third
+// component is whatever makes the vector unit length (sqrt(1 - x^2 - y^2), facing the viewer); a texel of 0 means "no data" and gives straight on.
+void normalOf(uint8_t texel, float& nx, float& ny);
+
+// The normal strip is stored as differences down each column of a 16-row cell: row y holds (value[y] - value[y-1]) mod 256, row 0 the value.
+// `sw` = strip width in bytes (cells * 16).  Called by the decoders; exposed for tests.
+void integrateNormalColumns(std::vector<uint8_t>& strip, size_t sw);
 
 // Rebuilds the tone bits (4..0) of rows 1,3,..,13 of every 16-row tile of a flagged record's grad strips as the average of the
 // rows above and below (bits 7..5, the line level, are kept).  `sw` = strip width in bytes = n*16.  decode() calls it for
@@ -66,7 +77,7 @@ void interpolateOddToneRows(std::vector<uint8_t>& grad, size_t sw);
 // Assembles `n` stored 16x16 cells (strips of 16 px wide per cell, as produced by rleDecode) into full planes of
 // (w*16) x (h*16) px.  mask bit j (LSB first, row-major) = cell j is stored.  Empty cells stay 0.
 void placeCells(int w, int h, int n, const uint8_t* mask, size_t maskLen, const std::vector<uint8_t>& grad,
-                const std::vector<uint8_t>& band, ArtPlanes& out);
+                const std::vector<uint8_t>& band, ArtPlanes& out, const std::vector<uint8_t>* normal = nullptr);
 
 // Holds one character's files in memory and the validated record list.
 class ArtFile {
@@ -76,8 +87,8 @@ public:
     bool load(std::vector<uint8_t> foit, std::vector<uint8_t> art, std::vector<uint8_t> artPt);
 
     const std::vector<ArtRecord>& records() const { return records_; }
-    // Decodes the band/grad planes of record i and assembles the full frame (empty cells = 0).
-    bool decode(size_t i, ArtPlanes& out) const;
+    // Decodes the band/grad planes of record i and assembles the full frame (empty cells = 0).  withNormal: also the normal plane.
+    bool decode(size_t i, ArtPlanes& out, bool withNormal = false) const;
 
     bool hasArt() const { return !art_.empty(); }
     bool hasArtPt() const { return !artPt_.empty(); }
@@ -97,9 +108,19 @@ struct Palette {
     int tones = 0;  // columns (16 in the game)
     int bands = 0;  // rows
     std::vector<uint8_t> rgb;  // bands*tones*3
+    // The texture's alpha channel, bands*tones (empty = the file had none: every colour is lit).  From 128 up the colour takes the stage's light
+    // (the game keeps "lit" in the top bit of the alpha and the colour's own opacity in the rest).
+    std::vector<uint8_t> alpha;
     const uint8_t* at(int band, int tone) const { return &rgb[(static_cast<size_t>(band) * tones + tone) * 3]; }
+    bool litAt(int band, int tone) const {
+        return alpha.empty() || alpha[static_cast<size_t>(band) * tones + tone] >= 128;
+    }
 };
 bool readDds(const uint8_t* d, size_t size, Palette& out, std::string* err = nullptr);
+// A palette that was made by a tool (a .pal baked by palmod) knows nothing about which colours take light: every colour comes out opaque, so every
+// colour would be lit.  When `pal` carries no such information (no alpha, or all of it >= 128) and `base` (the character's own palette) has the same
+// size and does, `pal` takes the base's flags.  Returns true when it did.
+bool inheritLitMask(Palette& pal, const Palette& base);
 // Same fallback palette sg_extract uses when no .dds is found (for previews only).
 Palette fallbackPalette();
 
@@ -108,6 +129,9 @@ void keyRgb(const Palette& pal, int band, int g, double out[3]);
 
 // 256 bands x 4 channels (R,G,B,A) x 256 grad values, index ((band*4+ch)*256+g). Band 0 = outline (black, alpha=line/7).
 std::vector<uint8_t> buildRgbaTables(const Palette& pal);
+// Which (band, grad) pixels take the stage's light: 256 bands x 256 grad values, 255 = lit, 0 = not (the colour's own flag, interpolated between
+// the two tones a grad value sits between like the colour itself is, then cut at half).  Band 0 (the outline layer) is never lit.
+std::vector<uint8_t> buildLitTable(const Palette& pal);
 std::vector<uint8_t> toRgba(const ArtPlanes& planes, const std::vector<uint8_t>& tables);
 
 // Dependency-free PNG writer (uncompressed deflate). Returns the file bytes.

@@ -251,7 +251,7 @@ bool parse(const uint8_t* data, size_t size, Character& out, std::string* err = 
 
 // ---- pixels ---------------------------------------------------------------------------------------------
 // Decodes the band/grad planes of one image. `src` is the .art (frame.src == 5) or .art-pt (== 4) content.
-bool decodeImage(const Image& im, const uint8_t* src, size_t srcLen, ArtPlanes& out);
+bool decodeImage(const Image& im, const uint8_t* src, size_t srcLen, ArtPlanes& out, bool withNormal = false);
 // Same, but only checks that the three planes are decodable and have the expected size (cheap validation).
 bool validateImage(const Image& im, const uint8_t* src, size_t srcLen);
 

@@ -40,6 +40,7 @@ add_library(zengine_core STATIC
   src/core/gbs_arc.cpp
   src/core/menu_list_anim.cpp
   src/core/art.cpp
+  src/core/fighter_light.cpp
   src/core/foit.cpp
   src/core/foit_vm.cpp
   src/core/foit_rt.cpp
@@ -176,6 +177,9 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   target_link_libraries(zdroid_sgscene_tests PRIVATE zengine_core)
   add_test(NAME zdroid_sgscene_tests COMMAND zdroid_sgscene_tests)
   set_tests_properties(zdroid_sgscene_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_STAGES=${ZDROID_TEST_STAGES}")
+  add_executable(zdroid_light_tests tests/test_fighter_light.cpp)
+  target_link_libraries(zdroid_light_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_light_tests COMMAND zdroid_light_tests)
   add_executable(zdroid_sganim_tests tests/test_sganim.cpp)
   target_link_libraries(zdroid_sganim_tests PRIVATE zengine_core)
   add_test(NAME zdroid_sganim_tests COMMAND zdroid_sganim_tests)

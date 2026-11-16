@@ -26,6 +26,7 @@ const Def kDefs[kCount] = {
     {"ZD_DEV_GPUFX", "gpufx", 2, {"Off", "On"}, 0, "GPU effects (PAFX)"},
     {"ZD_DEV_NOLIMITS", "nolimits", 2, {"Off", "On"}, 0, "No Limits Screen"},
     {"ZD_DEV_STAGE3D", "stage3d", 3, {"Off", "Auto", "On"}, 1, "3D stages"},
+    {"ZD_DEV_LIGHT", "light", 2, {"Off", "On"}, 1, "Stage lighting"},
 };
 
 bool eqi(const std::string& a, const char* b) {
@@ -92,6 +93,9 @@ const Str kText[] = {
     {"dev.stage3d", "3D stages", "Escenarios 3D"},
     {"dev.stage3d.d", "Draws the stage as the 3D scene the PC game uses (meshes + textures from your own Core) instead of its flat picture, seen through the same camera. Auto falls back to the picture when the device cannot keep up or the stage's textures are missing; On never falls back for speed.",
      "Dibuja el escenario como la escena 3D que usa el juego de PC (mallas + texturas de tu propio Core) en vez de su imagen plana, vista con la misma cámara. Auto vuelve a la imagen si el dispositivo no puede con ello o faltan las texturas del escenario; Sí nunca vuelve por velocidad."},
+    {"dev.light", "Stage lighting", "Iluminación del escenario"},
+    {"dev.light.d", "The stage's own lights colour the fighters like in the PC game: the stage's ambient colour, the warm / cold wash of its main light and a rim of light on the edges facing it. Off: fighters are drawn with their palette colours only.",
+     "Las luces del propio escenario colorean a los luchadores como en el juego de PC: el color ambiente del escenario, el tinte cálido o frío de su luz principal y un borde de luz en los contornos que la miran. No: los luchadores se dibujan solo con los colores de su paleta."},
     {"dev.back", "Back", "Atrás"},
     // choice names
     {"c.Low", "Low", "Baja"},
@@ -153,6 +157,7 @@ Settings resolve(const std::function<std::string(const char* key)>& get) {
     s.gpuFx = idx(kGpuFx) == 1;
     s.noLimits = idx(kNoLimits) == 1;
     s.stage3d = static_cast<Stage3d>(idx(kStage3d));
+    s.lighting = idx(kLighting) == 1;
     return s;
 }
 

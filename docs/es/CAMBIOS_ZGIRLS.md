@@ -308,6 +308,21 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.7 Dev_Nov-16 - las luces del escenario sobre los personajes
+
+- **Iluminación de personajes** (`src/core/fighter_light.*`, `art.*`, `foit.*`, `src/app/play.*`): el `.lvl` de cada escenario trae luces (`Light: Amb / Dir / Pt`) que **no tocan el escenario** sino a los luchadores.
+  Los sprites ya traen lo necesario: un plano de **normales** (la primera capa RLE de cada imagen; se guarda como diferencias de bytes por columna) y, en la paleta (`<nombre>_1p.dds`), una marca de **"recibe luz"** por color (alfa >= 128).
+  Un píxel con marca queda como `color * (ambiente + difusa) + luz de borde`, que es la fórmula del shader del propio juego (`TiledSprite_fp-PaletteGradient`). La luz de borde es la naranja de ASG Labs sobre el lado izquierdo de los cuerpos.
+  Se hornea en el sprite al decodificarlo (hilos de trabajo, ruta CPU); un sprite volteado tiene su propia copia si la luz tiene borde; las siluetas (sombra, super) nunca se iluminan.
+- **Medido contra una captura del original (asg_labs):** el ambiente que encaja es `Amb` (el de PC), no `VitaAmb` (el de la portátil, demasiado claro); la luz de borde cae a la izquierda en los dos luchadores.
+- **Paletas hechas por herramientas** (los `.pal` de `mods/pal`, incluidas las "Claude"): no dicen qué colores reciben luz (todo sale opaco), así que ahora toman esa marca de la paleta propia del personaje (`inheritLitMask`), si tiene el mismo tamaño.
+- **Opción nueva** en Developer Options: **Iluminación de personajes** (activada por defecto); apagada, se dibuja como antes.
+- **Pruebas**: `tests/test_fighter_light.cpp` (`zdroid_light_tests`, 68 comprobaciones; 152 con `ZDROID_TEST_CHARS` apuntando a los datos reales: todo píxel visible tiene normal y los bordes apuntan hacia fuera). ASan/UBSan limpios. Capturas de una pelea real en ASG Labs con las luces encendidas y apagadas.
+- **Sigue sin hacer (dicho claro):** los colores salen **algo más naranjas que el original** (al azul le falta ~0,2 en el multiplicador; no son las luces puntuales: en ASG Labs están a y = 1500 con radio <= 1050, fuera del alcance de un luchador en el suelo; puede haber post-proceso en la captura);
+  las luces puntuales (`Pt`) se leen y hay función probada (`pointDiffuse`) pero el juego aún no las aplica; la ruta GPU (PAFX, apagada por defecto) no ilumina; la línea `3D` (inclinación de cámara) del `.lvl` no se lee.
+  **No he podido verlo en un teléfono real**: falta que lo pruebes (ASG Labs es el mejor escenario para notarlo).
+- Android: `versionCode 20`, `versionName 0.9.7-zgirls-Dev_Nov-16`.
+
 ## Build 0.9.6 Dev_Nov-15 - la música la decide el .lvl, sombras de una sola capa, animaciones de textura en el 3D
 
 - **Música del escenario = la que dice su `.lvl`** (`src/core/level.*`, `src/core/music_lib.*`): cada `.lvl` trae `Music_Intro` y `Music_Loop` (p. ej. ASG Labs: `skull04_1` + `skull04_2`).
