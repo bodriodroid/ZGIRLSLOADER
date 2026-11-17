@@ -205,6 +205,21 @@ bool fromPalette(const Palette& base, const std::vector<int>* counts, Scheme& ou
     return true;
 }
 
+std::vector<int> keyCountCandidates(const Palette& base, int band, int tol) {
+    std::vector<int> out;
+    if (band < 0 || band >= base.bands || base.tones < 2 || base.rgb.size() < static_cast<size_t>(base.bands) * base.tones * 3) return out;
+    std::vector<Rgb> row(static_cast<size_t>(base.tones));
+    for (int t = 0; t < base.tones; ++t) {
+        const uint8_t* p = base.at(band, t);
+        row[static_cast<size_t>(t)] = {p[0], p[1], p[2]};
+    }
+    const int top = std::min(16, base.tones);
+    for (int n = 1; n < top; ++n)
+        if (maxError(fit(row, n), row) <= tol) out.push_back(n);
+    if (out.empty()) out.push_back(top);   // 16 keys on 16 tones are an exact copy of the row: only listed when nothing smaller fits
+    return out;
+}
+
 Palette bake(const Scheme& s) {
     Palette p;
     p.tones = s.tones;

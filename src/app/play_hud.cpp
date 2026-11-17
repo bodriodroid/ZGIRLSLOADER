@@ -20,6 +20,7 @@
 // idle sprite.  Nothing from the game is bundled.
 #include "play.h"
 #include "hud_art.h"
+#include "palmod.h"
 
 #include <algorithm>
 #include <cmath>
@@ -248,8 +249,15 @@ const PlayScreen::HudPortrait* PlayScreen::hudPortrait(SDL_Renderer* r, int p) {
         std::string err;
         if (!gd_->vfs().read("character_" + key + "_" + kLayer[i] + ".pcx", bytes) || !hudart::decodePcx(bytes.data(), bytes.size(), layer[i], &err)) return nullptr;
     }
+    // the regions' key counts belong to the character's stock palette: a mod's colour or one the player edited only changes the colours
+    Palette stock;
+    bool haveStock = false;
+    {
+        std::vector<uint8_t> bytes;
+        haveStock = gd_->vfs().read(key + "_1p.dds", bytes) && readDds(bytes.data(), bytes.size(), stock) && stock.bands > 1;
+    }
     hudart::Image img;
-    if (!hudart::composePortrait(layer[0], layer[1], layer[2], pal, img)) return nullptr;
+    if (!hudart::composePortrait(layer[0], layer[1], layer[2], pal, img, palmod::regionCounts(palmod::normaliseName(key)), haveStock ? &stock : nullptr)) return nullptr;
     SDL_Texture* t = SDL_CreateTexture(r, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STATIC, img.w, img.h);
     if (!t) return nullptr;
     SDL_UpdateTexture(t, nullptr, img.rgba.data(), img.w * 4);

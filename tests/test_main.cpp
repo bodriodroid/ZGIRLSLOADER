@@ -3769,29 +3769,31 @@ static void testHudAtlasAndPortrait() {
     cut[2] = 0;
     CHECK(!hudart::decodePcx(cut.data(), cut.size(), img, &err));   // uncompressed is refused
 
-    // composition: band = idx/5 + 1, tone from the shade layer, the outline layer darkens, background (0/255/255) stays clear
+    // composition: the value picks the region whose first key it is (table 5,5 -> values 3 and 8), the tone comes from the shade layer as the
+    // game's shader reads it (shade 255 = tone 14.5 of 16), the outline mixes the outline colour in by sixteenths, background (0/255/255) stays clear
     Palette pal;
-    pal.tones = 2; pal.bands = 3;
+    pal.tones = 16; pal.bands = 3;
     pal.rgb.assign(static_cast<size_t>(pal.tones) * pal.bands * 3, 0);
     for (int b = 0; b < pal.bands; ++b)
         for (int t = 0; t < pal.tones; ++t) {
             uint8_t* c = const_cast<uint8_t*>(pal.at(b, t));
-            c[0] = static_cast<uint8_t>(40 * b); c[1] = static_cast<uint8_t>(100 * t); c[2] = 10;
+            c[0] = static_cast<uint8_t>(40 * b); c[1] = static_cast<uint8_t>(10 * t); c[2] = 10;
         }
+    const std::vector<int> table = {5, 5};
     hudart::Pcx col, lin, shd;
     col.w = lin.w = shd.w = 2; col.h = lin.h = shd.h = 1;
-    col.idx = {5, 0}; lin.idx = {255, 255}; shd.idx = {255, 255};   // pixel 0: band 2, brightest tone; pixel 1: background
+    col.idx = {8, 0}; lin.idx = {255, 255}; shd.idx = {255, 255};   // pixel 0: region 2, brightest tone; pixel 1: background
     hudart::Image out;
-    CHECK(hudart::composePortrait(col, lin, shd, pal, out));
+    CHECK(hudart::composePortrait(col, lin, shd, pal, out, &table));
     CHECK_EQ(static_cast<int>(out.rgba[3]), 255);
     CHECK_EQ(static_cast<int>(out.rgba[0]), 80);
-    CHECK_EQ(static_cast<int>(out.rgba[1]), 100);
+    CHECK_EQ(static_cast<int>(out.rgba[1]), 145);                    // between tones 14 and 15
     CHECK_EQ(static_cast<int>(out.rgba[7]), 0);                      // transparent
-    lin.idx[0] = 128;                                                // half outline
-    CHECK(hudart::composePortrait(col, lin, shd, pal, out));
-    CHECK(out.rgba[1] > 45 && out.rgba[1] < 55);
+    lin.idx[0] = 128;                                                // half outline (7/16 after the shader's quantising)
+    CHECK(hudart::composePortrait(col, lin, shd, pal, out, &table));
+    CHECK(out.rgba[1] > 75 && out.rgba[1] < 90);
     shd.w = 3;
-    CHECK(!hudart::composePortrait(col, lin, shd, pal, out));        // layers must agree in size
+    CHECK(!hudart::composePortrait(col, lin, shd, pal, out, &table));  // layers must agree in size
     CHECK_EQ(hudart::displayName("bossmarie"), std::string("BLOODY MARIE"));
     CHECK_EQ(hudart::displayName("MsFortune"), std::string("MS. FORTUNE"));
 }

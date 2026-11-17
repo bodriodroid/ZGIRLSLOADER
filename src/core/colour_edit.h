@@ -55,6 +55,11 @@ void rampOf(const Region& r, int tones, std::vector<Rgb>& out);
 // (1, 2, 3 ... 16) that reproduces the row.  false when the palette is unusable.
 bool fromPalette(const Palette& base, const std::vector<int>* counts, Scheme& out);
 
+// Every number of key colours (1..16) whose ramp reproduces row `band` of the palette to within `tol` levels per channel (ascending).  A row
+// made of n keys is reproduced by n, but a flat row, or one made of a few straight pieces, is reproduced by other numbers too; 16 keys are
+// listed only when no smaller number reproduces the row (16 keys on 16 tones reproduce anything).  Empty for a band outside the palette.
+std::vector<int> keyCountCandidates(const Palette& base, int band, int tol = 3);
+
 // The palette texture of a scheme.  The lit flags come from `s.litAlpha` (set by fromPalette).
 Palette bake(const Scheme& s);
 // The 32-bit ARGB .dds file of a palette (the layout of the game's own <name>_Np.dds).

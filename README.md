@@ -2,6 +2,8 @@
 
 > Cambios de esta versión: ver `docs/es/CAMBIOS_ZGIRLS.md`.
 
+> Versions: **1.0.0.0 will be the main release**; until then every build is `0.0.0.0-Dev` (no date in the name; `versionCode` keeps increasing so Android installs over the previous build).
+
 **This is not a playable port yet.** It is the foundation: it reads the data of *your own* copy of the game
 (extracted from the `.gfs` packages, or downloaded from your own Steam account) and shows it. It ships no game
 content and does not touch DRM. See `docs/RE_NOTES.md` for what a playable port still needs.

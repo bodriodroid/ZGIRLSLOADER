@@ -308,6 +308,25 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.0.0.0-Dev - retratos del HUD con sus colores (y la numeración vuelve a empezar)
+
+- **Numeración nueva:** la **1.0.0.0 será el lanzamiento principal**; hasta entonces las builds son `0.0.0.0-Dev` (sin fecha en el nombre). Las secciones de abajo (0.9.x) son la numeración anterior y se dejan como historia.
+  `versionName` = `0.0.0.0-Dev`; `versionCode` sigue subiendo (22) para que Android la instale encima de la anterior.
+- **Retratos grandes (`character_<nombre>_colors|lines|shade.pcx`)**: arreglado el color (ojos rojos, piel rara, sombrero magenta). La capa `colors` **no** guarda un número de fila: guarda la posición de la
+  **primera clave de color de la región** dentro de la lista plana de claves del personaje, así que cada valor pertenece a la última fila que empieza en ese valor o antes. Con 5 claves por región coincidía con el viejo `valor / 5 + 1`
+  (por eso Filia ya salía bien y Cerebella, Dahlia o Marie no). `portraitRows` (`src/core/hud_portrait.cpp`) calcula la fila de cada valor con una búsqueda: usa la tabla de claves de `palmod` cuando la propia paleta la confirma
+  (`coledit::keyCountCandidates`), y donde la tabla es de otra build o no cabe en 8 bits elige las cuentas que hacen que los valores usados caigan sobre inicios de fila. Si ni con las cuentas mínimas caben 255 posiciones
+  (Black Dahlia), los valores son números de región.
+- **Tono y contorno como el shader del juego** (`Otter_fp-Palettized`): el brillo 100..255 de `shade` va de 0,5 a 14,5 entre los 16 tonos (el más claro nunca se alcanza) con mezcla lineal; el contorno (`lines`) mezcla el color de contorno
+  por dieciseisavos, y el valor 0 (capa de contorno) se dibuja con ese color y alfa = fuerza de la línea, no con el color de la región 1 como antes.
+- **Comprobado** con tus 19 `.pcx` y las paletas `_1p.dds`: los 19 retratos salen coherentes (Annie, Beowulf, Big Band, Cerebella, Double, Eliza, Filia, Fukua, Marie, Ms. Fortune, Painwheel, Parasoul, Peacock, Robo-Fortune, Squigly, Umbrella, Valentine y Bloody Marie).
+  Black Dahlia sale sin el magenta, pero su cara queda oscura (no sé todavía si el juego la pinta así). `zdroid_hudart <salida> --rows <personaje> <carpeta pcx> <paleta.dds> [--fits]` imprime qué fila recibió cada valor.
+- **Pruebas:** `tests/test_hud_portrait.cpp` (`zdroid_hudportrait_tests`, 86 comprobaciones: 5 claves por región, regiones de distinto tamaño, tabla de otra build, regiones planas, capa que no cabe en 8 bits, tono y contorno) y el test de retratos de
+  `tests/test_main.cpp` puesto al día.
+- **Sigue pendiente (dicho claro):** combate sin errores, sprites de efectos de la carpeta `sprites` en combate, el 3D con fallos, voces, y los `.gbs` en el resto del menú (inicio, Galería de Arte, Opciones / pausa / controles) como la edición de PC;
+  y el rediseño de mods / resource packs (#33).
+- Android: `versionCode 22`, `versionName 0.0.0.0-Dev`.
+
 ## Build 0.9.8 Dev_Nov-17 - editor de color: tu propio color para cada personaje
 
 - **Cómo se abre:** en la selección de personaje, **mantén pulsado el personaje** de pie (o la tecla `C` en escritorio; un toque corto sigue pasando al siguiente color). Se abre el editor de color,
