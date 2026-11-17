@@ -18,3 +18,7 @@ pafx.key
 pafx.key
 *.pafx
 core_import/
+
+# python bytecode caches are never committed
+__pycache__/
+*.pyc
