@@ -308,6 +308,25 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.9.8 Dev_Nov-17 - editor de color: tu propio color para cada personaje
+
+- **Cómo se abre:** en la selección de personaje, **mantén pulsado el personaje** de pie (o la tecla `C` en escritorio; un toque corto sigue pasando al siguiente color). Se abre el editor de color,
+  que **no es la capa de mods**: no toca `mods/`, el cargador de mods ni los archivos del juego.
+- **Qué puedes hacer** (`src/app/colour_editor.*`): tocar una parte del personaje (o recorrerlas con `<<  <  >  >>`), mover **matiz / saturación / brillo** de esa parte con el sombreado intacto, o elegir **un solo tono**
+  de su rampa; para todo el personaje: matiz global, **Pastel / Vivo / Oscuro / Claro / Al azar**; **Parte orig. / Todo orig.** devuelven lo de antes. La vista previa es el personaje de pie, recoloreado al instante (la parte activa pulsa).
+  Inspirado en la paleta de sgmpalette de krazete, pero hecho con los datos reales de TU paleta.
+- **Cómo funciona** (`src/core/colour_edit.*`): cada fila de una paleta (`<nombre>_Np.dds` = bandas x 16 tonos) es la interpolación lineal de unos pocos **colores clave** (la misma cuenta que `palmod::bake`);
+  se recuperan por mínimos cuadrados (exactos a <= 1 nivel en las paletas reales) y se editan. Las tablas de regiones no coinciden en Marie, Squigly, Big Band ni Eliza, así que cada fila usa la cuenta de la tabla solo si ajusta
+  (error <= 3) y si no busca de 1 a 16 claves. El editor pinta el sprite de pie con una consulta por texel (`CharSpriteEdit`), sin decodificar nada de nuevo.
+- **Favoritos** (`src/core/fav_colours.*`): "GUARDAR" crea `<carpeta de ajustes>/favcolours/<personaje>/<nombre>.zgcol` (texto `ZGCOL 1`) + su `.dds` horneado, y aparece al final de la lista de colores del personaje
+  (`fav:<nombre>`, se ve como estrella + nombre). Al abrir el editor sobre un favorito, GUARDAR lo sobreescribe y aparece **BORRAR**.
+- **Pruebas:** `tests/test_colour_edit.cpp` (`zdroid_colour_tests`, 124 comprobaciones; 194 con `ZDROID_TEST_PALS` apuntando a paletas reales: ajuste exacto, ida y vuelta, HSV, favoritos en una carpeta temporal). ASan/UBSan limpios.
+  Capturas headless del editor en Filia, Marie, Squigly, Big Band, Eliza y Black Dahlia; el visor tiene `--cs-edit`, `--cs-edit-char <nombre>` y `--hold x,y` (pulsación larga) para esto.
+- **Sigue sin hacer (dicho claro):** no lo he probado en un teléfono (el gesto de mantener pulsado y el tamaño de los controles táctiles los tienes que confirmar tú); el editor solo trabaja con el sprite de pie del selector, y el color guardado
+  se aplica a los **luchadores** por su paleta (igual que las paletas de mods). Los retratos grandes (`character_<nombre>_colors|lines|shade.pcx`) siguen con su propio problema de color (ojos rojos / piel rara): falta ver tus `.pcx`.
+  Las filas de Marie y Squigly del `.pal` de las paletas Claude siguen desplazadas (necesito un `.pal` de ejemplo).
+- Android: `versionCode 21`, `versionName 0.9.8-zgirls-Dev_Nov-17`.
+
 ## Build 0.9.7 Dev_Nov-16 - las luces del escenario sobre los personajes
 
 - **Iluminación de personajes** (`src/core/fighter_light.*`, `art.*`, `foit.*`, `src/app/play.*`): el `.lvl` de cada escenario trae luces (`Light: Amb / Dir / Pt`) que **no tocan el escenario** sino a los luchadores.

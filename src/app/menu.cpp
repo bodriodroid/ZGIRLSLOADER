@@ -12,7 +12,12 @@
 #include <set>
 #include <sstream>
 
+#include "art.h"
+#include "colour_edit.h"
 #include "dds.h"
+#include "hud_art.h"
+#include "palmod.h"
+#include "vfs.h"
 #include "dev_options.h"
 #include "savini.h"
 #include "zg_progress.h"
@@ -522,6 +527,95 @@ const char* MenuScreen::stateName() const {
     return state_ == State::Disclaimer ? "notice" : state_ == State::Splash ? "splash" : state_ == State::Attract ? "attract" : state_ == State::Title ? "title" : state_ == State::CharSelect ? "charselect" : "menu";
 }
 
+std::map<std::string, std::vector<CharSelect::PaletteChoice>> MenuScreen::buildPaletteChoices() {
+    std::map<std::string, std::vector<CharSelect::PaletteChoice>> pm;
+    favsByChar_.clear();
+    if (!gd_) return pm;
+    if (!favs_.enabled() && !prefsDir_.empty()) favs_ = coledit::Favourites(prefsDir_ + "/favcolours");
+    for (int i = 0; i < CharSelect::kRoster; ++i) {
+        const char* rn = CharSelect::rosterName(i);
+        if (!rn || !*rn) continue;
+        const std::string name = rn;
+        std::vector<CharSelect::PaletteChoice>& v = pm[name];
+        for (int n = 1; n <= 40; ++n) {
+            std::string real;
+            if (gd_->vfs().resolve(name + "_" + std::to_string(n) + "p.dds", &real)) v.push_back({std::to_string(n) + "p", real});
+        }
+        for (const palmod::Entry* e : gd_->customPalettes().forCharacter(name)) v.push_back({"mod:" + e->label, e->dds});
+        if (v.empty()) {
+            pm.erase(name);
+            continue;
+        }
+        if (favs_.enabled()) {   // the character's own palette gives a favourite its lit flags when its texture has to be baked again
+            Palette own;
+            std::vector<uint8_t> bytes;
+            const bool have = readFile(v[0].path, bytes) && readDds(bytes.data(), bytes.size(), own);
+            std::vector<coledit::Fav> list = favs_.list(name, have ? &own : nullptr);
+            for (const coledit::Fav& f : list) v.push_back({"fav:" + f.name, f.dds});
+            favsByChar_[name] = std::move(list);
+        }
+    }
+    return pm;
+}
+
+void MenuScreen::openColourEditor(const std::string& name, int palIdx) {
+    const auto it = palChoices_.find(name);
+    if (!gd_ || it == palChoices_.end() || it->second.empty() || name.empty() || name == "random") return;
+    const int idx = std::max(0, std::min(palIdx, static_cast<int>(it->second.size()) - 1));
+    const CharSelect::PaletteChoice& cur = it->second[static_cast<size_t>(idx)];
+    auto loadPal = [&](const std::string& path, Palette& out) {
+        std::vector<uint8_t> bytes;
+        return readFile(path, bytes) && readDds(bytes.data(), bytes.size(), out) && out.bands >= 2;
+    };
+    Palette base, own;
+    if (!loadPal(cur.path, base)) {
+        say(langCode_ == "es" ? "No se pudo leer esa paleta." : "That palette could not be read.");
+        return;
+    }
+    ColourEditor::Setup su;
+    su.character = name;
+    su.title = hudart::displayName(name);
+    su.lang = langCode_;
+    if (!coledit::fromPalette(base, palmod::regionCounts(name), su.scheme)) return;
+    su.scheme.character = name;
+    if (loadPal(it->second[0].path, own) && own.bands == base.bands && own.alpha.size() == static_cast<size_t>(own.bands) * own.tones)
+        su.scheme.litAlpha = own.alpha;   // the character's own palette says which colours take the stage's light
+    if (cur.label.rfind("fav:", 0) == 0) {
+        for (const coledit::Fav& f : favsByChar_[name])
+            if (f.dds == cur.path) su.editing = f;
+    }
+    su.name = !su.editing.file.empty() ? su.editing.name
+                                       : std::string(langCode_ == "es" ? "Mi color " : "My colour ") + std::to_string(favsByChar_[name].size() + 1);
+    if (!colourEd_.open(gfx_, favs_, std::move(su))) {
+        say(langCode_ == "es" ? "No hay sprite de este personaje en tus datos." : "Your data has no sprite for this character.");
+        return;
+    }
+    sfx(sfxEnter_);
+}
+
+void MenuScreen::finishColourEdit(const ColourEditor::Result& r) {
+    using K = ColourEditor::Result::Kind;
+    if (r.kind == K::None) return;
+    if (r.kind == K::Cancelled) {
+        sfx(sfxBack_);
+        return;
+    }
+    const std::string name = r.fav.character;
+    auto pm = buildPaletteChoices();
+    palChoices_ = pm;
+    charSel_.setPalettes(std::move(pm));
+    int at = 0;
+    if (r.kind == K::Saved) {
+        const auto it = palChoices_.find(name);
+        if (it != palChoices_.end())
+            for (size_t i = 0; i < it->second.size(); ++i)
+                if (it->second[i].path == r.fav.dds) at = static_cast<int>(i);
+    }
+    charSel_.setPaletteIndex(at);
+    sfx(sfxEnter_);
+    say(r.kind == K::Saved ? (langCode_ == "es" ? "Color guardado: " : "Colour saved: ") + r.fav.name : std::string(langCode_ == "es" ? "Color borrado." : "Colour deleted."));
+}
+
 bool MenuScreen::showCharSelect(bool story, int firstStep) {
     if (!sceneOk_ || !charSel_.ready()) return false;
     state_ = State::CharSelect;
@@ -546,20 +640,8 @@ bool MenuScreen::showCharSelect(bool story, int firstStep) {
         for (const modsdir::StageMod& s : gd_->customStages()) cst.push_back({s.id, s.name});
         charSel_.setCustomStages(std::move(cst));
     }
-    if (gd_) {   // the colours of every roster character: the game's own <name>_Np.dds, then the custom ones from mods/pal ("mod:<file>")
-        std::map<std::string, std::vector<CharSelect::PaletteChoice>> pm;
-        for (int i = 0; i < CharSelect::kRoster; ++i) {
-            const char* rn = CharSelect::rosterName(i);
-            if (!rn || !*rn) continue;
-            const std::string name = rn;
-            std::vector<CharSelect::PaletteChoice>& v = pm[name];
-            for (int n = 1; n <= 40; ++n) {
-                std::string real;
-                if (gd_->vfs().resolve(name + "_" + std::to_string(n) + "p.dds", &real)) v.push_back({std::to_string(n) + "p", real});
-            }
-            for (const palmod::Entry* e : gd_->customPalettes().forCharacter(name)) v.push_back({"mod:" + e->label, e->dds});
-            if (v.empty()) pm.erase(name);
-        }
+    if (gd_) {   // the colours of every roster character: the game's own <name>_Np.dds, the custom ones from mods/pal ("mod:<file>"), then the player's favourites ("fav:<name>")
+        std::map<std::string, std::vector<CharSelect::PaletteChoice>> pm = buildPaletteChoices();
         palChoices_ = pm;
         charSel_.setPalettes(std::move(pm));
     }
@@ -724,6 +806,10 @@ Result MenuScreen::activate(Page& p, int visIdx, int tapX, const Rect& row) {
 }
 
 bool MenuScreen::onBack() {
+    if (colourEd_.isOpen()) {   // Android back inside the colour editor closes it without saving
+        colourEd_.cancel();
+        return true;
+    }
     if (controls_) {
         controls_ = false;
         return true;
@@ -754,6 +840,7 @@ bool MenuScreen::onBack() {
 Result MenuScreen::handleInput(Ui& ui) {
     Result res;
     Input& in = ui.in;
+    if (colourEd_.isOpen()) return res;   // the colour editor (drawn over the selector) owns the pointer and the keys
     const bool anyKey = in.enter || in.keyUp || in.keyDown || in.left || in.right;
 
     // ---- modals
@@ -855,6 +942,7 @@ Result MenuScreen::handleInput(Ui& ui) {
                 break;
             case CharSelect::Out::Kind::Moved: sfx(sfxMove_); break;
             case CharSelect::Out::Kind::Step: sfx(sfxEnter_); break;
+            case CharSelect::Out::Kind::Edit: openColourEditor(o.name, o.palette); break;
             case CharSelect::Out::Kind::Locked:
                 sfx(sfxNope_);
                 say(own("cslocked"));
@@ -1303,6 +1391,11 @@ void MenuScreen::draw(Ui& ui, SDL_Renderer* r) {
     if (pendingCharSelect_ && state_ != State::Disclaimer && state_ != State::Splash) {
         pendingCharSelect_ = false;
         if (!showCharSelect(pendingStory_, pendingStep_)) std::fprintf(stderr, "charselect: Charselect.gbs is not in the mounted data\n");
+    }
+    if (pendingEdit_ && state_ == State::CharSelect && charSel_.ready()) {
+        pendingEdit_ = false;
+        if (pendingEditWho_.empty()) openColourEditor(charSel_.cursorName(), charSel_.paletteIndex());
+        else openColourEditor(pendingEditWho_, 0);
     }
     if (state_ == State::Splash) {
         // the game's own loading screen; without its files (or without the UI pack) the title follows at once

@@ -89,11 +89,14 @@ struct Options {
     int frame = 0, bg = -1, smokeFrames = 4, loadDelayMs = 0, smokeScale = 1, fixedDtMs = 0, smokeW = 640;   // smokeW: capture window width in logical units (No Limits Screen)
     bool steamAutostart = false, skipTitle = false, acceptNotice = false, smokeLoading = false, gallery = false, credits = false, contributors = false;
     int csStep = 0, csPal = 0;
+    bool csEdit = false;
+    std::string csEditWho;   // --cs-edit-char <name>: the editor on that character instead of the cursor's   // --cs-edit: open the colour editor on the cursor's character (smoke)
     bool storyAudit = false;                 // --story-audit: check every story node, print the problems, exit (smoke)
     bool modsView = false;                   // --mods-view: open the Mods section of Browse (smoke)
     bool csStory = false;                    // --cs-step 0|1|2 (size / fighter / stage), --cs-story: Character Select smoke runs
     int attractShot = 0, attractTick = 0;   // --screen attract: which shot (1-based on the command line) and tick to start from
     std::vector<std::pair<int, int>> clicks;
+    std::vector<int> clickHold;   // frames the pointer stays down on each scripted click (--hold x,y: a long press)
     int clickAfter = 1;   // first frame the scripted clicks may happen on (a match needs a while to load)
 };
 
@@ -1021,6 +1024,8 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--accept-notice") o.acceptNotice = true;
         else if (a == "--cs-step") o.csStep = std::clamp(std::atoi(val(i).c_str()), 0, 2);
         else if (a == "--cs-story") o.csStory = true;
+        else if (a == "--cs-edit") o.csEdit = true;
+        else if (a == "--cs-edit-char") o.csEdit = true, o.csEditWho = val(i);
         else if (a == "--cs-p2") o.csP2 = val(i);   // charselect, player 2's pass (player 1 already picked this id)
         else if (a == "--mods-view") o.modsView = true;
         else if (a == "--story-audit") o.storyAudit = true;
@@ -1037,7 +1042,16 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--click-after") o.clickAfter = std::max(1, std::atoi(val(i).c_str()));
         else if (a == "--click") {
             int x = 0, y = 0;
-            if (std::sscanf(val(i).c_str(), "%d,%d", &x, &y) == 2) o.clicks.emplace_back(x, y);
+            if (std::sscanf(val(i).c_str(), "%d,%d", &x, &y) == 2) {
+                o.clicks.emplace_back(x, y);
+                o.clickHold.push_back(0);
+            }
+        } else if (a == "--hold") {
+            int x = 0, y = 0;
+            if (std::sscanf(val(i).c_str(), "%d,%d", &x, &y) == 2) {
+                o.clicks.emplace_back(x, y);
+                o.clickHold.push_back(40);
+            }
         } else if (a.rfind("--", 0) == 0) {
             std::fprintf(stderr, "unknown option %s\n", a.c_str());
         } else {
@@ -1196,6 +1210,7 @@ int main(int argc, char** argv) {
         app.menu.skipTitle();
         if (!opt.csP2.empty()) app.menu.requestCharSelectP2(opt.csP2);
         else app.menu.requestCharSelect(opt.csStory, opt.csStep, opt.csPal);
+        if (opt.csEdit) app.menu.requestColourEditor(opt.csEditWho);
     }
     if (opt.screen == "attract") app.menu.showAttract(opt.attractShot, opt.attractTick);   // the opening montage (smoke / screenshots)
     if (opt.screen == "splash") app.menu.showSplash();   // the game's own loading screen (smoke / screenshots)
@@ -1259,6 +1274,7 @@ int main(int argc, char** argv) {
     // (touchId, fingerId).  SDL synthesises a single mouse pointer from touch, which is not enough.
     std::vector<std::tuple<uint64_t, int, int>> fingers;
     size_t clickDone = 0;
+    int holdLeft = 0;
     int lastClickFrame = -1;
     const auto t0 = std::chrono::steady_clock::now();
     int exitCode = 0;
@@ -1334,7 +1350,7 @@ int main(int argc, char** argv) {
                 default: break;
             }
         }
-        // scripted clicks for the smoke test: two frames per click (press, then release)
+        // scripted clicks for the smoke test: two frames per click (press, then release); --hold keeps the pointer down for N frames in between
         if (smoke && clickDone < opt.clicks.size() * 2 && frameNo >= opt.clickAfter) {
             const auto& c = opt.clicks[clickDone / 2];
             if (clickDone % 2 == 0) {
@@ -1342,13 +1358,20 @@ int main(int argc, char** argv) {
                 in.my = in.pmy = c.second;
                 in.pressed = in.down = true;
                 prevMy = in.my;
+                holdLeft = opt.clickHold[clickDone / 2];
+                ++clickDone;
+            } else if (holdLeft > 0) {
+                in.mx = c.first;
+                in.my = c.second;
+                in.down = true;
+                --holdLeft;
             } else {
                 in.mx = c.first;
                 in.my = c.second;
                 in.released = true;
                 in.down = false;
+                ++clickDone;
             }
-            ++clickDone;
             lastClickFrame = frameNo;
         }
         if (in.down) in.dragDy = in.my - prevMy;

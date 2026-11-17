@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "art.h"
 #include "game_ui.h"
 
 namespace zengine {
@@ -49,6 +50,36 @@ private:
     };
     std::vector<Slot> slots_;
     unsigned long long clock_ = 0;
+};
+
+// One standing character that can be recoloured live (the colour editor): the first frame of its idle loop, kept as the raw atlas texels
+// (tone | region | line, see char_sprite.cpp) so a new palette only means looking every texel up again - no decoding.
+class CharSpriteEdit {
+public:
+    // (No SDL calls in the destructor: at shutdown the renderer is already gone - the owner calls close() while it is alive.)
+    // Composes the frame; `pal` colours it.  false when the user's data has no such sprite.
+    bool open(GameUi& gfx, const std::string& name, const Palette& pal);
+    void close();   // destroys the texture (call while the renderer is alive)
+    bool isOpen() const { return tex_ != nullptr; }
+    // Looks the texels up again in `pal`.  `region` (>= 1) is brightened by `pulse` (0..1) to show which part is being edited; 0 = none.
+    void paint(const Palette& pal, int region = 0, float pulse = 0);
+    // The region (palette row >= 1) at the pixel (x, y) of the frame, looking a few pixels around when the exact one is the outline or empty; 0 = none.
+    int regionAt(int x, int y) const;
+    SDL_Texture* texture() const { return tex_; }
+    int width() const { return w_; }
+    int height() const { return h_; }
+    float hotX() const { return hotX_; }
+    float hotY() const { return hotY_; }
+    // The box (inside the frame) that holds every visible texel: the frames carry a lot of empty room, which the editor crops away to draw the character big.
+    SDL_Rect bounds() const { return bounds_; }
+
+private:
+    SDL_Texture* tex_ = nullptr;
+    int w_ = 0, h_ = 0;
+    float hotX_ = 0, hotY_ = 0;
+    SDL_Rect bounds_{0, 0, 0, 0};
+    std::vector<uint8_t> raw_;   // w*h*4: the atlas texels as stored
+    std::vector<uint8_t> out_;   // w*h*4: what was uploaded last
 };
 
 }  // namespace menu

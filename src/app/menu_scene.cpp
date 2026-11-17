@@ -763,7 +763,10 @@ bool MenuScreen::useDialog() {
 }
 
 void MenuScreen::sceneModals(Ui& ui) {
-    (void)ui;
+    if (colourEd_.isOpen()) {   // the player's own colours: panels over the dimmed selector; the result (saved / deleted) refreshes the colour list
+        finishColourEdit(colourEd_.frame(ui, timeMs_));
+        return;
+    }
     static bool forced = false;   // smoke captures: ZDROID_MENU_MODAL=exit opens the exit question without a click
     if (!forced && std::getenv("ZDROID_MENU_MODAL")) {
         forced = true;

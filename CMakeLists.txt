@@ -41,6 +41,8 @@ add_library(zengine_core STATIC
   src/core/menu_list_anim.cpp
   src/core/art.cpp
   src/core/fighter_light.cpp
+  src/core/colour_edit.cpp
+  src/core/fav_colours.cpp
   src/core/foit.cpp
   src/core/foit_vm.cpp
   src/core/foit_rt.cpp
@@ -180,6 +182,9 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   add_executable(zdroid_light_tests tests/test_fighter_light.cpp)
   target_link_libraries(zdroid_light_tests PRIVATE zengine_core)
   add_test(NAME zdroid_light_tests COMMAND zdroid_light_tests)
+  add_executable(zdroid_colour_tests tests/test_colour_edit.cpp)
+  target_link_libraries(zdroid_colour_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_colour_tests COMMAND zdroid_colour_tests)
   add_executable(zdroid_sganim_tests tests/test_sganim.cpp)
   target_link_libraries(zdroid_sganim_tests PRIVATE zengine_core)
   add_test(NAME zdroid_sganim_tests COMMAND zdroid_sganim_tests)
@@ -241,7 +246,7 @@ if(ZDROID_BUILD_VIEWER)
   endif()
   if(ZDROID_SDL2_TARGET)
     # viewer sources: the loader screens (zdroid_viewer.cpp) + the UI layer + the Play screen
-    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/gallery.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/audio.cpp src/app/splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp src/app/fx_gl.cpp src/app/stage3d_gfx.cpp src/app/shadow_layer.cpp)
+    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/gallery.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/audio.cpp src/app/splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/colour_editor.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp src/app/fx_gl.cpp src/app/stage3d_gfx.cpp src/app/shadow_layer.cpp)
     if(ANDROID)
       # SDLActivity calls SDL_main() inside a library that must be called "main"
       add_library(main SHARED ${ZDROID_VIEWER_SOURCES})

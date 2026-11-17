@@ -703,6 +703,39 @@ CharSelect::Out CharSelect::update(const Input& in, int nowMs) {
         toStage();
         o.kind = Out::Kind::Step;
     };
+    // hold the standing character (or press C): the colour editor
+    if (spriteHit_.w > 0 && !lockedAt(cur_)) {
+        if (in.pressed) {
+            holdMs_ = spriteHit_.contains(in.pmx, in.pmy) ? nowMs : -1;
+            holdFired_ = false;
+        }
+        if (holdMs_ >= 0 && in.down) {
+            const bool still = spriteHit_.contains(in.mx, in.my) && std::abs(in.mx - in.pmx) < 10 && std::abs(in.my - in.pmy) < 10;
+            if (!still) {
+                holdMs_ = -1;
+            } else if (!holdFired_ && nowMs - holdMs_ >= kHoldMs) {
+                holdFired_ = true;
+                o.kind = Out::Kind::Edit;
+                o.name = nameAt(cur_);
+                o.palette = palIdx_;
+                o.paletteLabel = paletteLabel();
+                return o;
+            }
+        }
+        if (in.text == "c" || in.text == "C") {
+            o.kind = Out::Kind::Edit;
+            o.name = nameAt(cur_);
+            o.palette = palIdx_;
+            o.paletteLabel = paletteLabel();
+            return o;
+        }
+    }
+    if (in.released) {
+        const bool wasHold = holdFired_;
+        holdFired_ = false;
+        holdMs_ = -1;
+        if (wasHold) return o;   // the release that ends a hold is not a tap
+    }
     if (in.enter) {
         confirm();
         return o;
@@ -1023,21 +1056,25 @@ void CharSelect::draw(GameUi& gfx, const Localization& loc, const std::string& l
     // ---- 6b. the colour of the character on the pedestal ("COLOR 3 / 31" + the file name of a mods/pal palette) when there is a choice
     if (step_ == Step::Fighter && !random && !locked) {
         const auto pit = pals_.find(cname);
-        if (pit != pals_.end() && pit->second.size() > 1) {
-            const std::string label = paletteLabel();
-            std::string msg = "COLOR " + std::to_string(palIdx_ + 1) + " / " + std::to_string(pit->second.size());
-            const std::string file = label.rfind("mod:", 0) == 0 ? upper(label.substr(4)) : std::string();
-            if (const GbsFont* f = gfx.fontNamed("Subheader w Wings")) {
-                const float bx = player_ == 1 ? 810.0f : 20.0f, bw = 450.0f, bh = 30.0f;
-                const Col dark{12, 6, 4, 255};
-                const int off[4][2] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2}};
-                auto line = [&](const std::string& t, float by, float sc, Col col) {
-                    for (auto& o : off) gfx.drawLabelText(*f, t, bx + o[0], by + o[1], bw, bh, 1, true, dark, sc, 0.9f);
-                    gfx.drawLabelText(*f, t, bx, by, bw, bh, 1, true, col, sc, 1.0f);
-                };
+        const bool many = pit != pals_.end() && pit->second.size() > 1;
+        const std::string label = paletteLabel();
+        const std::string file = label.rfind("mod:", 0) == 0 ? upper(label.substr(4)) : label.rfind("fav:", 0) == 0 ? "* " + upper(label.substr(4)) : std::string();
+        if (const GbsFont* f = gfx.fontNamed("Subheader w Wings")) {
+            const float bx = player_ == 1 ? 810.0f : 20.0f, bw = 450.0f, bh = 30.0f;
+            const Col dark{12, 6, 4, 255};
+            const int off[4][2] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2}};
+            auto line = [&](const std::string& t, float by, float sc, Col col) {
+                for (auto& o : off) gfx.drawLabelText(*f, t, bx + o[0], by + o[1], bw, bh, 1, true, dark, sc, 0.9f);
+                gfx.drawLabelText(*f, t, bx, by, bw, bh, 1, true, col, sc, 1.0f);
+            };
+            if (many) {
+                const std::string msg = "COLOR " + std::to_string(palIdx_ + 1) + " / " + std::to_string(pit->second.size());
                 line(msg, 82.0f, 0.85f, Col{255, 214, 120, 255});                       // in the dark above the pedestals
-                if (!file.empty()) line(file, 112.0f, 0.55f, Col{235, 225, 210, 255});   // mods/pal file name
+                if (!file.empty()) line(file, 112.0f, 0.55f, Col{235, 225, 210, 255});   // mods/pal file name or the favourite's name
             }
+            // how to reach the colour editor
+            if (spriteHit_.w > 0) line(lang == "es" ? "MANTEN PULSADO EL PERSONAJE: TU COLOR" : "HOLD THE CHARACTER: YOUR COLOUR", many ? (file.empty() ? 112.0f : 136.0f) : 82.0f, 0.42f,
+                                       Col{200, 190, 176, 255});
         }
     }
 

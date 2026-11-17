@@ -42,7 +42,7 @@ public:
     enum class Step { Size, Fighter, Stage };
 
     struct Out {
-        enum class Kind { None, Moved, Confirm, Locked, Back, Step } kind = Kind::None;
+        enum class Kind { None, Moved, Confirm, Locked, Back, Step, Edit } kind = Kind::None;   // Edit: the standing character was held (the colour editor)
         std::string name;   // lower-case character id ("filia"), "random" for the dice cell
         std::string stage;  // Confirm: stage id ("new_meridian"), "random", "" in story mode (the story picks it)
         int teamSize = 1;   // Confirm: 1..3 (1 in story mode)
@@ -158,6 +158,9 @@ private:
     CharSprites sprites_;      // the characters standing on the pedestals
     std::map<std::string, std::vector<PaletteChoice>> pals_;
     int palIdx_ = 0;           // colour of the character under the cursor (reset when the cursor moves)
+    int holdMs_ = -1;          // when the press on the standing character began (-1 = none); held kHoldMs without moving = the colour editor
+    bool holdFired_ = false;   // the hold already opened the editor (the release that follows is not a tap)
+    static constexpr int kHoldMs = 450;
     Rect spriteHit_{0, 0, 0, 0};   // where the standing character was drawn last frame (logical pixels): a tap there changes colour
     bool stepPalette(int dir);
     std::string palPath() const;

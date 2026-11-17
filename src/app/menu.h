@@ -22,7 +22,9 @@
 #include "attract.h"
 #include "audio.h"
 #include "charselect.h"
+#include "colour_editor.h"
 #include "confirm_dialog.h"
+#include "fav_colours.h"
 #include "game_ui.h"
 #include "gamedata.h"
 #include "gbs_anim.h"
@@ -87,6 +89,7 @@ public:
         requestCharSelect(false, 1);
     }
     void requestCharSelect(bool story = false, int firstStep = 0, int palette = 0) { pendingCharSelect_ = true; pendingStory_ = story; pendingStep_ = firstStep; pendingPal_ = palette; }
+    void requestColourEditor(const std::string& who = std::string()) { pendingEdit_ = true; pendingEditWho_ = who; }   // smoke runs: open the colour editor on the character under the cursor as soon as the selector is up
     bool charSelectReady() const { return charSel_.ready(); }
     const CharSelect& charSelect() const { return charSel_; }
     // The splash shows a progress bar (and no Continue) while the game data is being indexed in the
@@ -245,7 +248,16 @@ private:
     bool twoPicks_ = false;                      // Quick Match / Local Versus / Training: P2 picks too (Arcade: the opponent is random)
     std::string pick1_, pickStage_, pickPal1_;   // P1's choice while P2 is still picking
     std::map<std::string, std::vector<CharSelect::PaletteChoice>> palChoices_;   // what the selector offers per character
+    // ---- the player's own colours (hold the character in the selector): favourites live in <prefs>/favcolours, not in the mod folders
+    ColourEditor colourEd_;
+    coledit::Favourites favs_;
+    std::map<std::string, std::vector<coledit::Fav>> favsByChar_;   // the favourites of each roster character, in the order they follow the other colours
+    std::map<std::string, std::vector<CharSelect::PaletteChoice>> buildPaletteChoices();
+    void openColourEditor(const std::string& name, int palIdx);
+    void finishColourEdit(const ColourEditor::Result& r);
     int pendingStep_ = 0, pendingPal_ = 0;
+    bool pendingEdit_ = false;
+    std::string pendingEditWho_;
 
     // ---- the scenes' own animations (LAGG), played at 60 Hz whatever the frame rate is
     GbsAnimPlayer aBg_;       // MainMenu_BG: spotlights, the drifting city, the fade at the loop point

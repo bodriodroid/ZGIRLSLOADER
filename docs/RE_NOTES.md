@@ -376,4 +376,7 @@ structure.
 * **Music lines of a `.lvl`:** `Music_Intro` / `Music_Loop` name the stage's own theme (file stems), `Music_InterruptIntro N` (>0: the loop starts at FIGHT! even if the intro has not ended),
   `Music_Outro`, `Music_Alt_Intro` / `Music_Alt_Loop` (replace the intro / loop when the game option "alternate stage music" is Yes; `NONE` = no intro). The value NONE means none.
   A stage that names none falls back to the music table.
+* **Palette rows are key-colour ramps (measured 17-nov).** Every region row of a `<name>_Np.dds` palette (16 tones, tone 0 = darkest) is a piecewise-linear interpolation of n key colours: key[0] lightest ... key[n-1] darkest, x = t*(n-1)/15, truncated to int (the same maths as `palmod::bake`).
+  A least-squares fit recovers the keys exactly (<= 1 level) on real palettes. The per-region key count in `pal_regions.inc` fits for most characters; mismatches found against game data: Marie (85 vs 84 rows), Squigly (51 vs 52, shifted from about region 14), Big Band region 13 and Eliza region 43 (3 vs 4 keys). The colour editor therefore trusts the table only where the fit error is <= 3 and otherwise searches n = 1..16.
+* **Standing sprites (`character_select_<name>.spr.msb/.dds`)**: an atlas texel is R5 G6 B5 = tone | region (palette row) | outline-layer coverage, so re-colouring is a table lookup and `composeSprFrame` (a pure tile copy) keeps the raw texels intact.
 
