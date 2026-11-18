@@ -242,6 +242,7 @@ private:
     void scenePage(Page& p);
     // The command lists (movelists.ini, movelist_<Name>.ini) are not rows of the film-strip menu: the PC edition shows them in the
     // big dialog of Options.gbs "Movelist" (frame, winged title, six 72-px slots: move name over its command in button art).
+    int dialogKind(const Page& p) const;   // 0 = film strip, 1 = command list, 2 = settings
     bool isDialogPage(const Page& p) const;
     void sceneDialog(Page& p);
     void sceneLayoutDialog(Page& p);

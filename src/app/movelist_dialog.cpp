@@ -168,22 +168,20 @@ int drawCommandBlock(GameUi& g, const GbsFont& f, const std::string& cmd, float 
 }
 
 
-bool drawMovelistDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, const std::string& key, const std::vector<MovelistRow>& rows,
-                        int sel, float scroll, const std::string& title, int ageMs) {
+namespace {
+// The frame of a dialog view of Options.gbs: backdrop fade, the dialog window, the winged title.  What the game's code fills in (the
+// slots, the arrows, the Help1 description, the slot template DisplayGRP) is hidden: the caller draws those.  Null when the view is
+// not in the data.
+const GbsSceneView* drawDialogFrame(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, const std::string& key, const char* viewName,
+                                    const std::string& title) {
     const GbsSceneView* v = nullptr;
-    if (g.loadScene("Options.gbs") && g.scene()) v = g.scene()->view("Movelist");
-    if (!v) return false;
-    const bool prevPivot = g.otterPivot();
-    g.setOtterPivot(true);
-    const int n = static_cast<int>(rows.size());
+    if (g.loadScene("Options.gbs") && g.scene()) v = g.scene()->view(viewName);
+    if (!v) return nullptr;
     if (animKey != key) {
         animKey = key;
         anim.bind(v);
         for (const char* a : {"OnActivate", "ListSetup", "P1MenuIntro"}) anim.play(a);
     }
-    sel = n > 0 ? std::clamp(sel, 0, n - 1) : 0;
-    const float selY = kMovelistSlotY + (static_cast<float>(sel) - scroll) * kMovelistSlotStep;
-    const bool selShown = n > 0 && selY >= kMovelistSlotY - 1.0f && selY <= kMovelistSlotY + kMovelistSlotStep * (kMovelistSlots - 1) + 1.0f;
     std::string head = title;
     for (char& c : head)
         if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
@@ -195,25 +193,57 @@ bool drawMovelistDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, co
         } else if (nm == "TitleTxt") {
             st.hasText = true;
             st.text = head;
-        } else if (nm == "Help1" || nm == "ArrowGroup" || nm == "DisplayGRP" || nm.rfind("DisplayTxt", 0) == 0) {
-            st.hide = true;   // (DisplayGRP is the template of a slot: the game's code moves it, we draw the bar below)
+        } else if (nm == "Help1" || nm == "ArrowGroup" || nm == "DisplayGRP" || nm == "HeadersGRP" || nm.rfind("DisplayTxt", 0) == 0) {
+            st.hide = true;   // (DisplayGRP is the template of a slot: the game's code moves it, we draw the bar)
         }
     });
     g.setAnimPlayer(nullptr);
+    return v;
+}
+
+// Selector_Left / _Center / _Right of a slot at (x, y): the two fades are 128 px, the middle fills the rest, the right fade mirrored.
+void drawSelectorBar(GameUi& g, const char* fadeTex, const char* midTex, float x, float y, float w, float h, float alpha) {
+    SDL_Texture* fade = g.texture(fadeTex);
+    SDL_Texture* mid = g.texture(midTex);
+    if (fade && mid) {
+        const Col full{255, 255, 255, 255};
+        g.drawTexture(fade, x, y, 128.0f, h, 0, 0, 0, false, false, full, alpha);
+        g.drawTexture(mid, x + 128.0f, y, w - 256.0f, h, 0, 0, 0, false, false, full, alpha);
+        g.drawTexture(fade, x + w - 128.0f, y, 128.0f, h, 0, 0, 0, true, false, full, alpha);
+    } else {
+        g.fillRect(x, y, w, h, Col{120, 20, 20, 90});
+    }
+}
+
+// Up / down chevrons beside the list when it scrolls.
+void drawScrollArrows(GameUi& g, int n, int visible, float scroll, float top, float bottom) {
+    if (n <= visible) return;
+    SDL_Texture* aOff = g.texture("Textures/MainMenu/arrow01.png");
+    SDL_Texture* aOn = g.texture("Textures/MainMenu/arrow02.png");
+    const float cx = kMovelistSlotX + kMovelistSlotW + 26.0f;
+    const Col full{255, 255, 255, 255};
+    if (scroll > 0.01f && aOn) g.drawTexture(aOn, cx - 13.0f, top, 26.0f, 38.0f, -90, 13, 19);
+    else if (aOff) g.drawTexture(aOff, cx - 13.0f, top, 26.0f, 38.0f, -90, 13, 19, false, false, full, 0.5f);
+    if (scroll < static_cast<float>(n - visible) - 0.01f && aOn) g.drawTexture(aOn, cx - 13.0f, bottom, 26.0f, 38.0f, 90, 13, 19);
+    else if (aOff) g.drawTexture(aOff, cx - 13.0f, bottom, 26.0f, 38.0f, 90, 13, 19, false, false, full, 0.5f);
+}
+}  // namespace
+
+bool drawMovelistDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, const std::string& key, const std::vector<MovelistRow>& rows,
+                        int sel, float scroll, const std::string& title, int ageMs) {
+    const GbsSceneView* v = drawDialogFrame(g, anim, animKey, key, "Movelist", title);
+    if (!v) return false;
+    const bool prevPivot = g.otterPivot();
+    g.setOtterPivot(true);
+    const int n = static_cast<int>(rows.size());
+    sel = n > 0 ? std::clamp(sel, 0, n - 1) : 0;
+    const float selY = kMovelistSlotY + (static_cast<float>(sel) - scroll) * kMovelistSlotStep;
+    const bool selShown = n > 0 && selY >= kMovelistSlotY - 1.0f && selY <= kMovelistSlotY + kMovelistSlotStep * (kMovelistSlots - 1) + 1.0f;
 
     const float intro = std::clamp(static_cast<float>(ageMs) / 260.0f, 0.0f, 1.0f);
-    if (selShown) {   // Selector_Left / _Center / _Right (Textures/Options/selector72-*): 128 + 844 + 128 px, the right fade mirrored
-        SDL_Texture* fade = g.texture("Textures/Options/selector72-fade.png");
-        SDL_Texture* mid = g.texture("Textures/Options/selector72-middle.png");
-        const float al = std::clamp(static_cast<float>(ageMs) / 200.0f, 0.0f, 1.0f);
-        if (fade && mid) {
-            g.drawTexture(fade, kMovelistSlotX, selY, 128.0f, 72.0f, 0, 0, 0, false, false, Col{255, 255, 255, 255}, al);
-            g.drawTexture(mid, kMovelistSlotX + 128.0f, selY, 844.0f, 72.0f, 0, 0, 0, false, false, Col{255, 255, 255, 255}, al);
-            g.drawTexture(fade, kMovelistSlotX + 972.0f, selY, 128.0f, 72.0f, 0, 0, 0, true, false, Col{255, 255, 255, 255}, al);
-        } else {
-            g.fillRect(kMovelistSlotX, selY, kMovelistSlotW, 72.0f, Col{120, 20, 20, 90});
-        }
-    }
+    if (selShown)
+        drawSelectorBar(g, "Textures/Options/selector72-fade.png", "Textures/Options/selector72-middle.png", kMovelistSlotX, selY,
+                        kMovelistSlotW, 72.0f, std::clamp(static_cast<float>(ageMs) / 200.0f, 0.0f, 1.0f));
     if (const GbsFont* fT = g.fontNamed("Dialogue Text")) {
         g.clipCanvas(0, kMovelistSlotY, 1280.0f, kMovelistSlotStep * kMovelistSlots);   // the list is cut to its six slots
         for (int k = 0; k < n; ++k) {
@@ -238,18 +268,74 @@ bool drawMovelistDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, co
         }
         g.clearClip();
     }
-    // scroll arrows, beside the slots
-    if (n > kMovelistSlots) {
-        SDL_Texture* aOff = g.texture("Textures/MainMenu/arrow01.png");
-        SDL_Texture* aOn = g.texture("Textures/MainMenu/arrow02.png");
-        const float cx = kMovelistSlotX + kMovelistSlotW + 26.0f;
-        const Col full{255, 255, 255, 255};
-        if (scroll > 0.01f && aOn) g.drawTexture(aOn, cx - 13.0f, kMovelistSlotY + 30.0f, 26.0f, 38.0f, -90, 13, 19);
-        else if (aOff) g.drawTexture(aOff, cx - 13.0f, kMovelistSlotY + 30.0f, 26.0f, 38.0f, -90, 13, 19, false, false, full, 0.5f);
-        const float by = kMovelistSlotY + kMovelistSlotStep * kMovelistSlots - 68.0f;
-        if (scroll < static_cast<float>(n - kMovelistSlots) - 0.01f && aOn) g.drawTexture(aOn, cx - 13.0f, by, 26.0f, 38.0f, 90, 13, 19);
-        else if (aOff) g.drawTexture(aOff, cx - 13.0f, by, 26.0f, 38.0f, 90, 13, 19, false, false, full, 0.5f);
+    drawScrollArrows(g, n, kMovelistSlots, scroll, kMovelistSlotY + 30.0f, kMovelistSlotY + kMovelistSlotStep * kMovelistSlots - 68.0f);
+    g.setOtterPivot(prevPivot);
+    return true;
+}
+
+bool drawOptionsDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, const std::string& key, const std::vector<OptionRow>& rows,
+                       int sel, float scroll, const std::string& title, const std::string& desc, const std::string& note, bool noteWarn, int ageMs) {
+    const GbsSceneView* v = drawDialogFrame(g, anim, animKey, key, "FullScreenOptions", title);
+    if (!v) return false;
+    const bool prevPivot = g.otterPivot();
+    g.setOtterPivot(true);
+    const int n = static_cast<int>(rows.size());
+    sel = n > 0 ? std::clamp(sel, 0, n - 1) : 0;
+    const float step = kOptionSlotStep;
+    const float selY = kMovelistSlotY + (static_cast<float>(sel) - scroll) * step;
+    const bool selShown = n > 0 && selY >= kMovelistSlotY - 1.0f && selY <= kMovelistSlotY + step * (kOptionSlots - 1) + 1.0f;
+    const float intro = std::clamp(static_cast<float>(ageMs) / 260.0f, 0.0f, 1.0f);
+    if (selShown)
+        drawSelectorBar(g, "Textures/Options/selector36-fade.png", "Textures/Options/selector36-middle.png", kMovelistSlotX, selY,
+                        kMovelistSlotW, step, std::clamp(static_cast<float>(ageMs) / 200.0f, 0.0f, 1.0f));
+    if (const GbsFont* fT = g.fontNamed("Dialogue Text")) {
+        SDL_Texture* mark = g.texture("Textures/Posthud/arrow01.png");
+        SDL_Texture* arOff = g.texture("Textures/MainMenu/arrow01.png");
+        SDL_Texture* arOn = g.texture("Textures/MainMenu/arrow02.png");
+        g.clipCanvas(0, kMovelistSlotY, 1280.0f, step * kOptionSlots);
+        for (int k = 0; k < n; ++k) {
+            const float y = kMovelistSlotY + (static_cast<float>(k) - scroll) * step;
+            if (y + step <= kMovelistSlotY || y >= kMovelistSlotY + step * kOptionSlots) continue;
+            const OptionRow& o = rows[static_cast<size_t>(k)];
+            const bool on = k == sel;
+            const Col c = !o.enabled ? Col{130, 126, 120, 255} : on ? Col{255, 255, 255, 255} : Col{226, 222, 212, 255};
+            const float a = intro;
+            // (the template ChoiceGRP: marker 79, label 103 (251 wide), < 345, value 375 (197 wide), > 565 -- slot x 90)
+            if (on && mark) g.drawTexture(mark, kMovelistSlotX - 11.0f, y + 7.0f, 9.0f, 21.0f, 0, 0, 0, false, false, Col{255, 255, 255, 255}, a);
+            const float lw = o.choice ? 251.0f : 1000.0f;
+            const float ls = std::min(1.0f, lw / std::max(1.0f, g.textWidth(*fT, o.label)));
+            g.drawLabelText(*fT, o.label, kMovelistSlotX + 13.0f, y, lw + 40.0f, step, 0, true, c, ls, a);
+            if (!o.choice) continue;
+            const float vw = 197.0f;
+            const float vs = std::min(1.0f, vw / std::max(1.0f, g.textWidth(*fT, o.value)));
+            g.drawLabelText(*fT, o.value, kMovelistSlotX + 285.0f, y, vw, step, 1, true, c, vs, a);
+            SDL_Texture* ar = on && o.enabled ? arOn : arOff;
+            if (ar) {
+                g.drawTexture(ar, kMovelistSlotX + 255.0f, y + 3.0f, 21.0f, 29.0f, 0, 0, 0, true, false, Col{255, 255, 255, 255}, a);
+                g.drawTexture(ar, kMovelistSlotX + 475.0f, y + 3.0f, 21.0f, 29.0f, 0, 0, 0, false, false, Col{255, 255, 255, 255}, a);
+            }
+        }
+        g.clearClip();
+        // Help1: the description of the highlighted row, centred under the list
+        if (!desc.empty() || !note.empty()) {
+            const std::string both = note.empty() ? desc : (desc.empty() ? note : desc + "\n" + note);
+            const float bw = kMovelistSlotW - 40.0f;
+            float sc = 1.0f;
+            auto lines = g.wrap(*fT, both, bw, sc);
+            while (lines.size() > 2 && sc > 0.6f) {
+                sc -= 0.05f;
+                lines = g.wrap(*fT, both, bw, sc);
+            }
+            const float lh = 26.0f * sc;
+            float yy = 632.0f + (2.0f - static_cast<float>(std::min<size_t>(lines.size(), 2))) * lh * 0.5f;
+            for (size_t i = 0; i < lines.size() && i < 2; ++i, yy += lh) {
+                const bool isNote = !note.empty() && (lines.size() == 1 ? desc.empty() : i == lines.size() - 1);
+                g.drawLabelText(*fT, lines[i], kMovelistSlotX + 20.0f, yy, bw, lh, 1, true,
+                                isNote ? (noteWarn ? Col{255, 205, 110, 255} : Col{200, 192, 182, 255}) : Col{255, 255, 255, 255}, sc, 1.0f);
+            }
+        }
     }
+    drawScrollArrows(g, n, kOptionSlots, scroll, kMovelistSlotY + 6.0f, kMovelistSlotY + step * kOptionSlots - 44.0f);
     g.setOtterPivot(prevPivot);
     return true;
 }

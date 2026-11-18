@@ -33,4 +33,20 @@ int drawCommandBlock(GameUi& g, const GbsFont& f, const std::string& command, fl
 bool drawMovelistDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, const std::string& key, const std::vector<MovelistRow>& rows,
                         int sel, float scroll, const std::string& title, int ageMs);
 
+
+// ---- the Options dialog (Options.gbs "FullScreenOptions": twelve 36-px slots, a choice row = marker + label + < value >) ----------
+struct OptionRow {
+    std::string label;   // already localised
+    std::string value;   // choice rows: the current value, already localised
+    bool choice = false; // shows < value >
+    bool enabled = true; // false = dimmed
+};
+constexpr int kOptionSlots = 12;
+constexpr float kOptionSlotStep = 36.0f;   // canvas px; the slots start at kMovelistSlotX / kMovelistSlotY
+
+// Same contract as drawMovelistDialog.  `desc` is the highlighted row's description (the dialog's Help1 area, under the list: up to
+// two lines), `note` an optional second line in a different colour (what is not available).
+bool drawOptionsDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, const std::string& key, const std::vector<OptionRow>& rows,
+                       int sel, float scroll, const std::string& title, const std::string& desc, const std::string& note, bool noteWarn, int ageMs);
+
 }  // namespace zengine

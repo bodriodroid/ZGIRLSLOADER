@@ -310,20 +310,33 @@ void MenuScreen::sceneLayoutRoot(Page& p) {
     if (n > 0) rows_.push_back({std::clamp(p.sel, 0, n - 1), logical(bandSlot_.x, bandSlot_.y, bandSlot_.w, bandSlot_.h)});
 }
 
-bool MenuScreen::isDialogPage(const Page& p) const {
-    return !p.root && sceneOk_ && p.file.rfind("movelist", 0) == 0;
+// Pages drawn as the big dialog of Options.gbs: the command lists ("Movelist": 72-px slots, a move over its command) and the pages
+// of settings ("FullScreenOptions": 36-px slots, label + < value >).  The pages of plain entries (Single Player, Extras ...) stay on
+// the film strip like the PC edition.
+int MenuScreen::dialogKind(const Page& p) const {
+    if (p.root || !sceneOk_) return 0;
+    if (p.file.rfind("movelist", 0) == 0) return 1;
+    for (const MenuOption& o : p.def.options)
+        if (o.type == MenuOptType::Setting) return 2;
+    return 0;
 }
+
+bool MenuScreen::isDialogPage(const Page& p) const { return dialogKind(p) != 0; }
 
 void MenuScreen::sceneLayoutDialog(Page& p) {
     const int n = static_cast<int>(p.vis.size());
-    rowPx_ = static_cast<int>(kMovelistSlotStep * 0.5f);
-    visibleRows_ = kSubRows;
-    tapSplitX_ = -1;
+    const bool opts = dialogKind(p) == 2;
+    const float step = opts ? kOptionSlotStep : kMovelistSlotStep;
+    const int slots = opts ? kOptionSlots : kMovelistSlots;
+    rowPx_ = static_cast<int>(step * 0.5f);
+    visibleRows_ = slots;
+    // a tapped choice row: left of the value = previous, right = next
+    tapSplitX_ = opts ? static_cast<int>(std::lround((kMovelistSlotX + 285.0f + 98.0f) * 0.5f)) : -1;
     const int top = static_cast<int>(std::lround(kMovelistSlotY * 0.5f));
-    listBox_ = Rect{static_cast<int>(kMovelistSlotX * 0.5f), top, static_cast<int>(kMovelistSlotW * 0.5f), rowPx_ * kSubRows};
+    listBox_ = Rect{static_cast<int>(kMovelistSlotX * 0.5f), top, static_cast<int>(kMovelistSlotW * 0.5f), rowPx_ * slots};
     for (int k = 0; k < n; ++k) {
         const int y = top + static_cast<int>(std::lround((static_cast<float>(k) - p.scroll) * static_cast<float>(rowPx_)));
-        if (y + rowPx_ <= top || y >= top + rowPx_ * kSubRows) continue;
+        if (y + rowPx_ <= top || y >= top + rowPx_ * slots) continue;
         rows_.push_back({k, Rect{listBox_.x, y, listBox_.w, rowPx_}});
     }
 }
@@ -716,22 +729,60 @@ void MenuScreen::sceneDialog(Page& p) {
     PivotScope pivotScope(gfx_, true);
     sceneBackground();   // (the film band, the lights: the dialog fades them out like the PC edition's BGFade)
     const int n = static_cast<int>(p.vis.size());
-    std::vector<MovelistRow> rows;
-    rows.reserve(static_cast<size_t>(n));
-    for (int k = 0; k < n; ++k) {
-        const MenuOption& o = p.def.options[static_cast<size_t>(p.vis[static_cast<size_t>(k)])];
-        MovelistRow r;
-        r.name = L(o.text);
-        if (o.isMove && o.hasDescription()) r.command = L(o.description);
-        r.kind = o.moveKind;
-        r.indent = o.indent;
-        rows.push_back(std::move(r));
+    const int sel = n > 0 ? std::clamp(p.sel, 0, n - 1) : 0;
+    const std::string title = pageTitle();
+    bool ok = false;
+    if (dialogKind(p) == 1) {
+        std::vector<MovelistRow> rows;
+        rows.reserve(static_cast<size_t>(n));
+        for (int k = 0; k < n; ++k) {
+            const MenuOption& o = p.def.options[static_cast<size_t>(p.vis[static_cast<size_t>(k)])];
+            MovelistRow r;
+            r.name = L(o.text);
+            if (o.isMove && o.hasDescription()) r.command = L(o.description);
+            r.kind = o.moveKind;
+            r.indent = o.indent;
+            rows.push_back(std::move(r));
+        }
+        ok = drawMovelistDialog(gfx_, aDlg_, dlgKey_, pageKey_, rows, sel, p.scroll, title, timeMs_ - pageT0_);
+    } else {
+        std::vector<OptionRow> rows;
+        rows.reserve(static_cast<size_t>(n));
+        for (int k = 0; k < n; ++k) {
+            const MenuOption& o = p.def.options[static_cast<size_t>(p.vis[static_cast<size_t>(k)])];
+            OptionRow r;
+            r.label = L(o.text);
+            r.enabled = optionUsable(o);
+            if (o.type == MenuOptType::Setting) {
+                r.choice = true;
+                r.value = L(settingValue(o.keyword));
+                if (r.value.empty() && !o.choices.empty()) r.value = L(o.choices.front());
+            } else if (o.type == MenuOptType::Submenu && !(r.label.size() >= 3 && r.label.compare(r.label.size() - 3, 3, "...") == 0)) {
+                r.label += "...";
+            }
+            rows.push_back(std::move(r));
+        }
+        std::string desc, note;
+        bool warn = false;
+        if (n > 0)
+            for (const auto& line : descriptionLines(p)) {
+                std::string& dst = line.second == 0 ? desc : note;
+                if (!dst.empty()) dst += "  ";
+                dst += line.first;
+                if (line.second == 1) warn = true;
+            }
+        if (desc.empty()) desc.swap(note);   // a toast / a note on its own takes the description line
+        ok = drawOptionsDialog(gfx_, aDlg_, dlgKey_, pageKey_, rows, sel, p.scroll, title, desc, note, warn, timeMs_ - pageT0_);
     }
-    std::string title = pageTitle();
-    const bool ok = drawMovelistDialog(gfx_, aDlg_, dlgKey_, pageKey_, rows, n > 0 ? std::clamp(p.sel, 0, n - 1) : 0, p.scroll, title,
-                                       timeMs_ - pageT0_);
+    if (ok) {   // the key hint under the dialog (the frame ends at y 683)
+        if (const GbsFont* fm = gfx_.fontNamed("Dialogue Text")) {
+            const std::string hint = own(SDL_GetNumTouchDevices() > 0 ? "hint.touch" : "hint.keys");
+            const float sc = std::min(0.78f, 1220.0f / std::max(1.0f, gfx_.textWidth(*fm, hint)));
+            shadowLabel(gfx_, *fm, hint, 40.0f, 686.0f, 1220.0f, 30.0f, 2, Col{205, 195, 182, 255}, sc, 1.0f);
+        }
+    }
     gfx_.loadScene("Main.gbs");   // back to the scene the menu reads its fonts and textures from
-    if (!ok) scenePage(p);       // the scene is not in the mounted data: the plain page
+    if (!ok) scenePage(p);       // the scene is not in the data: the plain page
 }
 
 void MenuScreen::scenePage(Page& p) {
