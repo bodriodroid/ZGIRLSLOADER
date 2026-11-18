@@ -381,6 +381,70 @@ void MenuScreen::playCues(GbsAnimPlayer& p) {
     }
 }
 
+// The photosensitivity warning: FrontCredits.gbs "PhotosensativeWarning" (white text on black, fading in and out over 360 ticks).  The game's
+// Spanish file still has the English text, so Spanish uses the app's own translation; other languages use the game's string.
+void MenuScreen::drawWarning(Ui& ui) {
+    std::string text = langCode_ == "es" ? own("warn.text") : loc_.trOr("PhotosensitiveSplash", own("warn.text"));
+    if (langCode_ != "es" && text.empty()) text = own("warn.text");
+    const GbsSceneView* v = nullptr;
+    if (sceneOk_ && gfx_.loadScene("FrontCredits.gbs") && gfx_.scene()) v = gfx_.scene()->view("PhotosensativeWarning");
+    if (!v) {   // the scene is not in the mounted data: the same words on plain black
+        ui.fill(Rect{0, 0, 640, 360}, Col{0, 0, 0, 255});
+        const int age = timeMs_ - warnT0_;
+        const int a = std::clamp(std::min(age, 6200 - age) / 4, 0, 255);
+        int y = 40;
+        std::string line;
+        for (size_t i = 0; i <= text.size(); ++i) {
+            const char c = i < text.size() ? text[i] : '\n';
+            if (c == '\n') {
+                // wrap the paragraph at 70 columns of the small font
+                std::string w, cur;
+                for (size_t k = 0; k <= line.size(); ++k) {
+                    const char d = k < line.size() ? line[k] : ' ';
+                    if (d == ' ') {
+                        if (!cur.empty() && Ui::textW(cur + " " + w) > 560) {
+                            ui.text(40, y, cur, Col{255, 255, 255, static_cast<uint8_t>(a)});
+                            y += 11;
+                            cur = w;
+                        } else {
+                            cur = cur.empty() ? w : cur + " " + w;
+                        }
+                        w.clear();
+                    } else {
+                        w += d;
+                    }
+                }
+                if (!cur.empty()) ui.text(40, y, cur, Col{255, 255, 255, static_cast<uint8_t>(a)});
+                y += 14;
+                line.clear();
+            } else {
+                line += c;
+            }
+        }
+        return;
+    }
+    gfx_.setViewport(0, 0, 0.5f);
+    gfx_.setJapanese(langCode_ == "jp");
+    if (!warnBound_) {
+        warnBound_ = true;
+        aWarn_.bind(v);
+        aWarn_.play("PhotosensativeWarning");
+        warnLastMs_ = timeMs_;
+    }
+    const int ticks = stepAnims(std::clamp(timeMs_ - warnLastMs_, 0, 100));
+    warnLastMs_ = timeMs_;
+    for (int i = 0; i < ticks; ++i) aWarn_.tick();
+    gfx_.setAnimPlayer(&aWarn_);
+    gfx_.drawView(*v, [&](const GbsNode& n, NodeState& st) {
+        if (n.type == GbsNode::Type::Label && n.name == "PhotosensativeWarning") {
+            st.hasText = true;
+            st.text = text;
+        }
+    });
+    gfx_.setAnimPlayer(nullptr);
+    gfx_.loadScene("Main.gbs");   // back to the scene the menu reads its fonts and textures from
+}
+
 void MenuScreen::drawScene(Ui& ui, SDL_Renderer* r) {
     (void)r;
     gfx_.loadScene("Main.gbs");

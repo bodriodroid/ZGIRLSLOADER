@@ -71,9 +71,12 @@ public:
     void skipTitle() { state_ = State::Menu; }
     // captures / tests: open a page of the menu by file name ("options.ini", "zd_dev.ini") on top of the root
     void openPageForCapture(const std::string& file) { state_ = State::Menu; push(file); }
-    // Accept the legal notice programmatically (smoke tests); the title screen comes next.
-    void acceptNotice() { if (state_ == State::Disclaimer) state_ = State::Title; }
+    // Accept the legal notice programmatically (smoke tests); the photosensitivity warning comes next (acceptNotice(true) skips it too).
+    // There is no title screen (the publisher marks are never shown) and no opening montage: notice -> warning -> menu.
+    void acceptNotice(bool skipWarning = false) { if (state_ == State::Disclaimer) { if (skipWarning) state_ = State::Menu; else showWarning(); } }
     void showTitle() { showTitleImpl(); titleAnimOn_ = false; }
+    // The photosensitivity warning (FrontCredits.gbs "PhotosensativeWarning"): a few seconds on black, any held button skips it.
+    void showWarning();
     // The game's own loading screen (loading_<lang>.dds): shown after the legal notice, then the title follows.
     void showSplash();
     // The opening montage (AttractMode.gbs): shot `shot` from tick `tick` (smoke runs / --screen attract).  It plays by itself after
@@ -109,7 +112,7 @@ public:
 
 private:
     // Disclaimer: the unofficial-project / own-your-copy notice, shown on every launch before the title.
-    enum class State { Disclaimer, Splash, Attract, Title, Menu, CharSelect };
+    enum class State { Disclaimer, Warning, Splash, Attract, Title, Menu, CharSelect };
     struct Page {
         MenuDef def;
         std::vector<int> vis;  // indices into def.options that are shown on this platform
@@ -227,6 +230,8 @@ private:
     void drawModals(Ui& ui);
     void drawShowcase(Ui& ui, SDL_Renderer* r);
     void showTitleImpl();
+    void drawWarning(Ui& ui);
+    void endWarning();
 
     // ---- scene mode (menu_scene.cpp)
     bool loadScenes(SDL_Renderer* r);
@@ -261,6 +266,9 @@ private:
 
     // ---- the scenes' own animations (LAGG), played at 60 Hz whatever the frame rate is
     GbsAnimPlayer aBg_;       // MainMenu_BG: spotlights, the drifting city, the fade at the loop point
+    GbsAnimPlayer aWarn_;     // FrontCredits.gbs PhotosensativeWarning
+    int warnT0_ = 0, warnHold_ = 0, warnLastMs_ = 0;
+    bool warnBound_ = false;
     GbsAnimPlayer aSplash_;   // Splash_2ND: logo bounce, spinning shield, the PRESS ANY BUTTON blink
     MenuListAnim aMenu_;      // MainMenu_New: intro, list moves, band slide of the sub-pages (core/menu_list_anim.h)
     bool menuLive_ = false;   // aMenu_ was activated for the menu that is on screen (false on the title / in the selector)

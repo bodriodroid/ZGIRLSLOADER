@@ -1213,6 +1213,7 @@ int main(int argc, char** argv) {
         if (opt.csEdit) app.menu.requestColourEditor(opt.csEditWho);
     }
     if (opt.screen == "attract") app.menu.showAttract(opt.attractShot, opt.attractTick);   // the opening montage (smoke / screenshots)
+    if (opt.screen == "warning") { app.menu.acceptNotice(); app.menu.showWarning(); }   // the photosensitivity warning (smoke / screenshots)
     if (opt.screen == "splash") app.menu.showSplash();   // the game's own loading screen (smoke / screenshots)
     if (opt.screen == "home") app.screen = Screen::Home;
     else if (opt.screen == "browse") app.screen = Screen::Browse;

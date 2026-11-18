@@ -28,6 +28,7 @@ namespace menu {
 namespace {
 
 constexpr int kW = 640, kH = 360;
+constexpr int kWarningMs = 6200;   // PhotosensativeWarning runs 360 ticks (6 s)
 constexpr int kSplashMs = 2600;   // the original loading screen is shown this long before the title
 constexpr int kListX = 24, kListY = 98, kListH = 196;
 constexpr int kDescY = 300, kDescH = 42;
@@ -128,6 +129,9 @@ std::string MenuScreen::own(const std::string& key) const {
     };
     static const S t[] = {
         {"touch", "TOUCH THE SCREEN", "TOCA LA PANTALLA"},
+        {"warn.text",
+         "PHOTOSENSITIVITY WARNING\n\nThis game contains certain intensities of flashing light that may trigger seizures or blackouts in individuals with photosensitive epilepsy, even with no prior history of seizures. Please cease play immediately if you experience dizziness, disorientation, altered vision, eye or muscle twitching, loss of consciousness, or any other signs of distress.\n\nHold Any Button to Skip",
+         "ADVERTENCIA DE FOTOSENSIBILIDAD\n\nEste juego contiene luces intermitentes de cierta intensidad que pueden provocar convulsiones o pérdidas del conocimiento en personas con epilepsia fotosensible, incluso sin antecedentes de convulsiones. Deja de jugar de inmediato si notas mareos, desorientación, alteraciones de la vista, temblores en los ojos o los músculos, pérdida del conocimiento o cualquier otro signo de malestar.\n\nMantén pulsado cualquier botón para saltar"},
         {"enter", "PRESS ENTER OR CLICK", "PULSA ENTER O HAZ CLIC"},
         {"gamedata", "Game Data", "Datos del juego"},
         {"gamedata.desc", "Pick the folder with your extracted game files, or download the game from your own Steam account.",
@@ -524,7 +528,7 @@ bool MenuScreen::actionImplemented(const std::string& k) const {
 }
 
 const char* MenuScreen::stateName() const {
-    return state_ == State::Disclaimer ? "notice" : state_ == State::Splash ? "splash" : state_ == State::Attract ? "attract" : state_ == State::Title ? "title" : state_ == State::CharSelect ? "charselect" : "menu";
+    return state_ == State::Disclaimer ? "notice" : state_ == State::Warning ? "warning" : state_ == State::Splash ? "splash" : state_ == State::Attract ? "attract" : state_ == State::Title ? "title" : state_ == State::CharSelect ? "charselect" : "menu";
 }
 
 std::map<std::string, std::vector<CharSelect::PaletteChoice>> MenuScreen::buildPaletteChoices() {
@@ -665,7 +669,7 @@ bool MenuScreen::ensureAttract() {
 
 void MenuScreen::beginAttract() {
     if (!ensureAttract()) {
-        state_ = State::Title;
+        state_ = State::Menu;
         return;
     }
     state_ = State::Attract;
@@ -710,11 +714,24 @@ std::string MenuScreen::pageTitle() const {
     return L(stack_.back().def.topText);
 }
 
-void MenuScreen::showTitleImpl() {
-    state_ = State::Title;
+void MenuScreen::showTitleImpl() {   // there is no title screen: the root menu is what comes after the warning
+    state_ = State::Menu;
     confirmExit_ = controls_ = false;
     rebuildStack();
     stack_.resize(1);
+}
+
+void MenuScreen::showWarning() {
+    state_ = State::Warning;
+    warnT0_ = timeMs_;
+    warnHold_ = 0;
+    warnBound_ = false;
+    confirmExit_ = controls_ = false;
+}
+
+void MenuScreen::endWarning() {
+    state_ = State::Menu;
+    if (audio_) sfx(sfxStart_);
 }
 
 // ---------------------------------------------------------------------------------------- logic
@@ -885,13 +902,21 @@ Result MenuScreen::handleInput(Ui& ui) {
         }
         if (in.left || in.right || in.keyUp || in.keyDown) noticeSel_ = 1 - noticeSel_;
         if (in.enter) {
-            if (noticeSel_ == 0) showSplash();
+            if (noticeSel_ == 0) showWarning();
             else res.kind = Result::Kind::Quit;
         }
         if (in.released) {
-            if (go.contains(in.mx, in.my) && go.contains(in.pmx, in.pmy)) showSplash();
+            if (go.contains(in.mx, in.my) && go.contains(in.pmx, in.pmy)) showWarning();
             else if (quit.contains(in.mx, in.my) && quit.contains(in.pmx, in.pmy)) res.kind = Result::Kind::Quit;
         }
+        return res;
+    }
+
+    // ---- photosensitivity warning: it runs its own animation (6 s); holding any button / finger for a moment skips it
+    if (state_ == State::Warning) {
+        warnHold_ = in.down ? warnHold_ + frameDt_ : 0;
+        const int age = timeMs_ - warnT0_;
+        if (warnHold_ >= 700 || (anyKey && age >= 800) || age >= kWarningMs) endWarning();
         return res;
     }
 
@@ -907,7 +932,7 @@ Result MenuScreen::handleInput(Ui& ui) {
         if (attractPending_) return res;   // not loaded yet (showAttract from a smoke run): the first draw starts it
         stepAttract();
         if (timeMs_ - attractT0_ >= 400 && (in.pressed || anyKey)) attract_.skip();
-        if (attract_.finished()) state_ = State::Title;
+        if (attract_.finished()) state_ = State::Menu;
         return res;
     }
 
@@ -1397,6 +1422,10 @@ void MenuScreen::draw(Ui& ui, SDL_Renderer* r) {
         if (pendingEditWho_.empty()) openColourEditor(charSel_.cursorName(), charSel_.paletteIndex());
         else openColourEditor(pendingEditWho_, 0);
     }
+    if (state_ == State::Warning) {
+        drawWarning(ui);
+        return;
+    }
     if (state_ == State::Splash) {
         // the game's own loading screen; without its files (or without the UI pack) the title follows at once
         if (sceneOk_ && !splashTried_) {
@@ -1474,7 +1503,6 @@ Result MenuScreen::frame(Ui& ui, SDL_Renderer* r, int dtMs) {
     const Result res = handleInput(ui);
     if (audio_ && !stack_.empty()) {
         if (st0 == State::CharSelect && state_ == State::Menu) sfx(sfxBack_);
-        else if (st0 == State::Title && state_ == State::Menu) sfx(sfxStart_);
         else if (st0 == State::Menu && state_ == State::Menu) {
             if (stack_.size() > depth0) { if (!(sceneOk_ && depth0 == 1)) sfx(sfxEnter_); }   // (SubMenuIntro carries its own cue)
             else if (stack_.size() < depth0) sfx(sfxBack_);
