@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 
 namespace zengine {
 
@@ -82,9 +83,10 @@ MenuDef parseMenuIni(std::string_view text) {
         const std::string key = lowerStr(trim(colon == std::string::npos ? line : line.substr(0, colon)));
         const std::string val = colon == std::string::npos ? std::string() : trim(line.substr(colon + 1));
 
-        if (key == "option") {
+        if (key == "option" || key == "move") {
             def.options.emplace_back();
             cur = &def.options.back();
+            cur->isMove = key == "move";
             continue;
         }
         if (!cur) {
@@ -92,7 +94,10 @@ MenuDef parseMenuIni(std::string_view text) {
             continue;
         }
         if (key == "defaultcursorpos") cur->defaultCursor = true;
-        else if (key == "type") cur->type = typeFromString(val);
+        else if (key == "type") {
+            if (cur->isMove) cur->moveKind = val;
+            else cur->type = typeFromString(val);
+        } else if (key == "indent") cur->indent = std::atoi(val.c_str());
         else if (key == "text") cur->text = val;
         else if (key == "description") cur->description = val;
         else if (key == "keyword") cur->keyword = val;
@@ -112,6 +117,74 @@ MenuDef parseMenuIni(std::string_view text) {
                                      [](const MenuOption& o) { return o.text.empty() && o.keyword.empty(); }),
                       def.options.end());
     return def;
+}
+
+// ---------------------------------------------------------------------------------------- command strings
+
+std::vector<CommandGlyph> commandTokenGlyphs(const std::string& token) {
+    using K = CommandGlyph::Kind;
+    auto arrows = [](std::initializer_list<const char*> l) {
+        std::vector<CommandGlyph> v;
+        for (const char* a : l) v.push_back({K::Arrow, a});
+        return v;
+    };
+    const std::string t = lowerStr(token);
+    if (t == "f" || t == "b" || t == "u" || t == "d" || t == "uf" || t == "ub" || t == "df" || t == "db") return arrows({t.c_str()});
+    if (t == "qcf") return arrows({"d", "df", "f"});
+    if (t == "qcb") return arrows({"d", "db", "b"});
+    if (t == "dp") return arrows({"f", "d", "df"});
+    if (t == "rdp") return arrows({"b", "d", "db"});
+    if (t == "360") return {{K::Word, "360"}};
+    if (t == "plus") return {{K::Word, "+"}};
+    if (t == "seq" || t == "seqs") return {{K::Word, ">"}};
+    if (t == "ap") return {{K::Word, "P"}};
+    if (t == "ak") return {{K::Word, "K"}};
+    if (t == "pp") return {{K::Word, "PP"}};
+    if (t == "kk") return {{K::Word, "KK"}};
+    // one or two face buttons: lp, mk, lplk, hpmk ...
+    static const char* const kBtn[] = {"lp", "mp", "hp", "lk", "mk", "hk"};
+    std::vector<CommandGlyph> out;
+    if (t.size() == 2 || t.size() == 4) {
+        for (size_t i = 0; i < t.size(); i += 2) {
+            const std::string b = t.substr(i, 2);
+            bool ok = false;
+            for (const char* k : kBtn) ok = ok || b == k;
+            if (!ok) return {};
+            out.push_back({K::Button, b});
+        }
+    }
+    return out;
+}
+
+std::string commandToText(const std::string& cmd) {
+    auto upper = [](std::string s) {
+        for (char& c : s) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        return s;
+    };
+    std::string out;
+    for (size_t i = 0; i < cmd.size(); ++i) {
+        if (cmd[i] == '{') {
+            const size_t e = cmd.find('}', i);
+            if (e != std::string::npos) {
+                const std::string tok = lowerStr(cmd.substr(i + 1, e - i - 1));
+                const std::vector<CommandGlyph> g = commandTokenGlyphs(tok);
+                if (g.empty()) {
+                    out += tok;   // unknown: its own name rather than nothing
+                } else if (tok == "qcf" || tok == "qcb" || tok == "dp" || tok == "rdp") {
+                    out += upper(tok);   // a motion reads as its name
+                } else {
+                    for (size_t k = 0; k < g.size(); ++k) {
+                        out += g[k].kind == CommandGlyph::Kind::Word ? g[k].s : upper(g[k].s);
+                        if (g[k].kind == CommandGlyph::Kind::Button && k + 1 < g.size()) out += "+";   // lp+lk: both at once
+                    }
+                }
+                i = e;
+                continue;
+            }
+        }
+        out += cmd[i];
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------------------- JSON

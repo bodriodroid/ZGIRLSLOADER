@@ -14,6 +14,7 @@
 
 #include "menu.h"
 #include "menu_list_anim.h"
+#include "movelist_dialog.h"
 
 namespace zengine {
 namespace menu {
@@ -309,7 +310,29 @@ void MenuScreen::sceneLayoutRoot(Page& p) {
     if (n > 0) rows_.push_back({std::clamp(p.sel, 0, n - 1), logical(bandSlot_.x, bandSlot_.y, bandSlot_.w, bandSlot_.h)});
 }
 
+bool MenuScreen::isDialogPage(const Page& p) const {
+    return !p.root && sceneOk_ && p.file.rfind("movelist", 0) == 0;
+}
+
+void MenuScreen::sceneLayoutDialog(Page& p) {
+    const int n = static_cast<int>(p.vis.size());
+    rowPx_ = static_cast<int>(kMovelistSlotStep * 0.5f);
+    visibleRows_ = kSubRows;
+    tapSplitX_ = -1;
+    const int top = static_cast<int>(std::lround(kMovelistSlotY * 0.5f));
+    listBox_ = Rect{static_cast<int>(kMovelistSlotX * 0.5f), top, static_cast<int>(kMovelistSlotW * 0.5f), rowPx_ * kSubRows};
+    for (int k = 0; k < n; ++k) {
+        const int y = top + static_cast<int>(std::lround((static_cast<float>(k) - p.scroll) * static_cast<float>(rowPx_)));
+        if (y + rowPx_ <= top || y >= top + rowPx_ * kSubRows) continue;
+        rows_.push_back({k, Rect{listBox_.x, y, listBox_.w, rowPx_}});
+    }
+}
+
 void MenuScreen::sceneLayoutPage(Page& p) {
+    if (isDialogPage(p)) {
+        sceneLayoutDialog(p);
+        return;
+    }
     const int n = static_cast<int>(p.vis.size());
     // Rows sit in the scene's own SubSlot positions (canvas 1280x720 -> logical x 0.5).  The hit area covers the bar
     // plus the distance the highlighted row slides to the right.
@@ -475,6 +498,7 @@ void MenuScreen::drawScene(Ui& ui, SDL_Renderer* r) {
         if (inMenu) {
             aMenu_.tick();
             if (!stack_.back().root) stepRowShift(stack_.back());
+            if (isDialogPage(stack_.back())) aDlg_.tick();
         }
     }
     playCues(aBg_);
@@ -493,6 +517,7 @@ void MenuScreen::drawScene(Ui& ui, SDL_Renderer* r) {
         }
         layoutRows(p);
         if (p.root) sceneRoot(p);
+        else if (isDialogPage(p)) sceneDialog(p);
         else scenePage(p);
     }
     sceneModals(ui);
@@ -686,6 +711,29 @@ void MenuScreen::sceneRoot(Page& p) {
     }
 }
 
+// Options.gbs "Movelist": the dialog the PC edition shows the command lists in (movelist_dialog.cpp draws it; the rows are the page's).
+void MenuScreen::sceneDialog(Page& p) {
+    PivotScope pivotScope(gfx_, true);
+    sceneBackground();   // (the film band, the lights: the dialog fades them out like the PC edition's BGFade)
+    const int n = static_cast<int>(p.vis.size());
+    std::vector<MovelistRow> rows;
+    rows.reserve(static_cast<size_t>(n));
+    for (int k = 0; k < n; ++k) {
+        const MenuOption& o = p.def.options[static_cast<size_t>(p.vis[static_cast<size_t>(k)])];
+        MovelistRow r;
+        r.name = L(o.text);
+        if (o.isMove && o.hasDescription()) r.command = L(o.description);
+        r.kind = o.moveKind;
+        r.indent = o.indent;
+        rows.push_back(std::move(r));
+    }
+    std::string title = pageTitle();
+    const bool ok = drawMovelistDialog(gfx_, aDlg_, dlgKey_, pageKey_, rows, n > 0 ? std::clamp(p.sel, 0, n - 1) : 0, p.scroll, title,
+                                       timeMs_ - pageT0_);
+    gfx_.loadScene("Main.gbs");   // back to the scene the menu reads its fonts and textures from
+    if (!ok) scenePage(p);       // the scene is not in the mounted data: the plain page
+}
+
 void MenuScreen::scenePage(Page& p) {
     PivotScope pivotScope(gfx_, true);
     sceneBackground();
@@ -745,8 +793,12 @@ void MenuScreen::scenePage(Page& p) {
         const float a = e;
         const uint8_t shade = usable ? 255 : 120;
         const Col tint{shade, shade, shade, 255};
-        const Col fg = usable ? kWhite : kGrey;
+        Col fg = usable ? kWhite : kGrey;
         std::string label = L(o.text);
+        if (o.isMove) {   // supers in gold, the follow-ups of a move (Indent) behind a dash
+            if (o.moveKind.rfind("Super", 0) == 0) fg = Col{255, 214, 120, 255};
+            if (o.indent > 0) label = "- " + label;
+        }
 
         if (o.type == MenuOptType::Setting) {
             gfx_.drawTexture(barChoice, sx - 2.0f, sy + 1.0f, 762.0f, 64.0f, 0, 0, 0, false, false, tint, a);
@@ -801,7 +853,13 @@ void MenuScreen::scenePage(Page& p) {
         if (desc.empty()) desc.swap(note);   // a toast / a note on its own takes the description line
         const float dx = 57.0f, dw = 1166.0f;
         auto fit = [&](const std::string& s, float maxW) { return std::min(1.0f, maxW / std::max(1.0f, gfx_.textWidth(*fm, s))); };
-        shadowLabel(gfx_, *fm, desc, dx, 631.0f, dw, 36.0f, 0, kWhite, fit(desc, dw), 1.0f);
+        const MenuOption* selMove = (p.vis.empty() || toastMs_ > 0) ? nullptr : &p.def.options[static_cast<size_t>(p.vis[static_cast<size_t>(std::clamp(p.sel, 0, n - 1))])];
+        if (selMove && selMove->isMove && selMove->hasDescription()) {   // a move: its command in button art, up to three lines
+            drawCommandBlock(gfx_, *fm, L(selMove->description), dx, 616.0f, dw, 3, kWhite);
+            note.clear();
+        } else {
+            shadowLabel(gfx_, *fm, desc, dx, 631.0f, dw, 36.0f, 0, kWhite, fit(desc, dw), 1.0f);
+        }
         if (!note.empty()) shadowLabel(gfx_, *fm, note, dx, 657.0f, dw, 36.0f, 0, warn ? kWarnCol : Col{200, 192, 182, 255}, fit(note, dw), 1.0f);
         const bool touch = SDL_GetNumTouchDevices() > 0;
         const std::string hint = own(touch ? "hint.touch" : "hint.keys");

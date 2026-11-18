@@ -32,6 +32,7 @@
 #include "confirm_dialog.h"
 #include "dev_options.h"
 #include "game_ui.h"
+#include "movelist_dialog.h"
 #include "gbs_anim.h"
 #include "fight.h"
 #include "fighter_light.h"
@@ -256,7 +257,7 @@ public:
 enum class Phase { Select, Loading, Fight, RoundEnd, MatchEnd };
 
 // Menus drawn over the match (play_menu.cpp), all from InGame.gbs / PrePostHud.gbs / Help.gbs.
-enum class Overlay { None, Pause, Options, Help, End, GameOver, Dev };
+enum class Overlay { None, Pause, Options, Help, End, GameOver, Dev, Movelist };
 
 // How the main menu starts a match.
 enum class Mode {
@@ -574,6 +575,11 @@ private:
     int musicIdx_ = -1;           // the stage theme of this match (MusicLibrary index), -1 = none
     bool musicCutIntro_ = false;  // the .lvl's Music_InterruptIntro: cut the intro when the fight starts
     int menuSel_ = 0, overlayT_ = 0, toastT_ = 0;
+    std::vector<MovelistRow> mlRows_;
+    std::string mlTitle_, mlKey_;
+    int mlSel_ = 0;
+    float mlScroll_ = 0;
+    GbsAnimPlayer mlAnim_;
     std::string toast_, lang_ = "en";
     Localization loc_;
     bool locTried_ = false;
@@ -615,6 +621,9 @@ private:
     void drawPause(Ui& ui, SDL_Renderer* r);
     void makeShadowTexture(SDL_Renderer* r);
     void drawHelp(Ui& ui, SDL_Renderer* r);
+    // Pause -> Command Lists...: Options.gbs "Movelist" for player 1's character (movelist_<Name>.ini), shared with the main menu.
+    bool loadMovelist();                       // rows for the P1 character; false when the data has no list for it
+    void drawMovelist(Ui& ui, SDL_Renderer* r);
     void drawOptions(Ui& ui, SDL_Renderer* r);
     void applyOptions();   // volumes -> audio, touch-pad size / opacity -> the pad (reads [options] of the save)
     void drawEndMenu(Ui& ui, SDL_Renderer* r);

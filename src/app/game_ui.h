@@ -89,6 +89,9 @@ public:
 
     // canvas -> target: screen = origin + canvas * scale
     void setViewport(float ox, float oy, float scale) { ox_ = ox; oy_ = oy; sc_ = scale; }
+    // Clips drawing to a canvas rectangle (the list of a dialog scrolls inside its slots); clearClip() lifts it.
+    void clipCanvas(float x, float y, float w, float h);
+    void clearClip();
     float scale() const { return sc_; }
     float screenX(float cx) const { return ox_ + cx * sc_; }
     float screenY(float cy) const { return oy_ + cy * sc_; }

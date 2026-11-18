@@ -15,6 +15,7 @@
 #include "play.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -121,7 +122,7 @@ void PlayScreen::drawPause(Ui& ui, SDL_Renderer* r) {
     const std::vector<std::string> rows = {tr("ResumeGame", "Resume Game"), tr("Options", "Help & Options") + "...",
                                            std::string("Command Lists..."), tr("Leaderboards", "Leaderboards"),
                                            tr("Achievements", "Achievements") + "...", tr("Exit", "Exit Game")};
-    const std::vector<char> enabled = {1, 1, 0, 0, 0, 1};
+    const std::vector<char> enabled = {1, 1, 1, 0, 0, 1};   // Command Lists works (the P1 character's list; none = a toast)
     // frame + plate + title + wings: the scene (final size), with our texts
     float fx = 354, fy = 184, rowX = 388, rowY = 258, rowW = 507;
     if (v) {
@@ -155,7 +156,109 @@ void PlayScreen::drawPause(Ui& ui, SDL_Renderer* r) {
             ui.text(190, 108 + static_cast<int>(i) * 20, (static_cast<int>(i) == menuSel_ ? "> " : "  ") + rows[i], enabled[i] ? kText : kDim);
     if (act == 0) overlay_ = Overlay::None;
     else if (act == 1) openOverlay(Overlay::Options);
-    else if (act == 5) askConfirm(ConfirmAct::ExitMatch);
+    else if (act == 2) {
+        if (loadMovelist()) openOverlay(Overlay::Movelist);
+        else showToast(tr("NotAvailableOffline", "Not available in this version"));
+    } else if (act == 5) askConfirm(ConfirmAct::ExitMatch);
+}
+
+// ---- Command Lists (Options.gbs "Movelist") ---------------------------------------------------------------------------------
+namespace {
+std::string alnumLower(const std::string& s) {
+    std::string o;
+    for (char c : s)
+        if (std::isalnum(static_cast<unsigned char>(c))) o += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return o;
+}
+}  // namespace
+
+bool PlayScreen::loadMovelist() {
+    mlRows_.clear();
+    if (!gd_) return false;
+    (void)tr("Back", "Back");   // (the strings load on the first lookup)
+    std::string txt;
+    if (!gd_->vfs().readText("movelists.ini", txt)) return false;
+    const MenuDef index = parseMenuIni(txt);
+    const std::string want = alnumLower(playerName(0));
+    if (want.empty()) return false;
+    std::string id;
+    for (const MenuOption& o : index.options) {   // the list's names are the character ids: Filia, BlackDahlia, RoboFortune ...
+        if (o.keyword != "ACT_MOVELIST") continue;
+        const std::string have = alnumLower(o.text);
+        if (have == want) { id = o.text; break; }
+        if (id.empty() && (have.find(want) != std::string::npos || want.find(have) != std::string::npos) && have != "universal") id = o.text;
+    }
+    if (id.empty() || !gd_->vfs().readText("movelist_" + id + ".ini", txt)) return false;
+    const MenuDef def = parseMenuIni(txt);
+    for (const MenuOption& o : def.options) {
+        if (!o.isMove) continue;
+        MovelistRow r;
+        r.name = loc_.tr(o.text);
+        if (o.hasDescription()) r.command = loc_.tr(o.description);
+        if (r.command == o.description) r.command.clear();   // not in the strings: no raw key on screen
+        r.kind = o.moveKind;
+        r.indent = o.indent;
+        mlRows_.push_back(std::move(r));
+    }
+    mlTitle_ = loc_.tr(def.topText.empty() ? id : def.topText);
+    mlSel_ = 0;
+    mlScroll_ = 0;
+    mlKey_.clear();
+    return !mlRows_.empty();
+}
+
+void PlayScreen::drawMovelist(Ui& ui, SDL_Renderer* r) {
+    hudInit(r);
+    const int n = static_cast<int>(mlRows_.size());
+    if (n == 0) { openOverlay(Overlay::Pause); menuSel_ = 2; return; }
+    if (ui.in.keyDown) mlSel_ = std::min(n - 1, mlSel_ + 1);
+    if (ui.in.keyUp) mlSel_ = std::max(0, mlSel_ - 1);
+    mlSel_ = std::clamp(mlSel_, 0, n - 1);
+    mlScroll_ -= static_cast<float>(ui.in.wheel);
+    // touch: a tap on a slot selects it, a drag scrolls, a tap on the strip under the list goes back
+    const auto slotAt = [&](int px, int py) {
+        const float cy = static_cast<float>(py) / kCanvas, cx = static_cast<float>(px) / kCanvas;
+        if (cx < kMovelistSlotX || cx > kMovelistSlotX + kMovelistSlotW) return -1;
+        const float rel = (cy - kMovelistSlotY) / kMovelistSlotStep;
+        if (rel < 0 || rel >= kMovelistSlots) return -1;
+        const int k = static_cast<int>(std::floor(rel + mlScroll_));
+        return k >= 0 && k < n ? k : -1;
+    };
+    static bool dragged = false;
+    if (ui.in.pressed) dragged = false;
+    if (ui.in.down && n > kMovelistSlots && std::abs(ui.in.my - ui.in.pmy) > 8) dragged = true;
+    if (ui.in.down && dragged && n > kMovelistSlots) mlScroll_ -= static_cast<float>(ui.in.dragDy) / (kMovelistSlotStep * kCanvas);
+    if (ui.in.released && overlayT_ > 8 && !dragged) {
+        const int k0 = slotAt(ui.in.pmx, ui.in.pmy), k1 = slotAt(ui.in.mx, ui.in.my);
+        if (k0 >= 0 && k0 == k1) mlSel_ = k0;
+        else if (static_cast<float>(ui.in.my) / kCanvas > kMovelistSlotY + kMovelistSlotStep * kMovelistSlots + 6.0f) { openOverlay(Overlay::Pause); menuSel_ = 2; return; }
+    }
+    if (mlSel_ < mlScroll_) mlScroll_ = static_cast<float>(mlSel_);
+    if (mlSel_ > mlScroll_ + kMovelistSlots - 1) mlScroll_ = static_cast<float>(mlSel_ - kMovelistSlots + 1);
+    mlScroll_ = std::clamp(mlScroll_, 0.0f, static_cast<float>(std::max(0, n - kMovelistSlots)));
+    bool ok = false;
+    if (hudOk_) {
+        hud_.setViewport(0, 0, kCanvas);
+        mlAnim_.tick();
+        ok = drawMovelistDialog(hud_, mlAnim_, mlKey_, "ml", mlRows_, mlSel_, std::round(mlScroll_), mlTitle_, overlayT_ * 16);
+        if (ok) {   // the way back, on the strip under the list
+            if (const GbsFont* f = hud_.fontNamed("Dialogue Text")) {
+                const std::string t = tr("Back", "Back");
+                const float sc = 0.8f, w = hud_.textWidth(*f, t, sc);
+                hud_.drawLine(*f, t, 640.0f - w / 2, 636.0f, Col{226, 222, 212, 255}, sc);
+            }
+        }
+        hud_.loadScene("InGame.gbs");   // back to the scene the HUD / menus read their fonts and textures from
+    }
+    if (!ok) {   // the scene is not in the data: a plain list
+        ui.fill(Rect{0, 0, 640, 360}, Col{0, 0, 0, 200});
+        ui.text(20, 14, mlTitle_, kAccent, 2);
+        for (int i = 0; i < kMovelistSlots && static_cast<int>(mlScroll_) + i < n; ++i) {
+            const int k = static_cast<int>(mlScroll_) + i;
+            ui.text(24, 44 + i * 44, (k == mlSel_ ? "> " : "  ") + mlRows_[static_cast<size_t>(k)].name, k == mlSel_ ? kText : kDim);
+            ui.text(40, 56 + i * 44, commandToText(mlRows_[static_cast<size_t>(k)].command), kDim);
+        }
+    }
 }
 
 // "ARCADE MODE  3/9" (or "FINAL BOSS") small, centred under the round clock.
@@ -906,6 +1009,7 @@ void PlayScreen::drawOverlay(Ui& ui, SDL_Renderer* r) {
         case Overlay::Pause: if (!confirm_.isOpen()) drawPause(ui, r); break;   // the window replaces the menu while it asks
         case Overlay::Options: drawOptions(ui, r); break;
         case Overlay::Dev: drawDev(ui, r); break;
+        case Overlay::Movelist: drawMovelist(ui, r); break;
         case Overlay::Help: drawHelp(ui, r); break;
         case Overlay::End: drawEndMenu(ui, r); break;
         case Overlay::None: break;

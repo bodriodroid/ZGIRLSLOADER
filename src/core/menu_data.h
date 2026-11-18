@@ -36,6 +36,12 @@ struct MenuOption {
     std::vector<std::string> allowedPlatforms;  // empty = every platform
     std::vector<std::string> blockedPlatforms;
     std::string modeLimit;  // "RetailOnly" / "BetaOnly"
+    // `Move:` blocks (the command lists, movelist_<Name>.ini): `text` is the move's name key, `description` the key of its
+    // command string ("{qcf} + {hp}"), `moveKind` Special / Super1..5 / Normal, `indent` the pixels the row is pushed in
+    // (follow-ups of the move above).  They are rows to read, not actions.
+    bool isMove = false;
+    std::string moveKind;
+    int indent = 0;
 
     bool hasDescription() const { return !description.empty() && description != "null" && description != "raw"; }
     // AllowedPlatforms / BlockedPlatforms / ModeLimit applied to `platform` (e.g. "STEAM", "ANDROID").
@@ -48,6 +54,17 @@ struct MenuDef {
 };
 
 MenuDef parseMenuIni(std::string_view text);
+
+// The command strings of the move lists carry button tokens: "{qcf} + {hp}", "{f}{plus}{mpmk}", "{dp}", "{lplk}" ...
+// Plain-text reading of them ("QCF + HP", "F+MP/MK"): what the menu shows where it has no button art, and what the tests check.
+std::string commandToText(const std::string& cmd);
+// One token without its braces -> the sequence of icons it stands for: direction arrows ("f", "df" ...), face buttons
+// ("lp", "mk" ...) or a word ("360", "+", ">", "P", "K", "PP", "KK").  Empty for an unknown token.
+struct CommandGlyph {
+    enum class Kind { Arrow, Button, Word } kind = Kind::Word;
+    std::string s;   // Arrow: f b u d uf ub df db | Button: lp mp hp lk mk hk | Word: the text
+};
+std::vector<CommandGlyph> commandTokenGlyphs(const std::string& token);
 
 // Flat {"key": "text"} JSON, as found in core/localization/*_loc.json.  Values that are `null`
 // (or not strings) are treated as missing, so lookups fall back to the key itself.

@@ -380,10 +380,11 @@ std::vector<std::pair<std::string, int>> MenuScreen::descriptionLines(const Page
     if (p.vis.empty()) return lines;
     const MenuOption& o = p.def.options[static_cast<size_t>(p.vis[static_cast<size_t>(std::clamp(p.sel, 0, static_cast<int>(p.vis.size()) - 1))])];
     if (o.hasDescription()) {
-        const std::string d = L(o.description);
+        const std::string d = o.isMove ? commandToText(L(o.description)) : L(o.description);
         if (d != o.description || !loc_.size() || o.description.find(' ') != std::string::npos)  // never print a bare missing key
             lines.emplace_back(d, 0);
     }
+    if (o.isMove) return lines;   // a move is read, not run: no "not available" note
     const std::string kw = startsWith(o.keyword, "@page:") ? "@page" : o.keyword;
     if (isFightAction(o.keyword) && !kFightEnabled)
         lines.emplace_back(own("fightoff"), 1);
@@ -524,6 +525,7 @@ bool MenuScreen::actionImplemented(const std::string& k) const {
     if (k == "ACT_CREDITSNORMAL" || k == "ACT_CREDITSCONT") return true;   // Extras -> Credits / Contributors (credits.cpp)
     if (k == "ACT_STORY") return true;   // the Character Select (no stage, no 2nd fighter) or the story screen's own list
     if (isFightAction(k)) return kFightEnabled || charSel_.ready();
+    if (k == "ACT_MOVELISTS" || k == "ACT_MOVELIST") return true;   // Help & Options -> Command Lists -> a character's moves (movelist_<Name>.ini)
     return k == "ACT_OPTIONS" || k == "ACT_BUTTONCONFIG" || k == "ACT_RESTORE_DEFAULTS" || k == "@page" || k == "@data" || k == "@exit" || k == "@back";
 }
 
@@ -770,6 +772,10 @@ Result MenuScreen::runAction(const MenuOption& o) {
         pickingP2_ = false;
         twoPicks_ = k != "ACT_ARCADE";
         if (!showCharSelect(false, 1)) say(own("fightoff"));   // team size is fixed at 1 for now: straight to the fighters
+    } else if (k == "ACT_MOVELISTS") {
+        push("movelists.ini");
+    } else if (k == "ACT_MOVELIST") {
+        push("movelist_" + o.text + ".ini");
     } else if (k == "ACT_OPTIONS") {
         push("options.ini");
     } else if (k == "ACT_BUTTONCONFIG") {
@@ -793,6 +799,7 @@ Result MenuScreen::activate(Page& p, int visIdx, int tapX, const Rect& row) {
     if (visIdx < 0 || visIdx >= static_cast<int>(p.vis.size())) return res;
     const MenuOption o = p.def.options[static_cast<size_t>(p.vis[static_cast<size_t>(visIdx)])];  // copy: push() may move pages
     const std::string& k = o.keyword;
+    if (o.isMove) return res;   // a line of a move list: selecting it shows its command, there is nothing to run
     if (o.type == MenuOptType::Advance && !optionUsable(o)) sfx(sfxNope_);   // dimmed entry
     if (startsWith(k, "@page:")) {
         push(k.substr(6));

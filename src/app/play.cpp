@@ -777,6 +777,7 @@ bool PlayScreen::onBack() {
     if (phase_ == Phase::Loading) job_.reset();   // waits for the worker threads (a fraction of a second)
     if (overlay_ == Overlay::Dev) { openOverlay(Overlay::Options); menuSel_ = 6; return true; }
     if (overlay_ == Overlay::Help) { openOverlay(Overlay::Options); return true; }
+    if (overlay_ == Overlay::Movelist) { openOverlay(Overlay::Pause); menuSel_ = 2; return true; }
     if (overlay_ == Overlay::Options) { openOverlay(Overlay::Pause); menuSel_ = 1; return true; }
     if (confirm_.isOpen()) { confirm_.close(); return true; }   // back = "No"
     if (overlay_ == Overlay::Pause) { overlay_ = Overlay::None; return true; }
@@ -1406,6 +1407,7 @@ void PlayScreen::finishLoad() {
         else if (w == "toast") { openOverlay(Overlay::Pause); showToast(tr("NotAvailableOffline", "Not available in this version")); }
         else if (w == "help") openOverlay(Overlay::Help);
         else if (w == "dev") openOverlay(Overlay::Dev);
+        else if (w == "movelist") { if (loadMovelist()) openOverlay(Overlay::Movelist); }
         else if (w == "ko" || w == "timeup") {   // the between-rounds banner
             introStage_ = 0;
             phase_ = Phase::RoundEnd;
@@ -2004,7 +2006,7 @@ void PlayScreen::update(Ui& ui, int dtMs) {
         else if (overlay_ == Overlay::Pause && !confirm_.isOpen()) overlay_ = Overlay::None;
     }
     startPrev_ = startBit != 0;
-    if (overlay_ == Overlay::Pause || overlay_ == Overlay::Options || overlay_ == Overlay::Help || overlay_ == Overlay::Dev) return;   // the match is frozen behind the menu
+    if (overlay_ == Overlay::Pause || overlay_ == Overlay::Options || overlay_ == Overlay::Help || overlay_ == Overlay::Dev || overlay_ == Overlay::Movelist) return;   // the match is frozen behind the menu
 
     if (dtMs > 0) frameMs_ = frameMs_ * 0.92 + std::min(dtMs, 100) * 0.08;
     acc_ += dtMs;

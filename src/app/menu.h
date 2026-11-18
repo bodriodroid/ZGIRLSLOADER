@@ -240,6 +240,11 @@ private:
     void sceneTitle();
     void sceneRoot(Page& p);
     void scenePage(Page& p);
+    // The command lists (movelists.ini, movelist_<Name>.ini) are not rows of the film-strip menu: the PC edition shows them in the
+    // big dialog of Options.gbs "Movelist" (frame, winged title, six 72-px slots: move name over its command in button art).
+    bool isDialogPage(const Page& p) const;
+    void sceneDialog(Page& p);
+    void sceneLayoutDialog(Page& p);
     void sceneModals(Ui& ui);
     void sceneLayoutRoot(Page& p);
     void sceneLayoutPage(Page& p);
@@ -266,7 +271,9 @@ private:
 
     // ---- the scenes' own animations (LAGG), played at 60 Hz whatever the frame rate is
     GbsAnimPlayer aBg_;       // MainMenu_BG: spotlights, the drifting city, the fade at the loop point
-    GbsAnimPlayer aWarn_;     // FrontCredits.gbs PhotosensativeWarning
+    GbsAnimPlayer aWarn_;
+    GbsAnimPlayer aDlg_;        // Options.gbs "Movelist": the dialog's own intro
+    std::string dlgKey_;        //   the page it was started for     // FrontCredits.gbs PhotosensativeWarning
     int warnT0_ = 0, warnHold_ = 0, warnLastMs_ = 0;
     bool warnBound_ = false;
     GbsAnimPlayer aSplash_;   // Splash_2ND: logo bounce, spinning shield, the PRESS ANY BUTTON blink

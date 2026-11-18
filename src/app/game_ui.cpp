@@ -51,6 +51,17 @@ void GameUi::reset() {
     scenes_.clear();
 }
 
+void GameUi::clipCanvas(float x, float y, float w, float h) {
+    if (!r_) return;
+    SDL_Rect c{static_cast<int>(std::lround(ox_ + x * sc_)), static_cast<int>(std::lround(oy_ + y * sc_)),
+               static_cast<int>(std::lround(w * sc_)), static_cast<int>(std::lround(h * sc_))};
+    SDL_RenderSetClipRect(r_, &c);
+}
+
+void GameUi::clearClip() {
+    if (r_) SDL_RenderSetClipRect(r_, nullptr);
+}
+
 bool GameUi::loadScene(const std::string& file) {
     auto it = scenes_.find(file);
     if (it != scenes_.end()) {

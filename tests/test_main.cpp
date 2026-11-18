@@ -5211,7 +5211,41 @@ static void testRamProbe() {
 }
 
 
+
+// The command lists (movelist_<Name>.ini): `Move:` blocks and the button tokens of their command strings.
+static void testMovelistData() {
+    const char* ini =
+        "TopText: Filia\n"
+        "Move:\n  Text: Filia_RingletSpike #Ringlet Spike\n  Type: Special\n  Description: Filia_RingletSpike_Cmd\n"
+        "Move:\n  Text: Filia_AirballCancel\n  Type: Super1\n  Indent: 40\n  Description: Filia_AirballCancel_Cmd\n"
+        "Option:\n  Text: Back\n  Type: Advance\n  Keyword: @back\n";
+    const MenuDef d = parseMenuIni(ini);
+    CHECK_EQ(d.options.size(), size_t(3));
+    CHECK(d.options[0].isMove);
+    CHECK_EQ(d.options[0].text, std::string("Filia_RingletSpike"));
+    CHECK_EQ(d.options[0].moveKind, std::string("Special"));
+    CHECK_EQ(d.options[0].description, std::string("Filia_RingletSpike_Cmd"));
+    CHECK_EQ(d.options[1].indent, 40);
+    CHECK_EQ(d.options[1].moveKind, std::string("Super1"));
+    CHECK(!d.options[2].isMove);
+    CHECK(d.options[2].type == MenuOptType::Advance);   // `Type:` of a plain option is still the option type
+
+    CHECK_EQ(commandToText("{qcf} + {hp}"), std::string("QCF + HP"));
+    CHECK_EQ(commandToText("{f}{plus}{mpmk}"), std::string("F+MP+MK"));
+    CHECK_EQ(commandToText("{dp}{ap}"), std::string("DPP"));
+    CHECK_EQ(commandToText("(Air OK) {lplk} when close"), std::string("(Air OK) LP+LK when close"));
+    CHECK_EQ(commandToText("{nonsense}"), std::string("nonsense"));   // unknown token: its name, never nothing
+    CHECK_EQ(commandToText("no tokens"), std::string("no tokens"));
+    CHECK_EQ(commandToText("{unclosed"), std::string("{unclosed"));
+    CHECK_EQ(commandTokenGlyphs("qcb").size(), size_t(3));
+    CHECK(commandTokenGlyphs("qcb")[1].s == "db");
+    CHECK_EQ(commandTokenGlyphs("hpmk").size(), size_t(2));
+    CHECK(commandTokenGlyphs("hpxx").empty());
+    CHECK(commandTokenGlyphs("").empty());
+}
+
 int main() {
+    testMovelistData();
     testVfs();
     testMusicLibrary();
     testBonusMusic();
