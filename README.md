@@ -1,4 +1,4 @@
-# ZGirls Loader (Android: ZGirlsMobile) - Skullgirls 2nd Encore: asset loader + viewer and modloader for Android
+# ZGirls Loader (Android: ZGirlsMobile) - Skullgirls 2nd Encore: asset loader + viewer and modloader/port for Android
 
 > Cambios de esta versión: ver `docs/es/CAMBIOS_ZGIRLS.md`.
 
