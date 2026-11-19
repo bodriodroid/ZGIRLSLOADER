@@ -328,16 +328,19 @@ void MenuScreen::sceneLayoutDialog(Page& p) {
     const bool opts = dialogKind(p) == 2;
     const float step = opts ? kOptionSlotStep : kMovelistSlotStep;
     const int slots = opts ? kOptionSlots : kMovelistSlots;
-    rowPx_ = static_cast<int>(step * 0.5f);
+    const float sx = opts ? kOptionSlotX : kMovelistSlotX, sy = opts ? kOptionSlotY : kMovelistSlotY, sw = opts ? kOptionSlotW : kMovelistSlotW;
+    rowPx_ = static_cast<int>(std::lround(step * 0.5f));
     visibleRows_ = slots;
     // a tapped choice row: left of the value = previous, right = next
-    tapSplitX_ = opts ? static_cast<int>(std::lround((kMovelistSlotX + 285.0f + 98.0f) * 0.5f)) : -1;
-    const int top = static_cast<int>(std::lround(kMovelistSlotY * 0.5f));
-    listBox_ = Rect{static_cast<int>(kMovelistSlotX * 0.5f), top, static_cast<int>(kMovelistSlotW * 0.5f), rowPx_ * slots};
+    tapSplitX_ = opts ? static_cast<int>(std::lround((sx + kOptionValueC) * 0.5f)) : -1;
+    const int top = static_cast<int>(std::lround(sy * 0.5f));
+    const int hBox = static_cast<int>(std::lround(step * 0.5f * static_cast<float>(slots)));
+    listBox_ = Rect{static_cast<int>(sx * 0.5f), top, static_cast<int>(sw * 0.5f), hBox};
     for (int k = 0; k < n; ++k) {
-        const int y = top + static_cast<int>(std::lround((static_cast<float>(k) - p.scroll) * static_cast<float>(rowPx_)));
-        if (y + rowPx_ <= top || y >= top + rowPx_ * slots) continue;
-        rows_.push_back({k, Rect{listBox_.x, y, listBox_.w, rowPx_}});
+        const int y = static_cast<int>(std::lround((sy + (static_cast<float>(k) - p.scroll) * step) * 0.5f));
+        const int h = static_cast<int>(std::lround(step * 0.5f));
+        if (y + h <= top || y >= top + hBox) continue;
+        rows_.push_back({k, Rect{listBox_.x, y, listBox_.w, h}});
     }
 }
 
@@ -755,8 +758,16 @@ void MenuScreen::sceneDialog(Page& p) {
             r.enabled = optionUsable(o);
             if (o.type == MenuOptType::Setting) {
                 r.choice = true;
-                r.value = L(settingValue(o.keyword));
+                const std::string cur = settingValue(o.keyword);
+                r.value = L(cur);
                 if (r.value.empty() && !o.choices.empty()) r.value = L(o.choices.front());
+                if (o.choices.size() > 30) {   // the 0..100 volume lists do not wrap (see stepSetting): no arrow past either end
+                    int idx = 0;
+                    for (size_t i = 0; i < o.choices.size(); ++i)
+                        if (o.choices[i] == cur) idx = static_cast<int>(i);
+                    r.canPrev = idx > 0;
+                    r.canNext = idx < static_cast<int>(o.choices.size()) - 1;
+                }
             } else if (o.type == MenuOptType::Submenu && !(r.label.size() >= 3 && r.label.compare(r.label.size() - 3, 3, "...") == 0)) {
                 r.label += "...";
             }

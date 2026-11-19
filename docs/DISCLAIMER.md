@@ -1,7 +1,8 @@
 # Disclaimer / Aviso
 
-The same text is shown by the app on every launch, on the red-on-gradient splash that comes up while the game
-data is being indexed. Only an explicit **Continue / Continuar** moves on; **Exit / Salir** closes the app.
+The same text is shown by the app the first time it starts (after the loader's splash), on the red-on-gradient screen.
+Only an explicit **Continue / Continuar** moves on (and remembers it: `[loader] notice=1` in `zgirls.savini`; the number is
+`kNoticeVersion` in `src/app/menu.cpp`, bump it when the text changes and everyone sees it once more); **Exit / Salir** closes the app.
 The strings live in one place: `own()` in `src/app/menu.cpp`, keys `dis.title`, `dis.1`, `dis.2`, `dis.h`,
 `dis.a`, `dis.b`, `dis.c`, `dis.5`, `dis.go`, `dis.exit` (English and Spanish).
 

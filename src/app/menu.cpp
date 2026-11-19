@@ -12,6 +12,7 @@
 #include <set>
 #include <sstream>
 
+#include "app_version.h"
 #include "art.h"
 #include "colour_edit.h"
 #include "dds.h"
@@ -29,6 +30,9 @@ namespace {
 
 constexpr int kW = 640, kH = 360;
 constexpr int kWarningMs = 6200;   // PhotosensativeWarning runs 360 ticks (6 s)
+constexpr int kBootMinMs = 2600;   // the loader's own splash is shown at least this long (the logo has to be seen)
+constexpr int kBootStages = 4;
+constexpr int kNoticeVersion = 1;  // bump it when the notice text changes: it is shown again once
 constexpr int kSplashMs = 2600;   // the original loading screen is shown this long before the title
 constexpr int kListX = 24, kListY = 98, kListH = 196;
 constexpr int kDescY = 300, kDescH = 42;
@@ -185,6 +189,11 @@ std::string MenuScreen::own(const std::string& key) const {
         {"dis.go", "Continue", "Continuar"},
         {"dis.exit", "Exit", "Salir"},
         {"loading", "Loading game data...", "Cargando datos del juego..."},
+        {"boot.s1", "Opening the game data", "Abriendo los datos del juego"},
+        {"boot.s2", "Mods and resource packs", "Mods y paquetes de recursos"},
+        {"boot.s3", "Indexing fighters, stages and menus", "Indexando personajes, escenarios y menús"},
+        {"boot.s4", "Preparing the interface and audio", "Preparando la interfaz y el audio"},
+        {"boot.done", "Ready", "Listo"},
     };
     for (const S& s : t)
         if (key == s.key) return es ? s.es : s.en;
@@ -530,7 +539,7 @@ bool MenuScreen::actionImplemented(const std::string& k) const {
 }
 
 const char* MenuScreen::stateName() const {
-    return state_ == State::Disclaimer ? "notice" : state_ == State::Warning ? "warning" : state_ == State::Splash ? "splash" : state_ == State::Attract ? "attract" : state_ == State::Title ? "title" : state_ == State::CharSelect ? "charselect" : "menu";
+    return state_ == State::Boot ? "boot" : state_ == State::Disclaimer ? "notice" : state_ == State::Warning ? "warning" : state_ == State::Splash ? "splash" : state_ == State::Attract ? "attract" : state_ == State::Title ? "title" : state_ == State::CharSelect ? "charselect" : "menu";
 }
 
 std::map<std::string, std::vector<CharSelect::PaletteChoice>> MenuScreen::buildPaletteChoices() {
@@ -898,6 +907,21 @@ Result MenuScreen::handleInput(Ui& ui) {
         return res;
     }
 
+    // ---- the loader's splash: the logo and the four stages; Exit is the only thing that answers (the data is being read)
+    if (state_ == State::Boot) {
+        const int age = timeMs_ - bootT0_;
+        const int running = loading_ ? std::clamp(bootStage_, 1, kBootStages - 1) : (bootPrep_ < 2 ? kBootStages : kBootStages + 1);
+        // the bar eases towards the end of the finished stages, and creeps into the running one (never to its end)
+        float target = static_cast<float>(running - 1) / kBootStages;
+        if (running <= kBootStages) target += 0.8f / kBootStages * std::min(1.0f, static_cast<float>(age) / 900.0f);
+        const float step = static_cast<float>(frameDt_) * 0.0011f;
+        bootProg_ = bootProg_ < target ? std::min(target, bootProg_ + step) : bootProg_;
+        const Rect quit{552, 338, 80, 16};
+        if (in.released && quit.contains(in.mx, in.my) && quit.contains(in.pmx, in.pmy)) res.kind = Result::Kind::Quit;
+        if (!loading_ && bootPrep_ >= 2 && bootProg_ >= 0.999f && age >= kBootMinMs) leaveBoot();
+        return res;
+    }
+
     // ---- legal notice: only an explicit "Continue" moves on (no "any key"), "Exit" leaves the app
     if (state_ == State::Disclaimer) {
         const Rect go{136, 308, 170, 30}, quit{334, 308, 170, 30};
@@ -909,11 +933,11 @@ Result MenuScreen::handleInput(Ui& ui) {
         }
         if (in.left || in.right || in.keyUp || in.keyDown) noticeSel_ = 1 - noticeSel_;
         if (in.enter) {
-            if (noticeSel_ == 0) showWarning();
+            if (noticeSel_ == 0) { rememberNotice(); showWarning(); }
             else res.kind = Result::Kind::Quit;
         }
         if (in.released) {
-            if (go.contains(in.mx, in.my) && go.contains(in.pmx, in.pmy)) showWarning();
+            if (go.contains(in.mx, in.my) && go.contains(in.pmx, in.pmy)) { rememberNotice(); showWarning(); }
             else if (quit.contains(in.mx, in.my) && quit.contains(in.pmx, in.pmy)) res.kind = Result::Kind::Quit;
         }
         return res;
@@ -1205,17 +1229,95 @@ void MenuScreen::drawShowcase(Ui& ui, SDL_Renderer* r) {
     showcase_.drawFrame(r, fi, 500, 292, s, true);
 }
 
-void MenuScreen::drawDisclaimer(Ui& ui) {
-    // Splash: black -> wine-red gradient with a slow moving glow, red text.  It is drawn from the very first
-    // frame (before any game data is loaded), so it only uses the built-in font.
+// black -> wine-red gradient with a slow moving glow (the loader's own look: splash and notice).  Drawn from the very first frame, before
+// any game data is loaded, so it only uses what is built in.
+static void wineBackdrop(Ui& ui, int timeMs) {
     for (int y = 0; y < kH; y += 2) {
         const double t = y / static_cast<double>(kH);
-        const double glow = 0.5 + 0.5 * std::sin(timeMs_ / 1400.0 - t * 4.0);
+        const double glow = 0.5 + 0.5 * std::sin(timeMs / 1400.0 - t * 4.0);
         const int r = static_cast<int>(10 + 70 * t * t + 14 * glow * t);
         const int g = static_cast<int>(2 + 6 * t);
         const int b = static_cast<int>(8 + 16 * t);
         ui.fill(Rect{0, y, kW, 2}, Col{static_cast<uint8_t>(r), static_cast<uint8_t>(g), static_cast<uint8_t>(b), 255});
     }
+}
+
+bool MenuScreen::noticeAccepted() const {
+    return prefsFile_.empty() ? false : SavIni::shared().getInt("loader", "notice", 0) >= kNoticeVersion;
+}
+
+void MenuScreen::rememberNotice() const {
+    if (!prefsFile_.empty()) SavIni::shared().setInt("loader", "notice", kNoticeVersion);
+}
+
+// The splash is over: the notice (only until it has been accepted once), then the photosensitivity warning.
+void MenuScreen::leaveBoot() {
+    if (bootAutoAccept_ && bootAutoSkipWarn_) {
+        state_ = State::Menu;
+    } else if (noticeAccepted() || bootAutoAccept_) {
+        showWarning();
+    } else {
+        state_ = State::Disclaimer;
+        noticeSel_ = 0;
+    }
+}
+
+// The loader's own splash: the logo on the wine backdrop and, under it, a bar of four stages (what the loader is really doing).
+void MenuScreen::drawBoot(Ui& ui) {
+    const int age = timeMs_ - bootT0_;
+    wineBackdrop(ui, timeMs_);
+    const Col hot{255, 52, 52, 255}, warm{255, 150, 126, 255}, red{255, 84, 84, 255};
+    // a soft red glow behind the drawing
+    for (int i = 0; i < 7; ++i)
+        ui.disc(320, 160, 250 - i * 22, 118 - i * 10, Col{200, 30, 40, 12});
+    if (!bootLogo_.ok()) bootLogo_.load(ui.r);
+    const Uint8 fade = static_cast<Uint8>(255 * std::clamp(static_cast<float>(age) / 700.0f, 0.0f, 1.0f));
+    if (bootLogo_.ok()) {
+        bootLogo_.draw(ui.r, 0, 0, kW, kH, fade);
+    } else {
+        shadowText(ui, 120, 120, "ZGIRLS LOADER", red, 4);   // (the renderer refused the texture: the name, at least)
+    }
+    // ---- the four stages
+    const int running = loading_ ? std::clamp(bootStage_, 1, kBootStages - 1) : (bootPrep_ < 2 ? kBootStages : kBootStages + 1);
+    const int barX = 120, barY = 314, barW = 400, barH = 7, gap = 4;
+    const int segW = (barW - gap * (kBootStages - 1)) / kBootStages;
+    for (int i = 0; i < kBootStages; ++i) {
+        const Rect seg{barX + i * (segW + gap), barY, segW, barH};
+        ui.fill(seg, Col{36, 5, 10, 255});
+        const float f = std::clamp(bootProg_ * kBootStages - static_cast<float>(i), 0.0f, 1.0f);
+        const int fw = static_cast<int>(std::lround(seg.w * f));
+        if (fw > 0) {
+            ui.fill(Rect{seg.x, seg.y, fw, seg.h}, Col{208, 30, 44, 255});
+            ui.fill(Rect{seg.x, seg.y, fw, 2}, Col{255, 120, 104, 255});
+            // a highlight sweeping along the finished part
+            const int sw = 14, sx = seg.x + static_cast<int>(std::fmod(timeMs_ / 6.0 + i * 37, seg.w + sw)) - sw;
+            const int x0 = std::max(seg.x, sx), x1 = std::min(seg.x + fw, sx + sw);
+            if (x1 > x0) ui.fill(Rect{x0, seg.y, x1 - x0, seg.h}, Col{255, 255, 255, 60});
+        }
+        ui.outline(seg, Col{255, 52, 52, i < running ? Uint8(170) : Uint8(80)});
+    }
+    char pct[8];
+    std::snprintf(pct, sizeof pct, "%d%%", static_cast<int>(std::lround(std::clamp(bootProg_, 0.0f, 1.0f) * 100)));
+    ui.text(barX + barW + 10, barY - 1, pct, warm);
+    std::string label;
+    if (running > kBootStages) {
+        label = own("boot.done");
+    } else {
+        label = "(" + std::to_string(running) + "/" + std::to_string(kBootStages) + ") " + own(("boot.s" + std::to_string(running)).c_str());
+        label += std::string(static_cast<size_t>((timeMs_ / 320) % 4), '.');
+    }
+    ui.text((kW - Ui::textW(label)) / 2, barY + 14, label, running > kBootStages ? Col{255, 200, 190, 255} : warm);
+    // version (left) and Exit (right)
+    ui.text(8, 346, std::string("ZGirls Loader ") + kAppVersion, Col{200, 70, 70, 255});
+    const Rect quit{552, 338, 80, 16};
+    ui.outline(quit, Col{255, 52, 52, 120});
+    const std::string lab = own("dis.exit");
+    ui.text(quit.x + (quit.w - Ui::textW(lab)) / 2, quit.y + 4, lab, red);
+    (void)hot;
+}
+
+void MenuScreen::drawDisclaimer(Ui& ui) {
+    wineBackdrop(ui, timeMs_);
     const Col red{255, 84, 84, 255}, hot{255, 52, 52, 255}, warm{255, 142, 118, 255};
     ui.fill(Rect{0, 0, kW, 3}, hot);
     shadowText(ui, 24, 12, own("dis.title"), hot, 2);
@@ -1411,6 +1513,18 @@ void MenuScreen::drawModals(Ui& ui) {
 }
 
 void MenuScreen::draw(Ui& ui, SDL_Renderer* r) {
+    if (state_ == State::Boot) {
+        if (!loading_) {   // the data is in: show "preparing", then decode the interface (a frame's pause) while the bar finishes
+            if (bootPrep_ == 1) {
+                ensureAssets(r);
+                bootPrep_ = 2;
+            } else if (bootPrep_ == 0) {
+                bootPrep_ = 1;
+            }
+        }
+        drawBoot(ui);
+        return;
+    }
     if (state_ == State::Disclaimer) {
         // The splash has its own gradient background.  While the data is still loading it is the only thing
         // drawn; the art (backdrop, showcase fighter) is decoded as soon as loading finishes, so the title

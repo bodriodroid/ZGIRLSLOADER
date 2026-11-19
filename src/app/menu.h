@@ -31,6 +31,7 @@
 #include "menu_list_anim.h"
 #include "menu_data.h"
 #include "play.h"
+#include "boot_splash.h"
 #include "splash.h"
 #include "ui.h"
 
@@ -73,7 +74,15 @@ public:
     void openPageForCapture(const std::string& file) { state_ = State::Menu; push(file); }
     // Accept the legal notice programmatically (smoke tests); the photosensitivity warning comes next (acceptNotice(true) skips it too).
     // There is no title screen (the publisher marks are never shown) and no opening montage: notice -> warning -> menu.
-    void acceptNotice(bool skipWarning = false) { if (state_ == State::Disclaimer) { if (skipWarning) state_ = State::Menu; else showWarning(); } }
+    void acceptNotice(bool skipWarning = false) {
+        if (state_ == State::Boot) {   // (async start-up: the splash is still up; the notice is accepted when it ends)
+            bootAutoAccept_ = true;
+            bootAutoSkipWarn_ = skipWarning;
+        } else if (state_ == State::Disclaimer) {
+            if (skipWarning) state_ = State::Menu;
+            else showWarning();
+        }
+    }
     void showTitle() { showTitleImpl(); titleAnimOn_ = false; }
     // The photosensitivity warning (FrontCredits.gbs "PhotosensativeWarning"): a few seconds on black, any held button skips it.
     void showWarning();
@@ -95,9 +104,20 @@ public:
     void requestColourEditor(const std::string& who = std::string()) { pendingEdit_ = true; pendingEditWho_ = who; }   // smoke runs: open the colour editor on the character under the cursor as soon as the selector is up
     bool charSelectReady() const { return charSel_.ready(); }
     const CharSelect& charSelect() const { return charSel_; }
-    // The splash shows a progress bar (and no Continue) while the game data is being indexed in the
-    // background; setGameData() ends the loading state.
-    void setLoading(bool on) { loading_ = on; }
+    // Start-up: the loader's own splash (its logo + a loader with four stages) is on screen while the game data is indexed on a
+    // worker thread; setGameData() ends the loading state.  After it: the legal notice (only until it has been accepted once), the
+    // photosensitivity warning, the menu.  setBootStage(): the stage the worker is in (1..3); the main thread does the fourth.
+    void setLoading(bool on) {
+        loading_ = on;
+        if (on && state_ == State::Disclaimer) {
+            state_ = State::Boot;
+            bootT0_ = timeMs_;
+            bootProg_ = 0;
+            bootStage_ = 1;
+            bootPrep_ = 0;
+        }
+    }
+    void setBootStage(int stage) { bootStage_ = stage; }
     bool loading() const { return loading_; }
 
     play::Rules rules() const;
@@ -111,8 +131,8 @@ public:
     std::string pageTitle() const;
 
 private:
-    // Disclaimer: the unofficial-project / own-your-copy notice, shown on every launch before the title.
-    enum class State { Disclaimer, Warning, Splash, Attract, Title, Menu, CharSelect };
+    // Boot: logo + loader.  Disclaimer: the unofficial-project / own-your-copy notice, shown once (the first launch).
+    enum class State { Boot, Disclaimer, Warning, Splash, Attract, Title, Menu, CharSelect };
     struct Page {
         MenuDef def;
         std::vector<int> vis;  // indices into def.options that are shown on this platform
@@ -142,6 +162,16 @@ private:
     LoadingSplash splash_;
     bool splashTried_ = false;
     bool loading_ = false;
+    BootLogo bootLogo_;
+    int bootT0_ = 0;          // timeMs_ when the splash started
+    float bootProg_ = 0;      // the bar, 0..1 (eases towards what the stages say)
+    int bootStage_ = 0;       // the worker's stage
+    bool bootAutoAccept_ = false, bootAutoSkipWarn_ = false;   // acceptNotice() while the splash was up
+    int bootPrep_ = 0;        // 0 the data just arrived, 1 "preparing" was shown, 2 the interface is decoded
+    void drawBoot(Ui& ui);
+    void leaveBoot();
+    bool noticeAccepted() const;
+    void rememberNotice() const;
     std::vector<Page> stack_;
     bool confirmExit_ = false, controls_ = false;
     int modalSel_ = 1;  // confirm dialog: 0 yes, 1 no (the plain fallback panel; the game's own window keeps its own)

@@ -34,15 +34,19 @@ bool drawMovelistDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, co
                         int sel, float scroll, const std::string& title, int ageMs);
 
 
-// ---- the Options dialog (Options.gbs "FullScreenOptions": twelve 36-px slots, a choice row = marker + label + < value >) ----------
+// ---- the Settings dialog (InGame.gbs "MediumOptions1P", the same window as the pause menu's Help & Options: eleven slots of
+// 507 x 38 canvas px, 39 px apart; only the highlighted slot is boxed; a choice row = label + < value >) ---------------------------
 struct OptionRow {
     std::string label;   // already localised
     std::string value;   // choice rows: the current value, already localised
     bool choice = false; // shows < value >
     bool enabled = true; // false = dimmed
+    bool canPrev = true; // the < arrow is shown (a list that does not wrap hides it at its first value)
+    bool canNext = true; // the > arrow
 };
-constexpr int kOptionSlots = 12;
-constexpr float kOptionSlotStep = 36.0f;   // canvas px; the slots start at kMovelistSlotX / kMovelistSlotY
+constexpr int kOptionSlots = 11;
+constexpr float kOptionSlotX = 388.0f, kOptionSlotY = 176.0f, kOptionSlotW = 507.0f, kOptionSlotStep = 39.0f;   // canvas px
+constexpr float kOptionValueC = 392.0f;   // centre of the value, from the slot's left edge
 
 // Same contract as drawMovelistDialog.  `desc` is the highlighted row's description (the dialog's Help1 area, under the list: up to
 // two lines), `note` an optional second line in a different colour (what is not available).

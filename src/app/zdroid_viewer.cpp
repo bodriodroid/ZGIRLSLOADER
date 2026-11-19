@@ -209,8 +209,12 @@ std::shared_ptr<const vault::Vault> openCoreVault() {
     return !ec && it != fs::directory_iterator();
 }
 
+// The stage the loader's worker is in (the splash shows it): 1 opening the data, 2 mods and resource packs, 3 indexing.
+std::atomic<int> g_loadStage{0};
+
 std::unique_ptr<LoadResult> buildData(const std::string& dataRoot, const std::vector<std::string>& extraDirs, int delayMs, bool jpVoices = false) {
     auto r = std::make_unique<LoadResult>();
+    g_loadStage = 1;
     if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
     // the sealed Core is the base layer: every folder mounted after it (and every mod) overrides it
     if (const std::shared_ptr<const vault::Vault> v = openCoreVault()) r->gd.mountVault(v);
@@ -226,6 +230,8 @@ std::unique_ptr<LoadResult> buildData(const std::string& dataRoot, const std::ve
     r->gd.mount(dataRoot);
     for (const std::string& d : extraDirs) r->gd.mount(d);
     // SKGLoader/mods/* override the base game: mounted last, higher priority last.
+    g_loadStage = 2;
+    if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
     r->modCount = r->gd.mountMods(dataRoot, &r->modLog);
     // <gameDir>/mods/{pal,modscustom,stages,sdvoice_japanese,resourcepacks}: created if missing, then mounted (modsdir.h)
     const modsdir::Report mrep = r->gd.mountModsDir(dataRoot, jpVoices);
@@ -234,6 +240,8 @@ std::unique_ptr<LoadResult> buildData(const std::string& dataRoot, const std::ve
     for (const std::string& l : mrep.log) r->modLog.push_back(l);
     for (const std::string& w : mrep.warnings) std::printf("mods: %s\n", w.c_str());
     if (!mrep.pal.entries.empty()) std::printf("mods: %zu custom palette(s)\n", mrep.pal.entries.size());
+    g_loadStage = 3;
+    if (delayMs > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
     r->inv = r->gd.scan();
     scanDownloadDir((fs::path(dataRoot) / "SKGSTEAM").string(), r->dlGfs, r->dlFiles, r->dlBytes);
     return r;
@@ -1395,6 +1403,7 @@ int main(int argc, char** argv) {
         prevTick = tick;
 
         app.pollLoad();
+        if (app.loading) app.menu.setBootStage(g_loadStage.load());
         if (in.back) {
             if (ui.focus)
                 ui.focus = 0;

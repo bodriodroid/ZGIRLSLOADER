@@ -273,70 +273,114 @@ bool drawMovelistDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, co
     return true;
 }
 
+// The Settings pages, drawn like the pause menu's "Help & Options": the compact ornate window of InGame.gbs "MediumOptions1P" (the
+// "PLAYER 1" plate, the winged title) with eleven 38-px slots of 507 px.  Only the highlighted slot gets a box (the game's selector01 /
+// selector02: black with a red outline); a choice row is label + "<  value  >".
 bool drawOptionsDialog(GameUi& g, GbsAnimPlayer& anim, std::string& animKey, const std::string& key, const std::vector<OptionRow>& rows,
                        int sel, float scroll, const std::string& title, const std::string& desc, const std::string& note, bool noteWarn, int ageMs) {
-    const GbsSceneView* v = drawDialogFrame(g, anim, animKey, key, "FullScreenOptions", title);
+    (void)ageMs;
+    const GbsSceneView* v = nullptr;
+    if (g.loadScene("InGame.gbs") && g.scene()) v = g.scene()->view("MediumOptions1P");
     if (!v) return false;
+    if (animKey != key) {   // the window's own intro (OnActivate sets the final size of the frame, P1MenuIntro opens it)
+        animKey = key;
+        anim.bind(v);
+        for (const char* a : {"OnActivate", "P1MenuIntro"}) anim.play(a);
+    }
     const bool prevPivot = g.otterPivot();
-    g.setOtterPivot(true);
+    g.setOtterPivot(false);   // (InGame.gbs positions its nodes by corner, unlike the menu scenes)
+    g.setAnimPlayer(&anim);
+    g.drawView(*v, [&](const GbsNode& nd, NodeState& st) {
+        const std::string& nm = nd.name;
+        if (nm == "BGFade") st.fallback = Col{0, 0, 0, 160};
+        else if (nm == "ChoiceGRP" || nm == "AdvanceGRP" || nm == "ConfirmGRP" || nm == "SlotGRP" || nm == "ArrowGroup" || nm == "P2Menu" ||
+                 nm == "ActionFrame" || nm == "Copy of ActionFrame" || nm == "P1TitleTxt")
+            st.hide = true;
+        else if (nm == "Header_Text" || nm == "Player1Label") {
+            st.hasText = true;
+            st.text = "PLAYER 1";
+        }
+    });
+    g.setAnimPlayer(nullptr);
+    g.setOtterPivot(prevPivot);
+
     const int n = static_cast<int>(rows.size());
     sel = n > 0 ? std::clamp(sel, 0, n - 1) : 0;
-    const float step = kOptionSlotStep;
-    const float selY = kMovelistSlotY + (static_cast<float>(sel) - scroll) * step;
-    const bool selShown = n > 0 && selY >= kMovelistSlotY - 1.0f && selY <= kMovelistSlotY + step * (kOptionSlots - 1) + 1.0f;
-    const float intro = std::clamp(static_cast<float>(ageMs) / 260.0f, 0.0f, 1.0f);
-    if (selShown)
-        drawSelectorBar(g, "Textures/Options/selector36-fade.png", "Textures/Options/selector36-middle.png", kMovelistSlotX, selY,
-                        kMovelistSlotW, step, std::clamp(static_cast<float>(ageMs) / 200.0f, 0.0f, 1.0f));
-    if (const GbsFont* fT = g.fontNamed("Dialogue Text")) {
-        SDL_Texture* mark = g.texture("Textures/Posthud/arrow01.png");
-        SDL_Texture* arOff = g.texture("Textures/MainMenu/arrow01.png");
-        SDL_Texture* arOn = g.texture("Textures/MainMenu/arrow02.png");
-        g.clipCanvas(0, kMovelistSlotY, 1280.0f, step * kOptionSlots);
-        for (int k = 0; k < n; ++k) {
-            const float y = kMovelistSlotY + (static_cast<float>(k) - scroll) * step;
-            if (y + step <= kMovelistSlotY || y >= kMovelistSlotY + step * kOptionSlots) continue;
-            const OptionRow& o = rows[static_cast<size_t>(k)];
-            const bool on = k == sel;
-            const Col c = !o.enabled ? Col{130, 126, 120, 255} : on ? Col{255, 255, 255, 255} : Col{226, 222, 212, 255};
-            const float a = intro;
-            // (the template ChoiceGRP: marker 79, label 103 (251 wide), < 345, value 375 (197 wide), > 565 -- slot x 90)
-            if (on && mark) g.drawTexture(mark, kMovelistSlotX - 11.0f, y + 7.0f, 9.0f, 21.0f, 0, 0, 0, false, false, Col{255, 255, 255, 255}, a);
-            const float lw = o.choice ? 251.0f : 1000.0f;
-            const float ls = std::min(1.0f, lw / std::max(1.0f, g.textWidth(*fT, o.label)));
-            g.drawLabelText(*fT, o.label, kMovelistSlotX + 13.0f, y, lw + 40.0f, step, 0, true, c, ls, a);
-            if (!o.choice) continue;
-            const float vw = 197.0f;
-            const float vs = std::min(1.0f, vw / std::max(1.0f, g.textWidth(*fT, o.value)));
-            g.drawLabelText(*fT, o.value, kMovelistSlotX + 285.0f, y, vw, step, 1, true, c, vs, a);
-            SDL_Texture* ar = on && o.enabled ? arOn : arOff;
-            if (ar) {
-                g.drawTexture(ar, kMovelistSlotX + 255.0f, y + 3.0f, 21.0f, 29.0f, 0, 0, 0, true, false, Col{255, 255, 255, 255}, a);
-                g.drawTexture(ar, kMovelistSlotX + 475.0f, y + 3.0f, 21.0f, 29.0f, 0, 0, 0, false, false, Col{255, 255, 255, 255}, a);
+    if (const GbsFont* fW = g.fontNamed("Big Options w Wings")) {
+        std::string head = title;
+        for (char& c : head)
+            if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+        const float sc = std::min(0.44f, 330.0f / std::max(1.0f, g.textWidth(*fW, head, 1.0f)));
+        const float w = g.textWidth(*fW, head, sc);
+        g.drawLine(*fW, head, 642.0f - w / 2, 151.0f - fW->lineHeight * sc / 2, Col{255, 255, 255, 255}, sc);
+    }
+    const GbsFont* fT = g.fontNamed("Dialogue Text");
+    if (!fT) return true;
+    constexpr float kLArrow = 292.0f, kValueC = 392.0f, kRArrow = 468.0f;   // canvas px from the slot's left edge (as in the pause menu)
+    SDL_Texture* capT = g.texture("Textures/Options/selector01.png");
+    SDL_Texture* midT = g.texture("Textures/Options/selector02.png");
+    SDL_Texture* arOff = g.texture("Textures/MainMenu/arrow01.png");
+    SDL_Texture* arOn = g.texture("Textures/MainMenu/arrow02.png");
+    const float x = kOptionSlotX, w = kOptionSlotW, rowH = 38.0f;
+    for (int k = 0; k < n; ++k) {
+        const float y = kOptionSlotY + (static_cast<float>(k) - scroll) * kOptionSlotStep;
+        if (y < kOptionSlotY - 1.0f || y + rowH > kOptionSlotY + kOptionSlotStep * kOptionSlots) continue;
+        const OptionRow& o = rows[static_cast<size_t>(k)];
+        const bool on = k == sel;
+        if (on) {
+            if (capT && midT) {
+                g.drawTexture(capT, x, y, 5, rowH);
+                g.drawTexture(midT, x + 5, y, w - 10, rowH);
+                g.drawTexture(capT, x + w - 5, y, 5, rowH, 0, 0, 0, true, false);
+            } else {
+                g.fillRect(x, y, w, rowH, Col{40, 6, 10, 235});
+                g.fillRect(x, y, w, 2, Col{190, 20, 30, 255});
+                g.fillRect(x, y + rowH - 2, w, 2, Col{190, 20, 30, 255});
             }
         }
-        g.clearClip();
-        // Help1: the description of the highlighted row, centred under the list
-        if (!desc.empty() || !note.empty()) {
-            const std::string both = note.empty() ? desc : (desc.empty() ? note : desc + "\n" + note);
-            const float bw = kMovelistSlotW - 40.0f;
-            float sc = 1.0f;
-            auto lines = g.wrap(*fT, both, bw, sc);
-            while (lines.size() > 2 && sc > 0.6f) {
-                sc -= 0.05f;
-                lines = g.wrap(*fT, both, bw, sc);
-            }
-            const float lh = 26.0f * sc;
-            float yy = 632.0f + (2.0f - static_cast<float>(std::min<size_t>(lines.size(), 2))) * lh * 0.5f;
-            for (size_t i = 0; i < lines.size() && i < 2; ++i, yy += lh) {
-                const bool isNote = !note.empty() && (lines.size() == 1 ? desc.empty() : i == lines.size() - 1);
-                g.drawLabelText(*fT, lines[i], kMovelistSlotX + 20.0f, yy, bw, lh, 1, true,
-                                isNote ? (noteWarn ? Col{255, 205, 110, 255} : Col{200, 192, 182, 255}) : Col{255, 255, 255, 255}, sc, 1.0f);
-            }
+        const Col c = !o.enabled ? Col{120, 118, 112, 255} : on ? Col{255, 255, 255, 255} : Col{226, 222, 212, 255};
+        const float lw = o.choice ? kLArrow - 24.0f : w - 24.0f;
+        const float ls = std::min(1.0f, lw / std::max(1.0f, g.textWidth(*fT, o.label, 1.0f)));
+        g.drawLine(*fT, o.label, x + 12.0f, y + 3.0f + (1.0f - ls) * 6.0f, c, ls);
+        if (!o.choice) continue;
+        SDL_Texture* ar = on && o.enabled ? arOn : arOff;   // (the arrows point right: the left one is mirrored)
+        if (ar) {
+            const Col full{255, 255, 255, 255};
+            if (o.canPrev) g.drawTexture(ar, x + kLArrow, y + 4.0f, 21, 29, 0, 0, 0, true, false, full, o.enabled ? 1.0f : 0.5f);
+            if (o.canNext) g.drawTexture(ar, x + kRArrow, y + 4.0f, 21, 29, 0, 0, 0, false, false, full, o.enabled ? 1.0f : 0.5f);
+        }
+        const float vs = std::min(1.0f, 150.0f / std::max(1.0f, g.textWidth(*fT, o.value, 1.0f)));
+        const float vw = g.textWidth(*fT, o.value, vs);
+        g.drawLine(*fT, o.value, x + kValueC - vw / 2, y + 3.0f + (1.0f - vs) * 6.0f, c, vs);
+    }
+    // scroll chevrons at the right edge of the list
+    if (n > kOptionSlots && arOff && arOn) {
+        const float cx = x + w + 14.0f;
+        const float top = kOptionSlotY + 4.0f, bot = kOptionSlotY + kOptionSlotStep * kOptionSlots - 34.0f;
+        const Col full{255, 255, 255, 255};
+        if (scroll > 0.01f) g.drawTexture(arOn, cx - 9.0f, top, 18, 26, -90, 9, 13);
+        else g.drawTexture(arOff, cx - 9.0f, top, 18, 26, -90, 9, 13, false, false, full, 0.4f);
+        if (scroll < static_cast<float>(n - kOptionSlots) - 0.01f) g.drawTexture(arOn, cx - 9.0f, bot, 18, 26, 90, 9, 13);
+        else g.drawTexture(arOff, cx - 9.0f, bot, 18, 26, 90, 9, 13, false, false, full, 0.4f);
+    }
+    // the highlighted row's description, under the window (two lines at most, in the space above the key hint)
+    if (!desc.empty() || !note.empty()) {
+        const std::string both = note.empty() ? desc : (desc.empty() ? note : desc + "\n" + note);
+        const float bw = 980.0f;
+        float sc = 0.85f;
+        auto lines = g.wrap(*fT, both, bw, sc);
+        while (sc > 0.5f && (lines.size() > 2 || (lines.size() == 2 && sc > 0.68f))) {
+            sc -= 0.05f;
+            lines = g.wrap(*fT, both, bw, sc);
+        }
+        const float lh = 26.0f * sc;
+        float yy = 646.0f + (lines.size() >= 2 ? 0.0f : 6.0f);
+        for (size_t i = 0; i < lines.size() && i < 2; ++i, yy += lh) {
+            const bool isNote = !note.empty() && (lines.size() == 1 ? desc.empty() : i == lines.size() - 1);
+            shadowLabel(g, *fT, lines[i], 640.0f - bw / 2, yy, bw, lh, 1,
+                        isNote ? (noteWarn ? Col{255, 205, 110, 255} : Col{200, 192, 182, 255}) : Col{255, 255, 255, 255}, sc, 1.0f);
         }
     }
-    drawScrollArrows(g, n, kOptionSlots, scroll, kMovelistSlotY + 6.0f, kMovelistSlotY + step * kOptionSlots - 44.0f);
-    g.setOtterPivot(prevPivot);
     return true;
 }
 
