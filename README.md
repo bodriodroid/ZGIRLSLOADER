@@ -33,7 +33,7 @@ then `ctest`. `python3 -I tests/real_diff.py <dir> annie <zdroid_probe --records
 
 ## Main menu
 
-`zdroid_viewer <data folder>` starts on the loader's own splash (its logo, `android/branding/boot_logo.png`, and a four-stage loader), then - only the first time - the notice (`docs/DISCLAIMER.md`), then the photosensitivity warning and the menu.
+`zdroid_viewer <data folder>` starts on the loader's own splash (its logo, `android/branding/boot_logo.png`, and a four-stage loader), then - only the first time - the notice (`docs/DISCLAIMER.md`), then the photosensitivity warning, the opening montage and the menu.
 The root list follows the PC edition (Download Content, Achievements, Leaderboards, Extras, Single Player, Versus, Training, Help & Options, Exit; the first three are shown dimmed - they need Lab Zero's online services). Fight entries open the Character Select (fight mode is on by default; `-DZDROID_FIGHT_MODE=OFF` hides it, see `src/app/zd_features.h`). Implemented entries: Arcade Mode / CPU Quick Match (one match vs CPU), Local Versus, Training Room, Controls,
 Settings (language, difficulty, rounds, time limit, saved to `menu_settings.txt`), Exit. Everything else the original
 menu lists (Story, Survival, Tutorials, Challenges, Trials, Extras, Movelist, online) is shown dimmed with a note.
@@ -43,8 +43,8 @@ so a capture of N frames is repeatable), `--click X,Y` (logical 640x360 coordina
 `--screen menu|splash|attract|charselect|home|browse|steam|play` (`--screen attract --attract-shot N --attract-tick T` jumps into the opening montage).
 
 **Start-up order.** splash + loader (logo, four stages: opening the data, mods and resource packs, indexing, preparing the interface and audio; at least 2.6 s) -> the notice (red; only until it
-has been accepted once: `[loader] notice=1` in `zgirls.savini`, delete it to see it again) -> the photosensitivity warning (`FrontCredits.gbs`) -> the menu.  There is no title screen and no opening montage.
-The game's own loading screen (`loading_<lang>`: line art, "LOADING..." and the bomb lower right) is the one shown before a match, and the opening montage (`AttractMode.gbs`: 17 shots, any tap / key or Back skips it) stays available with `--screen attract`.  Mount the folder with
+has been accepted once: `[loader] notice=1` in `zgirls.savini`, delete it to see it again) -> the photosensitivity warning (`FrontCredits.gbs`) -> the opening montage (`AttractMode.gbs`: 17 shots, any tap / key or Back skips it; it hands over to the menu) -> the menu.  There is no title screen and no logo loader (the publisher marks are never shown).
+The game's own loading screen (`loading_<lang>`: line art, "LOADING..." and the bomb lower right) is the one shown before a match; `--screen attract` jumps into the montage.  Mount the folder with
 `Textures/AttractMode`; the montage music (`sg_attract_c.wav` + `sg_attract_c_loop.wav`, converted from `music-win/music`) goes in the music folder, without it the
 montage is silent.  Story Mode and the fight entries open the Character Select (Story: no stage, no second fighter; Double and Valentine stay locked until the story unlocks them).
 

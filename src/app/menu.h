@@ -73,7 +73,7 @@ public:
     // captures / tests: open a page of the menu by file name ("options.ini", "zd_dev.ini") on top of the root
     void openPageForCapture(const std::string& file) { state_ = State::Menu; push(file); }
     // Accept the legal notice programmatically (smoke tests); the photosensitivity warning comes next (acceptNotice(true) skips it too).
-    // There is no title screen (the publisher marks are never shown) and no opening montage: notice -> warning -> menu.
+    // There is no title screen and no logo loader (the publisher marks are never shown): notice -> warning -> opening montage -> menu.
     void acceptNotice(bool skipWarning = false) {
         if (state_ == State::Boot) {   // (async start-up: the splash is still up; the notice is accepted when it ends)
             bootAutoAccept_ = true;
@@ -327,7 +327,7 @@ private:
     int frameDt_ = 16;
     std::unordered_map<std::string, int> sfxByName_;
     bool ensureAttract();
-    void beginAttract();                            // after the loading screen: montage if the scene is there, else the title
+    void beginAttract();                            // after the photosensitivity warning: the opening montage if the scene is there, else the menu
     void stepAttract();      // scene sound id -> Audio sfx id (-2 = not loadable)
 };
 

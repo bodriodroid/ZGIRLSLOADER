@@ -740,9 +740,8 @@ void MenuScreen::showWarning() {
     confirmExit_ = controls_ = false;
 }
 
-void MenuScreen::endWarning() {
-    state_ = State::Menu;
-    if (audio_) sfx(sfxStart_);
+void MenuScreen::endWarning() {   // after the warning comes the opening montage (no logos, no title screen); the menu follows it
+    beginAttract();
 }
 
 // ---------------------------------------------------------------------------------------- logic
@@ -1572,7 +1571,7 @@ void MenuScreen::draw(Ui& ui, SDL_Renderer* r) {
             gfx_.loadScene("Main.gbs");
             return;
         }
-        state_ = State::Title;
+        state_ = State::Menu;   // (no montage in the data: straight to the menu)
     }
     if (sceneOk_) {
         drawScene(ui, r);
@@ -1624,6 +1623,7 @@ Result MenuScreen::frame(Ui& ui, SDL_Renderer* r, int dtMs) {
     const Result res = handleInput(ui);
     if (audio_ && !stack_.empty()) {
         if (st0 == State::CharSelect && state_ == State::Menu) sfx(sfxBack_);
+        else if (st0 == State::Attract && state_ == State::Menu) sfx(sfxStart_);
         else if (st0 == State::Menu && state_ == State::Menu) {
             if (stack_.size() > depth0) { if (!(sceneOk_ && depth0 == 1)) sfx(sfxEnter_); }   // (SubMenuIntro carries its own cue)
             else if (stack_.size() < depth0) sfx(sfxBack_);

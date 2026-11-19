@@ -311,14 +311,17 @@ void MenuScreen::sceneLayoutRoot(Page& p) {
 }
 
 // Pages drawn as the big dialog of Options.gbs: the command lists ("Movelist": 72-px slots, a move over its command) and the pages
-// of settings ("FullScreenOptions": 36-px slots, label + < value >).  The pages of plain entries (Single Player, Extras ...) stay on
+// of settings (the pause menu's "MediumOptions1P": label + < value >).  The pages of plain entries (Single Player, Extras ...) stay on
 // the film strip like the PC edition.
 int MenuScreen::dialogKind(const Page& p) const {
     if (p.root || !sceneOk_) return 0;
     if (p.file.rfind("movelist", 0) == 0) return 1;
+    // A page of settings, not a list of entries that happens to carry one choice: Single Player (Arcade, Quick Match, Difficulty ...)
+    // keeps the film strip like the PC edition, with its Difficulty row on the strip.
+    int settings = 0;
     for (const MenuOption& o : p.def.options)
-        if (o.type == MenuOptType::Setting) return 2;
-    return 0;
+        if (o.type == MenuOptType::Setting) ++settings;
+    return settings * 2 > static_cast<int>(p.def.options.size()) ? 2 : 0;
 }
 
 bool MenuScreen::isDialogPage(const Page& p) const { return dialogKind(p) != 0; }
