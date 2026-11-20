@@ -73,7 +73,7 @@ public:
     // captures / tests: open a page of the menu by file name ("options.ini", "zd_dev.ini") on top of the root
     void openPageForCapture(const std::string& file) { state_ = State::Menu; push(file); }
     // Accept the legal notice programmatically (smoke tests); the photosensitivity warning comes next (acceptNotice(true) skips it too).
-    // There is no title screen and no logo loader (the publisher marks are never shown): notice -> warning -> opening montage -> menu.
+    // No logo loader and no copyright / trademark line (the publisher marks are never shown): notice -> warning -> opening montage -> title -> menu.
     void acceptNotice(bool skipWarning = false) {
         if (state_ == State::Boot) {   // (async start-up: the splash is still up; the notice is accepted when it ends)
             bootAutoAccept_ = true;

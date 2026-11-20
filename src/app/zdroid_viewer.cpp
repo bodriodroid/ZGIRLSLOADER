@@ -8,7 +8,7 @@
 //   Play    an actual playable match on the fight runtime, with the fighters' real sprites
 //
 // Headless smoke test (SDL_VIDEODRIVER=dummy):
-//   zdroid_viewer <dir> --smoke out.png [--screen menu|splash|attract|charselect|home|browse|steam|play] [--attract-shot N --attract-tick T] [--lang es] [--skip-title | --accept-notice] [--char annie] [--frame N] [--cat all|sprites|extras|sil]
+//   zdroid_viewer <dir> --smoke out.png [--screen menu|title|splash|attract|charselect|home|browse|steam|play] [--attract-shot N --attract-tick T] [--lang es] [--skip-title | --accept-notice] [--char annie] [--frame N] [--cat all|sprites|extras|sil]
 //              [--pal 1p] [--zoom fit|1|2] [--bg 0|1|2] [--click x,y]... [--smoke-phase guard|downloading|done|failed|...]
 //              [--exe <DepotDownloader>] [--steam-user U] [--steam-pass-env VAR] [--steam-code C] [--steam-autostart]
 #include <SDL.h>
@@ -1222,6 +1222,7 @@ int main(int argc, char** argv) {
     }
     if (opt.screen == "attract") app.menu.showAttract(opt.attractShot, opt.attractTick);   // the opening montage (smoke / screenshots)
     if (opt.screen == "warning") { app.menu.acceptNotice(); app.menu.showWarning(); }   // the photosensitivity warning (smoke / screenshots)
+    if (opt.screen == "title") app.menu.showTitle();   // the title screen (smoke / screenshots)
     if (opt.screen == "splash") app.menu.showSplash();   // the game's own loading screen (smoke / screenshots)
     if (opt.screen == "home") app.screen = Screen::Home;
     else if (opt.screen == "browse") app.screen = Screen::Browse;

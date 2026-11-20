@@ -680,7 +680,7 @@ bool MenuScreen::ensureAttract() {
 
 void MenuScreen::beginAttract() {
     if (!ensureAttract()) {
-        state_ = State::Menu;
+        showTitleImpl();
         return;
     }
     state_ = State::Attract;
@@ -725,8 +725,9 @@ std::string MenuScreen::pageTitle() const {
     return L(stack_.back().def.topText);
 }
 
-void MenuScreen::showTitleImpl() {   // there is no title screen: the root menu is what comes after the warning
-    state_ = State::Menu;
+void MenuScreen::showTitleImpl() {   // the game's title (logo, shield, "press any button") - WITHOUT its copyright / trademark line
+    state_ = State::Title;
+    titleAnimOn_ = false;
     confirmExit_ = controls_ = false;
     rebuildStack();
     stack_.resize(1);
@@ -962,7 +963,7 @@ Result MenuScreen::handleInput(Ui& ui) {
         if (attractPending_) return res;   // not loaded yet (showAttract from a smoke run): the first draw starts it
         stepAttract();
         if (timeMs_ - attractT0_ >= 400 && (in.pressed || anyKey)) attract_.skip();
-        if (attract_.finished()) state_ = State::Menu;
+        if (attract_.finished()) showTitleImpl();
         return res;
     }
 
@@ -1380,10 +1381,8 @@ void MenuScreen::drawTitle(Ui& ui) {
         const std::string go = loc_.trOr("Press Any Button to Start", own(touch ? "touch" : "enter"));
         shadowText(ui, kListX, 236, Ui::fit(go, 380), kText, 1 + (Ui::glyphCount(go) * 16 <= 380 ? 1 : 0));
     }
-    const std::string copy = loc_.trOr("Copyright", "");
-    const std::string foot = own("unofficial");
-    ui.text(kListX, copy.empty() ? 336 : 322, Ui::fit(foot, kW - 48), kDim);
-    if (!copy.empty()) ui.text(kListX, 336, Ui::fit(copy, kW - 48), kDim);
+    // (the game's copyright / trademark line is never shown)
+    ui.text(kListX, 336, Ui::fit(own("unofficial"), kW - 48), kDim);
 }
 
 void MenuScreen::drawList(Ui& ui, Page& p) {
@@ -1571,7 +1570,7 @@ void MenuScreen::draw(Ui& ui, SDL_Renderer* r) {
             gfx_.loadScene("Main.gbs");
             return;
         }
-        state_ = State::Menu;   // (no montage in the data: straight to the menu)
+        showTitleImpl();   // (no montage in the data: straight to the title)
     }
     if (sceneOk_) {
         drawScene(ui, r);
@@ -1623,7 +1622,7 @@ Result MenuScreen::frame(Ui& ui, SDL_Renderer* r, int dtMs) {
     const Result res = handleInput(ui);
     if (audio_ && !stack_.empty()) {
         if (st0 == State::CharSelect && state_ == State::Menu) sfx(sfxBack_);
-        else if (st0 == State::Attract && state_ == State::Menu) sfx(sfxStart_);
+        else if (st0 == State::Title && state_ == State::Menu) sfx(sfxStart_);   // "press any button"
         else if (st0 == State::Menu && state_ == State::Menu) {
             if (stack_.size() > depth0) { if (!(sceneOk_ && depth0 == 1)) sfx(sfxEnter_); }   // (SubMenuIntro carries its own cue)
             else if (stack_.size() < depth0) sfx(sfxBack_);

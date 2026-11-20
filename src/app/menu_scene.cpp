@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "app_version.h"
 #include "menu.h"
 #include "menu_list_anim.h"
 #include "movelist_dialog.h"
@@ -569,7 +570,6 @@ void MenuScreen::sceneTitle() {
     }
     playCues(aSplash_);
     const std::string press = loc_.trOr("Press Any Button to Start", own("enter"));
-    const std::string copy = loc_.trOr("Copyright", "");
     gfx_.setAnimPlayer(&aSplash_);
     gfx_.drawView(*vSplash_, [&](const GbsNode& n, NodeState& st) {
         const std::string& nm = n.name;
@@ -581,18 +581,16 @@ void MenuScreen::sceneTitle() {
             st.hasText = true;
             st.text = press;
         } else if (nm == "CopyrightNotice") {
-            // the rest pose sits on the PressButton line; the original moves it from code: park it on the bottom edge
-            st.hasText = !copy.empty();
-            st.text = copy;
-            st.dy = kTitleFooterDy;
+            st.hide = true;   // the publisher's copyright / trademark line is never shown
         } else if (nm == "VersionNumber") {
-            st.hasText = true;
-            st.text = "ZDroid-Engine (unofficial)";
-            st.dy = kTitleFooterDy;
-            st.dx = kCanvasW - 18.0f - (n.x + n.w);   // right-aligned label: end it at the right edge of the screen
+            st.hide = true;   // drawn below, with the prompt's font (the label's own one is not in every UI pack)
         }
     });
     gfx_.setAnimPlayer(nullptr);
+    if (const GbsFont* f = gfx_.font(3)) {   // the version, bottom right, where the game keeps its own
+        const float sc = 0.6f;
+        gfx_.drawLine(*f, kAppVersion, kCanvasW - 20.0f - gfx_.textWidth(*f, kAppVersion, sc), kCanvasH - 14.0f - f->lineHeight * sc, Col{190, 172, 150, 255}, sc, 0.85f);
+    }
 }
 
 void MenuScreen::sceneRoot(Page& p) {
