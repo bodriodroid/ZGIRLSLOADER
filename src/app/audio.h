@@ -76,6 +76,11 @@ public:
     // Sound effects: load once, trigger many times.  -1 = could not load.
     int loadSfx(const Vfs& vfs, std::string_view name);
     void playSfx(int id, float gain = 1.0f);
+    // The voice channel: ONE spoken line at a time.  A new line replaces the one that is still speaking (the story's lines used to
+    // overlap each other in the effects slots); stopVoice() cuts it (a skipped line, the end of a scene).  Effects never touch it.
+    void playVoice(int id, float gain = 1.0f);
+    void stopVoice();
+    bool voiceActive() const { return voiceCh_.clip >= 0; }
     float sfxSeconds(int id) const { return (id >= 0 && static_cast<size_t>(id) < sfx_.size() && rate_ > 0) ? static_cast<float>(sfx_[static_cast<size_t>(id)].frames) / static_cast<float>(rate_) : 0.0f; }
 
     // 0..1 each; master scales both.
@@ -121,6 +126,7 @@ private:
     std::vector<AudioClip> sfx_;
     std::vector<std::string> sfxNames_;
     Voice voices_[8];
+    Voice voiceCh_;   // the dedicated spoken-line channel (see playVoice)
     bool wantMusic_ = false;
     float masterVol_ = 1, musicVol_ = 1, sfxVol_ = 1;
     float musicGain_ = 0;  // current fade gain

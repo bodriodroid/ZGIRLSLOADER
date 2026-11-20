@@ -1093,6 +1093,12 @@ std::string StoryScreen::voiceFileFor(const std::string& textKey, const std::str
     return f;
 }
 
+void StoryScreen::voStop() {
+    voQueue_.clear();
+    voWait_ = 0;
+    if (audio_) audio_->stopVoice();
+}
+
 void StoryScreen::playVoice(const std::string& textKey, const std::string& explicitName) {
     voStop();
     if (!audio_ || !gd_) return;
@@ -1111,7 +1117,7 @@ void StoryScreen::playVoice(const std::string& textKey, const std::string& expli
     int id = loadVoice(cands);
     if (id < 0) id = loadVoiceFuzzy(textKey, 0, lang, explicitName);
     if (id >= 0) {
-        audio_->playSfx(id);
+        audio_->playVoice(id);
         std::printf("[story] voice: %s\n", cands.front().c_str());
         return;
     }
@@ -1123,7 +1129,7 @@ void StoryScreen::playVoice(const std::string& textKey, const std::string& expli
         parts.push_back(pid);
     }
     if (!parts.empty()) {
-        audio_->playSfx(parts[0]);
+        audio_->playVoice(parts[0]);
         std::printf("[story] voice: %zu parts for '%s'\n", parts.size(), textKey.c_str());
         voQueue_.assign(parts.begin() + 1, parts.end());
         voWait_ = static_cast<int>(audio_->sfxSeconds(parts[0]) * 60.0f) + 6;
@@ -1140,7 +1146,7 @@ void StoryScreen::voTick() {
     if (--voWait_ > 0) return;
     const int id = voQueue_.front();
     voQueue_.erase(voQueue_.begin());
-    audio_->playSfx(id);
+    audio_->playVoice(id);
     voWait_ = static_cast<int>(audio_->sfxSeconds(id) * 60.0f) + 6;
 }
 

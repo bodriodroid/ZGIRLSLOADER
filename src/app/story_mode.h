@@ -127,7 +127,7 @@ private:
     std::string voiceFileFor(const std::string& textKey, const std::string& explicitName, const std::string& lang);   // "" = none
     int loadVoiceFuzzy(const std::string& textKey, int part, const std::string& lang, const std::string& explicitName);
     void voTick();
-    void voStop() { voQueue_.clear(); voWait_ = 0; }
+    void voStop();   // drops the queued parts AND silences the line that is still speaking
     void applyHeader(const std::string& arg);
     void applyPortrait(const std::string& arg);
     void startLegacy(const std::string& name);

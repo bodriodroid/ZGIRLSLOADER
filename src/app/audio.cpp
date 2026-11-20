@@ -383,6 +383,21 @@ void Audio::playSfx(int id, float gain) {
     if (dev_) SDL_UnlockAudioDevice(dev_);
 }
 
+void Audio::playVoice(int id, float gain) {
+    if (id < 0 || static_cast<size_t>(id) >= sfx_.size() || !sfx_[static_cast<size_t>(id)].frames) return;
+    if (dev_) SDL_LockAudioDevice(dev_);
+    voiceCh_.clip = id;   // replaces whatever line was speaking
+    voiceCh_.pos = 0;
+    voiceCh_.gain = gain;
+    if (dev_) SDL_UnlockAudioDevice(dev_);
+}
+
+void Audio::stopVoice() {
+    if (dev_) SDL_LockAudioDevice(dev_);
+    voiceCh_.clip = -1;
+    if (dev_) SDL_UnlockAudioDevice(dev_);
+}
+
 void Audio::setVolumes(float master, float music, float effects) {
     if (dev_) SDL_LockAudioDevice(dev_);
     masterVol_ = std::clamp(master, 0.0f, 1.0f);
@@ -451,6 +466,17 @@ void Audio::mix(int16_t* out, int frames) {
             l += static_cast<float>(c.pcm[static_cast<size_t>(v.pos) * 2]) * g;
             r += static_cast<float>(c.pcm[static_cast<size_t>(v.pos) * 2 + 1]) * g;
             ++v.pos;
+        }
+        if (voiceCh_.clip >= 0) {
+            const AudioClip& c = sfx_[static_cast<size_t>(voiceCh_.clip)];
+            if (voiceCh_.pos >= c.frames) {
+                voiceCh_.clip = -1;
+            } else {
+                const float g = voiceCh_.gain * sg * (1.0f / 32768.0f);
+                l += static_cast<float>(c.pcm[static_cast<size_t>(voiceCh_.pos) * 2]) * g;
+                r += static_cast<float>(c.pcm[static_cast<size_t>(voiceCh_.pos) * 2 + 1]) * g;
+                ++voiceCh_.pos;
+            }
         }
         // clip: two effects on top of the music must not wrap around
         auto shape = [](float x) { return x > 1.0f ? 1.0f : x < -1.0f ? -1.0f : x; };

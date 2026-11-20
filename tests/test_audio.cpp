@@ -197,6 +197,8 @@ static void testMixer(const fs::path& dir) {
     writeFile(dir / "loop.wav", makeWav(400, 44100, 1000, loop));
     writeFile(dir / "intro.wav", makeWav(50, 44100, 5000, loop));  // its own smpl chunk must be ignored: played once
     writeFile(dir / "sfx.wav", makeWav(30, 44100, 2000));
+    writeFile(dir / "voA.wav", makeWav(400, 44100, 3000));   // two spoken lines for the voice-channel checks
+    writeFile(dir / "voB.wav", makeWav(400, 44100, 7000));
     Vfs vfs;
     vfs.mount(dir.string());
 
@@ -281,6 +283,29 @@ static void testMixer(const fs::path& dir) {
     bool clipped = true;
     for (int i = 0; i < 40; i += 2) clipped = clipped && out[static_cast<size_t>(i)] > 0 && out[static_cast<size_t>(i + 1)] < 0;
     CHECK(clipped);
+
+    // the voice channel speaks one line at a time: a new line REPLACES the one still speaking (they must not add up), stopVoice cuts it,
+    // and effects played meanwhile are not touched
+    const int va = a.loadSfx(vfs, "voA.wav"), vb = a.loadSfx(vfs, "voB.wav");
+    CHECK(va >= 0 && vb >= 0 && va != vb);
+    a.setVolumes(1.0f, 1.0f, 1.0f);
+    a.mix(out.data(), 60);   // let the loud effects above die out
+    a.playVoice(va);
+    a.mix(out.data(), 100);
+    CHECK(a.voiceActive() && std::abs(out[0] - 3000) <= 1);
+    a.playVoice(vb);          // the next line starts while A is still speaking
+    a.mix(out.data(), 10);
+    CHECK(std::abs(out[0] - 7000) <= 1);   // only B (not 3100 + 7000)
+    a.playSfx(id);
+    a.mix(out.data(), 10);
+    CHECK(std::abs(out[0] - (7010 + 2000)) <= 2);   // B went on, the effect is added beside it
+    a.stopVoice();
+    CHECK(!a.voiceActive());
+    a.mix(out.data(), 30);
+    CHECK(out[2 * 29] == 0);   // the effect finished, the cut voice is silent
+    a.playVoice(va);
+    a.mix(out.data(), 500);    // a line plays through its end and frees the channel
+    CHECK(!a.voiceActive());
 }
 
 static void testRealMusic(const fs::path& dir) {
