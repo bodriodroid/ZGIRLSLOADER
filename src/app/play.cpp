@@ -792,6 +792,7 @@ bool PlayScreen::onBack() {
 }
 
 void PlayScreen::leaveMatch() {
+    sparks_.reset();
     pf_.clear();
     job_.reset();
     arcadeMode_ = false;
@@ -1794,6 +1795,8 @@ bool PlayScreen::buildFoit(const LevelInfo* lv) {
     auto fd = std::make_unique<fight::FoitDuel>();
     if (!fd->init(c)) return false;
     foit_ = std::move(fd);
+    sparks_.reset();
+    if (gd_ && !zgFlag("ZDROID_PLAY_NOSPARKS", "nosparks")) sparks_.load(gd_->vfs());   // hit / block sparks (no hitspark.foit = none)
     return true;
 }
 
@@ -1897,6 +1900,10 @@ void PlayScreen::stepSim(uint16_t p1, uint16_t p2) {
         hitFlashTick();
         superFxTick();
         palFxTick();
+        if (simulated > 0) {   // the sparks of the hits this step raised, then one step of every spark already out
+            for (const foit::rt::Event& e : foit_->events()) sparks_.spawn(e);
+            sparks_.tick();
+        }
         return;
     }
     if (introStage_ == 3) {   // the entrances: until both fighters are on their feet (or somebody presses an attack)
@@ -2609,6 +2616,15 @@ if (bgBottom < 360) {
     if (foitMode_) {   // spawned objects (projectiles, effects, helpers) in front of the bodies
         for (const fight::FoitView& v : views_)
             if (!v.body) drawFoitView(ui, r, v, sx(v.x), sy(v.y), s);
+        if (sparks_.ready() && gd_) {   // hit / block sparks on top of everything the fight itself shows
+            fx::SparkCam cam;
+            cam.x0 = sx(0);
+            cam.y0 = floorYd;
+            cam.kx = s;
+            cam.ky = s * vex;
+            cam.scale = s;
+            sparks_.draw(r, gd_->vfs(), cam);
+        }
     }
     superTopPass(r);
 

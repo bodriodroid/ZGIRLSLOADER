@@ -42,6 +42,7 @@
 #include "gamedata.h"
 #include "level.h"
 #include "menu_data.h"
+#include "spark_fx.h"
 #include "super_fx.h"
 #include "moveset.h"
 #include "palfx.h"
@@ -436,6 +437,7 @@ private:
     bool foitMode_ = false;
     int foitPhase_ = -1;           // the world's phase at the last tick: a change moves the cards / banners along
     std::vector<fight::FoitView> views_;
+    fx::SparkFx sparks_;   // hit / block sparks and dust of the data driven fight (hitspark.foit + data/sprites)
     bool buildFoit(const LevelInfo* lv);
     void hitFlashTick();
     void syncFoitFlow();           // after every tick: the world's round flow -> phase_ / cards / wins / the end of the match

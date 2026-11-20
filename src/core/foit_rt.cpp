@@ -1345,9 +1345,10 @@ void resolveHits(World& w) {
         a->fa |= fl::A_HasHit;
         a->slots[3] += 1.0f;  // NUMTOUCHES
         ++w.stats.touches;
-        // the effect (spark) the hit asks for; its chain 3 says when it is shown
+        // the effect (spark) the hit asks for; its chain 3 says when it is shown.  Raised for every hit that lands: the class (f12) is
+        // what picks the spark (0 = none), the effect index (f0a, 0xFFFE = none) is a separate, character specific effect.
         auto spark = [&](uint8_t kind) {
-            if (h->f0a == 0xFFFE || w.events.size() >= 4096) return;
+            if (w.events.size() >= 4096) return;
             if (h->hasChain[3]) {
                 Host host;
                 vm::Context cx;
