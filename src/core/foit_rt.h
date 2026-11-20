@@ -204,6 +204,15 @@ struct Event {
     uint32_t hash = 0;     // NodeEvent: name hash from the node's event list; HitSpark / BlockSpark: the hit data's effect index
     float x = 0, y = 0;    // where the object stood (HitSpark / BlockSpark: where the defender stood)
     uint8_t kind = NodeEvent;
+    // HitSpark / BlockSpark only: what the presentation layer needs to draw the spark.
+    //   spark   = the hit data's spark class (HitData::f12: 1 light .. 5 grab, 201.. the character-specific families; 0 = none) for a
+    //             hit, -1 (a block on the ground) / -5 (a block in the air) for a block: the codes the hitspark character's `None`
+    //             state dispatches on (its slot 168)
+    //   hitX/hitY = the centre of the first hit box / hurt box pair that touched (world coordinates, y up)
+    //   faceRight = the attacker was facing right (the spark is mirrored with it)
+    int16_t spark = 0;
+    float hitX = 0, hitY = 0;
+    bool faceRight = true;
 };
 
 // Round flow.  The shipped fight engine runs it purely through two slots of every character (the .foit scripts do the rest):

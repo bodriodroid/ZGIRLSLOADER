@@ -1237,6 +1237,24 @@ bool hitTouches(const Object& a, const Object& d) {
     return false;
 }
 
+// Where a hit landed: the centre of the first hit box / hurt box pair that overlaps (the spark is drawn there).
+bool hitPoint(const Object& a, const Object& d, float& x, float& y) {
+    const Frame* fa = frameOf(a);
+    const Frame* fd = frameOf(d);
+    if (!fa || !fd) return false;
+    for (const Box& hb : fa->hit) {
+        const Rect hr = worldRect(a, hb);
+        for (const Box& ub : fd->hurt) {
+            const Rect ur = worldRect(d, ub);
+            if (!overlap(hr, ur)) continue;
+            x = (std::max(hr.x0, ur.x0) + std::min(hr.x1, ur.x1)) * 0.5f;
+            y = (std::max(hr.y0, ur.y0) + std::min(hr.y1, ur.y1)) * 0.5f;
+            return true;
+        }
+    }
+    return false;
+}
+
 Object* characterOf(Object* o) { return o ? (o->leader ? o->leader : o) : nullptr; }
 
 }  // namespace
@@ -1343,6 +1361,12 @@ void resolveHits(World& w) {
             e.x = d->x;
             e.y = d->y;
             e.kind = kind;
+            e.spark = kind == Event::BlockSpark ? static_cast<int16_t>(ground ? -1 : -5) : static_cast<int16_t>(h->f12);
+            e.faceRight = a->facingRight();
+            if (!hitPoint(*a, *d, e.hitX, e.hitY)) {
+                e.hitX = d->x;
+                e.hitY = d->y;
+            }
             w.events.push_back(e);
         };
         if (code == 3) {  // throw: the defender is held by the attacker (the grab does not trade hitstop)
