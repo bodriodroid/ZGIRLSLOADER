@@ -114,6 +114,10 @@ void AttractScreen::draw(GameUi& ui) {
     ui.fillRect(0, 0, 1280, 720, Col{0, 0, 0, 255});
     if (order_.empty() || cur_ < 0 || !ui.loadScene(file_)) return;
     ui.setAnimPlayer(&player_);
+    // the scene positions its nodes by pivot like the menu scenes (the intro's three-line sentence is laid out that way: each line's box
+    // reaches past the screen and its pivot pulls it back to the middle, one line under the other)
+    const bool prevPivot = ui.otterPivot();
+    ui.setOtterPivot(true);
     const GbsSceneView& v = *order_[static_cast<size_t>(cur_)];
     ui.drawView(v, [&](const GbsNode& n, NodeState& st) {
         if (n.type == GbsNode::Type::Label) {
@@ -126,6 +130,7 @@ void AttractScreen::draw(GameUi& ui) {
             st.hide = true;   // the "TXT_HELPER_..." label of the editor
         }
     });
+    ui.setOtterPivot(prevPivot);
     ui.setAnimPlayer(nullptr);
     warm(ui);
 }
