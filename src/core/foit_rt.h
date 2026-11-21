@@ -317,6 +317,9 @@ void tickAll(World& w, const Sample* inputs /* one per character, may be null */
 
 int findState(const foit::Object& def, const char* name);
 
+// Does the object carry the tag (name hash) right now: the tags its current state lists, plus the ones a script added, minus the ones it removed.
+bool objectHasTag(const Object& o, uint32_t hash);
+
 // ---- rollback support ------------------------------------------------------------------------------------------------
 // Everything that decides the future of a fight (objects, slots, cursors, links, input history, world globals) as bytes, and back.
 // The characters of the match are owned by the caller (`World::objects[0 .. n)`, created with init()); children are rebuilt from the

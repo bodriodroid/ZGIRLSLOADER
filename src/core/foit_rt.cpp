@@ -2211,6 +2211,8 @@ uint64_t hashWorld(const World& w) {
     return h;
 }
 
+bool objectHasTag(const Object& o, uint32_t hash) { return Host::hasTag(&o, hash); }
+
 }  // namespace rt
 }  // namespace foit
 }  // namespace zengine

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(ZGirlsLoader VERSION 0.6.0 LANGUAGES CXX)   # ZGirls Loader (engine: ZDroid-Engine)
+project(ZGirlsLoader VERSION 0.6.0 LANGUAGES C CXX)   # ZGirls Loader (engine: ZDroid-Engine)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,8 +26,21 @@ if(ZDROID_SANITIZE AND NOT ANDROID AND NOT MSVC)
   add_link_options(-fsanitize=address,undefined)
 endif()
 
+# ---- Lua 5.1.5 (MIT, third_party/lua51): runs the game's own training / tutorial / trial scripts (src/core/lua_host.*)
+add_library(zlua STATIC
+  third_party/lua51/lapi.c third_party/lua51/lcode.c third_party/lua51/ldebug.c third_party/lua51/ldo.c third_party/lua51/ldump.c
+  third_party/lua51/lfunc.c third_party/lua51/lgc.c third_party/lua51/llex.c third_party/lua51/lmem.c third_party/lua51/lobject.c
+  third_party/lua51/lopcodes.c third_party/lua51/lparser.c third_party/lua51/lstate.c third_party/lua51/lstring.c third_party/lua51/ltable.c
+  third_party/lua51/ltm.c third_party/lua51/lundump.c third_party/lua51/lvm.c third_party/lua51/lzio.c third_party/lua51/lauxlib.c
+  third_party/lua51/lbaselib.c third_party/lua51/ldblib.c third_party/lua51/lmathlib.c third_party/lua51/lstrlib.c third_party/lua51/ltablib.c)
+target_include_directories(zlua PUBLIC third_party/lua51)
+set_target_properties(zlua PROPERTIES POSITION_INDEPENDENT_CODE ON C_STANDARD 99)
+target_compile_options(zlua PRIVATE $<$<OR:$<C_COMPILER_ID:GNU>,$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:AppleClang>>:-w>)
+
 # ---- core library: no platform dependencies
 add_library(zengine_core STATIC
+  src/core/lua_host.cpp
+  src/core/lesson.cpp
   src/core/vfs.cpp
   src/core/vault.cpp
   src/core/palfx.cpp
@@ -89,7 +102,7 @@ add_library(zengine_core STATIC
   src/fx/super_fx.cpp)
 target_include_directories(zengine_core PUBLIC src/core src/fx)
 find_package(Threads REQUIRED)
-target_link_libraries(zengine_core PUBLIC Threads::Threads)
+target_link_libraries(zengine_core PUBLIC Threads::Threads zlua)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   # keep the palette maths bit-identical to the Python reference (no fused multiply-add)
   target_compile_options(zengine_core PRIVATE -ffp-contract=off -Wall -Wextra)
@@ -282,6 +295,15 @@ if(ZDROID_BUILD_VIEWER)
         endif()
         add_test(NAME zdroid_spark_tests COMMAND zdroid_spark_tests)
         set_tests_properties(zdroid_spark_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_DATA=${ZDROID_TEST_DATA}")
+        # the Lua host of the training / tutorial / trial lessons (no game data: a fake fight with bare objects)
+        add_executable(zdroid_lua_tests tests/test_lua_host.cpp)
+        target_include_directories(zdroid_lua_tests PRIVATE src/core)
+        target_link_libraries(zdroid_lua_tests PRIVATE zengine_core)
+        add_test(NAME zdroid_lua_tests COMMAND zdroid_lua_tests)
+        # developer tool: runs one lesson script on a real fight (game data needed; not a test)
+        add_executable(zdroid_lesson_probe tests/lesson_probe.cpp)
+        target_include_directories(zdroid_lesson_probe PRIVATE src/core)
+        target_link_libraries(zdroid_lesson_probe PRIVATE zengine_core)
         # sides of a picture on a screen wider than 16:9 (software renderer on an off-screen surface)
         add_executable(zdroid_barfill_tests tests/test_bar_fill.cpp src/app/bar_fill.cpp)
         target_include_directories(zdroid_barfill_tests PRIVATE src/app)

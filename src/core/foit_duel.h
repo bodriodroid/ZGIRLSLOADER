@@ -101,6 +101,10 @@ public:
     // ---- rendering
     const rt::World& world() const { return w_; }
     const rt::Object& body(int side) const { return *obj_[side & 1]; }
+    // Writable views for the lesson scripts (lua_host.h): a script reads and writes the object's slots like the shipped engine's did.
+    // Not for the simulation of a networked match: anything written here has to be written by every peer on the same tick.
+    rt::World& worldMut() { return w_; }
+    rt::Object& bodyMut(int side) { return *obj_[side & 1]; }
     // Life of a fighter as a fraction of its full life (0..1).
     float lifeFraction(int side) const;
     // True while the fighter's own super flash (SUPERFLASH) is running: the clock stops and the HUD plays its filmstrip.

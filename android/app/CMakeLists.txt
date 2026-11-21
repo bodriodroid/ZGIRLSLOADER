@@ -6,7 +6,7 @@
 # project; Gradle then packages every shared library under this module's build/
 # directory into the APK's jniLibs.
 cmake_minimum_required(VERSION 3.22)
-project(zgirlsmobile_android LANGUAGES CXX)
+project(zgirlsmobile_android LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17 CACHE STRING "" FORCE)
 set(ZDROID_BUILD_TESTS  OFF  CACHE BOOL "" FORCE)

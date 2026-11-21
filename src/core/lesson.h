@@ -1,0 +1,65 @@
+// lesson.h - a lesson (tutorial / trial / challenge script) running on the real data-driven fight.
+//
+// LuaHost (lua_host.h) only knows bare rt::Objects; this file plugs it into a FoitDuel:
+//   * DuelAccess   FightAccess over the duel: getChar(0) = the player's body, getChar(3) = the dummy's, the assist slots are empty;
+//                  saveState / loadState are the duel's own snapshot, so a script's "put it back as it was" is a real rollback.
+//   * Lesson       owns the host, starts the script when the fight begins and, every tick, turns the pads into duel input:
+//                  the player's pad (ignored while the lesson disabled it) and the dummy's pad (what the script typed with addInput / doMotion).
+//
+// No SDL, no screen: the Play screen asks `step()` for the tick and reads the UI sink the lesson HUD was given.
+#pragma once
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "foit_duel.h"
+#include "lua_host.h"
+
+namespace zengine {
+namespace script {
+
+class DuelAccess : public FightAccess {
+public:
+    explicit DuelAccess(fight::FoitDuel* d) : d_(d) {}
+    foit::rt::World* world() override { return &d_->worldMut(); }
+    foit::rt::Object* character(int index) override {
+        if (index == 0) return &d_->bodyMut(0);
+        if (index == 3) return &d_->bodyMut(1);
+        return nullptr;
+    }
+    bool saveState(std::vector<uint8_t>& out) override {
+        d_->save(out);
+        return true;
+    }
+    bool loadState(const std::vector<uint8_t>& in) override { return !in.empty() && d_->load(in.data(), in.size()); }
+
+private:
+    fight::FoitDuel* d_;
+};
+
+// One pad tick of the dummy (relative to the way it faces) -> the fight.h bits.
+uint16_t padFromFrame(const InputFrame& f, bool facingRight);
+
+class Lesson {
+public:
+    // `scriptName` = the lesson's `LuaFile`.  false = the script did not load (host().lastError()).
+    bool begin(fight::FoitDuel* duel, UiSink* ui, ReadText read, const std::string& scriptName);
+    bool active() const { return duel_ != nullptr && host_.loaded(); }
+
+    // One tick of the fight: runs the script (once the fight has begun), builds both pads and advances the duel.
+    // `playerPad` = fight.h bits of the player; `dummyPad` = what a second human (versus a lesson) holds, when the script types nothing.
+    void step(uint16_t playerPad, uint16_t dummyPad = 0);
+
+    LuaHost& host() { return host_; }
+    const LuaHost& host() const { return host_; }
+    fight::FoitDuel* duel() { return duel_; }
+
+private:
+    fight::FoitDuel* duel_ = nullptr;
+    std::unique_ptr<DuelAccess> access_;
+    LuaHost host_;
+    bool started_ = false;
+};
+
+}  // namespace script
+}  // namespace zengine
