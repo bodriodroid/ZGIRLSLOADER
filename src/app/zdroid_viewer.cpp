@@ -40,6 +40,7 @@
 #include "music_player.h"
 #include "gamedata.h"
 #include "zd_features.h"
+#include "bar_fill.h"
 #include "menu.h"
 #include "modloader.h"
 #include "modsdir.h"
@@ -1173,6 +1174,7 @@ int main(int argc, char** argv) {
     }
     SDL_RenderSetLogicalSize(ren, kW, kH);
     int logicalW = kW;   // No Limits Screen widens it while a match is on screen
+    zengine::BarFill bars;   // the sides of the 16:9 picture on a wider screen
     SDL_RendererInfo rinfo{};
     SDL_GetRendererInfo(ren, &rinfo);
     const bool vsync = (rinfo.flags & SDL_RENDERER_PRESENTVSYNC) != 0;
@@ -1443,6 +1445,8 @@ int main(int argc, char** argv) {
             }
             app.play.setViewWidth(logicalW);
         }
+        // a screen wider than the picture: the frame goes into an off-screen picture and the sides are filled when it is done (BarFill)
+        const bool barFill = logicalW == kW && !std::getenv("ZDROID_NO_BARFILL") && bars.begin(ren, logicalW, kH);
         ui.color(kBg);
         SDL_RenderClear(ren);
         ui.beginFrame();
@@ -1511,6 +1515,7 @@ int main(int argc, char** argv) {
         const bool inMatch = app.screen == Screen::Play && app.play.phase() != play::Phase::Select;
         if (app.screen != Screen::Menu && app.screen != Screen::Story && app.screen != Screen::Gallery && app.screen != Screen::Credits && !inMatch) drawTopBar(ui, app);
         ui.endFrame();
+        if (barFill) bars.end(ren);
 
         // keep the soft keyboard in step with the focused field
         if ((ui.focus != 0) != wantText) {
@@ -1530,6 +1535,7 @@ int main(int argc, char** argv) {
                 int w = 0, h = 0;
                 SDL_GetRendererOutputSize(ren, &w, &h);
                 if (w != cw || h != ch) std::fprintf(stderr, "warning: renderer output is %dx%d, expected %dx%d\n", w, h, cw, ch);
+                SDL_RenderSetLogicalSize(ren, 0, 0);   // the capture is the whole window (a null rect would read only the 16:9 viewport inside it)
                 if (SDL_RenderReadPixels(ren, nullptr, SDL_PIXELFORMAT_RGBA32, px.data(), cw * 4) != 0) {
                     std::fprintf(stderr, "SDL_RenderReadPixels: %s\n", SDL_GetError());
                     exitCode = 2;
@@ -1568,6 +1574,7 @@ int main(int argc, char** argv) {
         app.tex = nullptr;
     }
     SDL_DestroyTexture(ui.font);
+    bars.release();
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
