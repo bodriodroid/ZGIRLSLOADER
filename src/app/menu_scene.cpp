@@ -317,6 +317,7 @@ void MenuScreen::sceneLayoutRoot(Page& p) {
 int MenuScreen::dialogKind(const Page& p) const {
     if (p.root || !sceneOk_) return 0;
     if (p.file.rfind("movelist", 0) == 0) return 1;
+    if (p.file.rfind("zd_mods", 0) == 0) return 2;   // Extras -> Mods: always the Options dialog (switches, read-only lines and actions)
     // A page of settings, not a list of entries that happens to carry one choice: Single Player (Arcade, Quick Match, Difficulty ...)
     // keeps the film strip like the PC edition, with its Difficulty row on the strip.
     int settings = 0;

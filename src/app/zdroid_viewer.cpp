@@ -364,6 +364,7 @@ struct App {
         play.setLevels(inv.levels);
         play.setStageTable(inv.stages);
         menu.setGameData(&gd, &inv);
+        menu.setMods(&modsRep, dataRoot);
         story.setGameData(&gd);
         gallery.setGameData(&gd);
         credits.setGameData(&gd);
@@ -1503,6 +1504,8 @@ int main(int argc, char** argv) {
                 } else if (mr.kind == menu::Result::Kind::Credits) {
                     app.credits.begin(app.menu.language(), mr.contributors, false);
                     app.screen = Screen::Credits;
+                } else if (mr.kind == menu::Result::Kind::ReloadMods) {   // Extras -> Mods -> Apply: the switches are in mods.ini, read it all again
+                    app.rescan();
                 } else if (mr.kind == menu::Result::Kind::Home) {
                     app.screen = Screen::Home;
                 } else if (mr.kind == menu::Result::Kind::Quit) {

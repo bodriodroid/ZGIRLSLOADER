@@ -194,6 +194,47 @@ std::string MenuScreen::own(const std::string& key) const {
         {"boot.s3", "Indexing fighters, stages and menus", "Indexando personajes, escenarios y menús"},
         {"boot.s4", "Preparing the interface and audio", "Preparando la interfaz y el audio"},
         {"boot.done", "Ready", "Listo"},
+        {"mods", "Mods", "Mods"},
+        {"mods.desc", "Resource packs, game mods, custom stages and colours from the mods folder.", "Paquetes de recursos, mods de juego, escenarios y colores personalizados de la carpeta mods."},
+        {"mods.packs", "Resource packs", "Paquetes de recursos"},
+        {"mods.packs.desc", "Textures, sounds and texts that replace the game's own. The original files are never touched.", "Texturas, sonidos y textos que reemplazan a los del juego. Los archivos originales nunca se tocan."},
+        {"mods.mods", "Game mods", "Mods de juego"},
+        {"mods.mods.desc", "Mods that change the game. They load over the resource packs.", "Mods que cambian el juego. Se cargan sobre los paquetes de recursos."},
+        {"mods.stages", "Custom stages", "Escenarios personalizados"},
+        {"mods.stages.desc", "Stages dropped into mods/stages. They show up in the stage list.", "Escenarios de mods/stages. Aparecen en la lista de escenarios."},
+        {"mods.pal", "Custom colours", "Colores personalizados"},
+        {"mods.pal.desc", "The .pal files of mods/pal: extra colours after the game's own for each fighter.", "Los archivos .pal de mods/pal: colores extra después de los del juego para cada luchador."},
+        {"mods.info", "Information", "Información"},
+        {"mods.t.packs", "Packs", "Paquetes"},
+        {"mods.t.mods", "Mods", "Mods"},
+        {"mods.t.stages", "Stages", "Escenarios"},
+        {"mods.t.pal", "Colours", "Colores"},
+        {"mods.t.info", "Info", "Información"},
+        {"mods.path", "Path: ", "Ruta: "},
+        {"mods.info.desc", "Where the folder is, what was loaded and what was refused.", "Dónde está la carpeta, qué se cargó y qué se rechazó."},
+        {"mods.apply", "Apply changes and reload", "Aplicar cambios y recargar"},
+        {"mods.apply.desc", "Rescans the game data so the switches take effect. Back to the main menu afterwards.", "Vuelve a leer los datos del juego para que los cambios surtan efecto. Después vuelves al menú principal."},
+        {"mods.apply.hint", "Saved. It takes effect with \"Apply changes and reload\".", "Guardado. Surte efecto con «Aplicar cambios y recargar»."},
+        {"mods.empty", "Nothing here yet", "Aún no hay nada aquí"},
+        {"mods.empty.packs", "Drop one folder per pack into: ", "Pon una carpeta por paquete en: "},
+        {"mods.empty.mods", "Drop one folder per mod into: ", "Pon una carpeta por mod en: "},
+        {"mods.empty.stages", "Drop one folder per stage into: ", "Pon una carpeta por escenario en: "},
+        {"mods.empty.pal", "Put .pal files in: ", "Pon archivos .pal en: "},
+        {"mods.nodata", "The mods folder is not available", "La carpeta de mods no está disponible"},
+        {"mods.on", "enabled", "activado"},
+        {"mods.off", "disabled", "desactivado"},
+        {"mods.files", "files", "archivos"},
+        {"mods.by", "by", "de"},
+        {"mods.folder", "Folder", "Carpeta"},
+        {"mods.state", "Mods", "Mods"},
+        {"mods.mounted", "Loaded", "Cargados"},
+        {"mods.voices", "Japanese voice files", "Archivos de voz en japonés"},
+        {"mods.warnings", "Warnings", "Avisos"},
+        {"mods.conflicts", "Files held by more than one folder", "Archivos en más de una carpeta"},
+        {"mods.nomounted", "no files to load", "sin archivos que cargar"},
+        {"mods.mods.off", "mods are off in mods.ini", "los mods están apagados en mods.ini"},
+        {"c.On", "On", "Sí"},
+        {"c.Off", "Off", "No"},
     };
     for (const S& s : t)
         if (key == s.key) return es ? s.es : s.en;
@@ -237,7 +278,15 @@ const MenuDef& MenuScreen::def(const std::string& file) {
 MenuScreen::Page MenuScreen::makePage(const std::string& file) {
     Page p;
     p.file = file;
-    p.def = def(file);
+    p.def = startsWith(file, "zd_mods") ? modsPage(file) : def(file);   // the Mods pages follow the folder, so they are never cached
+    if (file == "extras.ini") {   // ZDroid's own entry: the mods folder, in the style of the game's Options
+        MenuOption mo;
+        mo.type = MenuOptType::Advance;
+        mo.text = "@own:mods";
+        mo.description = "@own:mods.desc";
+        mo.keyword = "@page:zd_mods.ini";
+        p.def.options.push_back(mo);
+    }
     for (size_t i = 0; i < p.def.options.size(); ++i)
         if (p.def.options[i].visibleOn(platform_)) p.vis.push_back(static_cast<int>(i));
     for (size_t k = 0; k < p.vis.size(); ++k)
@@ -270,6 +319,134 @@ MenuScreen::Page MenuScreen::makePage(const std::string& file) {
     p.vis.push_back(static_cast<int>(p.def.options.size()) - 1);
     p.dense = p.vis.size() > 6;
     return p;
+}
+
+// ---------------------------------------------------------------------------------------- Extras -> Mods
+void MenuScreen::setMods(const modsdir::Report* rep, const std::string& dataRoot) {
+    mods_ = rep;
+    modsRoot_ = dataRoot;
+    modOn_.clear();
+    modsDirty_ = false;
+}
+
+bool MenuScreen::modEnabled(const std::string& key) const {   // key = "kind:id"
+    auto it = modOn_.find(key);
+    if (it != modOn_.end()) return it->second;
+    if (mods_)
+        for (const modsdir::Item& m : mods_->items)
+            if (m.kind + ":" + m.id == key) return m.enabled;
+    return false;
+}
+
+void MenuScreen::toggleMod(const MenuOption& o) {
+    const std::string key = o.keyword.substr(4);
+    if (!mods_) return;
+    for (const modsdir::Item& m : mods_->items) {
+        if (m.kind + ":" + m.id != key) continue;
+        const bool now = !modEnabled(key);
+        if (!modsdir::setItemEnabled(modsRoot_, m, now)) {   // the folder is read-only: nothing changed
+            sfx(sfxNope_);
+            say(own("mods.nodata"));
+            return;
+        }
+        modOn_[key] = now;
+        modsDirty_ = true;
+        sfx(sfxMove_);
+        say(own("mods.apply.hint"));
+        return;
+    }
+}
+
+// One page of Extras -> Mods.  zd_mods.ini is the hub; zd_mods_<pack|mod|stage>.ini list the folders with an On / Off switch each;
+// zd_mods_pal.ini and zd_mods_info.ini are read-only.  Built from the report every time the page opens.
+MenuDef MenuScreen::modsPage(const std::string& file) const {
+    MenuDef d;
+    auto line = [&](const std::string& text, const std::string& desc, const std::string& kw, MenuOptType t = MenuOptType::Advance) {
+        MenuOption o;
+        o.type = t;
+        o.text = text;
+        o.description = desc.empty() ? "null" : desc;
+        o.keyword = kw;
+        d.options.push_back(o);
+        return static_cast<int>(d.options.size()) - 1;
+    };
+    const modsdir::Report empty;
+    const modsdir::Report& rep = mods_ ? *mods_ : empty;
+    auto count = [&](const char* kind) {
+        size_t n = 0;
+        for (const modsdir::Item& m : rep.items) n += m.kind == kind;
+        return n;
+    };
+    const std::string root = rep.root.empty() ? modsRoot_ + "/mods" : rep.root;
+    auto apply = [&]() { line(own("mods.apply"), own("mods.apply.desc"), "@modsreload"); };
+
+    if (file == "zd_mods.ini") {
+        d.topText = own("mods");
+        line(own("mods.packs") + " (" + std::to_string(count("pack")) + ")", own("mods.packs.desc"), "@page:zd_mods_pack.ini");
+        line(own("mods.mods") + " (" + std::to_string(count("mod")) + ")", own("mods.mods.desc"), "@page:zd_mods_mod.ini");
+        line(own("mods.stages") + " (" + std::to_string(count("stage")) + ")", own("mods.stages.desc"), "@page:zd_mods_stage.ini");
+        line(own("mods.pal") + " (" + std::to_string(rep.pal.entries.size()) + ")", own("mods.pal.desc"), "@page:zd_mods_pal.ini");
+        line(own("mods.info"), own("mods.info.desc"), "@page:zd_mods_info.ini");
+        apply();
+        return d;
+    }
+    for (const char* kind : {"pack", "mod", "stage"}) {
+        if (file != std::string("zd_mods_") + kind + ".ini") continue;
+        const std::string plural = kind == std::string("pack") ? "packs" : kind == std::string("mod") ? "mods" : "stages";
+        d.topText = own("mods.t." + plural);
+        bool any = false;
+        for (const modsdir::Item& m : rep.items) {
+            if (m.kind != kind) continue;
+            any = true;
+            std::string desc = m.id + " / " + std::to_string(m.files) + " " + own("mods.files");
+            if (!m.version.empty() && m.version != "0.1") desc += " / v" + m.version;
+            if (!m.author.empty()) desc += " / " + own("mods.by") + " " + m.author;
+            if (!m.description.empty()) desc += " / " + m.description;
+            if (!m.problem.empty()) desc += " / " + m.problem;
+            else if (m.enabled && !m.mounted) desc += " / " + own(rep.allEnabled ? "mods.nomounted" : "mods.mods.off");
+            const int i = line(m.name.empty() ? m.id : m.name, desc, "MOD:" + m.kind + ":" + m.id, MenuOptType::Setting);
+            d.options[static_cast<size_t>(i)].choices = {"On", "Off"};
+            d.options[static_cast<size_t>(i)].defaultChoice = "On";
+        }
+        if (any) {
+            apply();
+        } else {
+            line(own("mods.empty"), own("mods.empty." + plural) + root + "/" + (plural == "packs" ? "resourcepacks" : plural == "mods" ? "modscustom" : "stages"), "@modshelp");
+        }
+        return d;
+    }
+    if (file == "zd_mods_pal.ini") {
+        d.topText = own("mods.t.pal");
+        size_t i = 0;
+        while (i < rep.pal.entries.size()) {   // one row per character: its colours are the description
+            const std::string ch = rep.pal.entries[i].character;
+            std::string labels;
+            size_t n = 0;
+            for (; i < rep.pal.entries.size() && rep.pal.entries[i].character == ch; ++i, ++n) {
+                if (!labels.empty()) labels += ", ";
+                labels += rep.pal.entries[i].label;
+            }
+            std::string nm = ch;
+            if (!nm.empty()) nm[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(nm[0])));
+            line(nm + "  (" + std::to_string(n) + ")", labels, "@modshelp");
+        }
+        if (rep.pal.entries.empty()) line(own("mods.empty"), own("mods.empty.pal") + root + "/pal/<Character>/", "@modshelp");
+        return d;
+    }
+    if (file == "zd_mods_info.ini") {
+        d.topText = own("mods.t.info");
+        line(own("mods.folder"), own("mods.path") + root, "@modshelp");
+        line(own("mods.state") + ": " + own(rep.allEnabled ? "mods.on" : "mods.off"), rep.allEnabled ? "" : "mods.ini: enabled = 0", "@modshelp");
+        line(own("mods.mounted") + ": " + std::to_string(rep.packs) + " / " + std::to_string(rep.mods) + " / " + std::to_string(rep.stages),
+             own("mods.packs") + " / " + own("mods.mods") + " / " + own("mods.stages"), "@modshelp");
+        line(own("mods.voices") + ": " + std::to_string(rep.voiceFiles), "sdvoice_japanese", "@modshelp");
+        if (!rep.conflicts.empty())
+            line(own("mods.conflicts") + ": " + std::to_string(rep.conflicts.size()), "", "@modshelp");
+        for (const std::string& w : rep.warnings) line(own("mods.warnings"), w, "@modshelp");
+        return d;
+    }
+    d.topText = own("mods");   // an unknown page of the family: nothing to show
+    return d;
 }
 
 MenuScreen::Page MenuScreen::makeRoot() {
@@ -432,6 +609,9 @@ void MenuScreen::setGameData(const GameData* gd, const Inventory* inv) {
     inv_ = inv;
     loading_ = false;
     assetsDirty_ = true;
+    aDlg_.clear();   // the scene is reloaded on the next draw: a player still bound to a view of the old one would read freed nodes
+    aWarn_.clear();  // (Extras -> Mods -> Apply rescans the data while the menu is up)
+    dlgKey_.clear();
     splash_.reset();
     splashTried_ = false;
     defs_.clear();
@@ -498,6 +678,7 @@ void MenuScreen::saveSettings() const {
 }
 
 std::string MenuScreen::settingValue(const std::string& keyword) const {
+    if (keyword.rfind("MOD:", 0) == 0) return modEnabled(keyword.substr(4)) ? "On" : "Off";
     auto it = settings_.find(keyword);
     if (it != settings_.end()) return it->second;
     auto d = defaults_.find(keyword);
@@ -521,7 +702,7 @@ play::Rules MenuScreen::rules() const {
 }
 
 bool MenuScreen::settingImplemented(const std::string& k) const {
-    return k.rfind("ZD_DEV_", 0) == 0 || k == "OPT_STR_SPDIFFICULTY" || k == "OPT_INT_NUM_ROUNDS" || k == "OPT_STR_TIME_LIMIT" || k == "OPT_STR_GAME_LANGUAGE" ||
+    return k.rfind("ZD_DEV_", 0) == 0 || k.rfind("MOD:", 0) == 0 || k == "OPT_STR_SPDIFFICULTY" || k == "OPT_INT_NUM_ROUNDS" || k == "OPT_STR_TIME_LIMIT" || k == "OPT_STR_GAME_LANGUAGE" ||
            k == "OPT_INT_MASTER_VOL" || k == "OPT_INT_MUSIC" || k == "OPT_INT_EFFECTS";
 }
 
@@ -535,7 +716,7 @@ bool MenuScreen::actionImplemented(const std::string& k) const {
     if (k == "ACT_STORY") return true;   // the Character Select (no stage, no 2nd fighter) or the story screen's own list
     if (isFightAction(k)) return kFightEnabled || charSel_.ready();
     if (k == "ACT_MOVELISTS" || k == "ACT_MOVELIST") return true;   // Help & Options -> Command Lists -> a character's moves (movelist_<Name>.ini)
-    return k == "ACT_OPTIONS" || k == "ACT_BUTTONCONFIG" || k == "ACT_RESTORE_DEFAULTS" || k == "@page" || k == "@data" || k == "@exit" || k == "@back";
+    return k == "ACT_OPTIONS" || k == "ACT_BUTTONCONFIG" || k == "ACT_RESTORE_DEFAULTS" || k == "@page" || k == "@data" || k == "@exit" || k == "@back" || k == "@modsreload" || k == "@modshelp";
 }
 
 const char* MenuScreen::stateName() const {
@@ -749,6 +930,11 @@ void MenuScreen::endWarning() {   // after the warning comes the opening montage
 
 void MenuScreen::stepSetting(const MenuOption& o, int dir) {
     if (o.choices.empty()) return;
+    if (o.keyword.rfind("MOD:", 0) == 0) {   // Extras -> Mods: one switch per folder
+        (void)dir;
+        toggleMod(o);
+        return;
+    }
     const std::string cur = settingValue(o.keyword);
     int idx = 0;
     for (size_t i = 0; i < o.choices.size(); ++i)
@@ -820,6 +1006,16 @@ Result MenuScreen::activate(Page& p, int visIdx, int tapX, const Rect& row) {
     }
     if (k == "@data") {
         res.kind = Result::Kind::Home;
+        return res;
+    }
+    if (k == "@modsreload") {   // the switches are already in mods.ini: the viewer rescans the data and comes back to the menu
+        modsDirty_ = false;
+        modOn_.clear();
+        res.kind = Result::Kind::ReloadMods;
+        return res;
+    }
+    if (k == "@modshelp") {     // an empty page: say where the folders go
+        say(o.description);
         return res;
     }
     if (k == "@exit") {

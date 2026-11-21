@@ -30,6 +30,7 @@
 #include "gbs_anim.h"
 #include "menu_list_anim.h"
 #include "menu_data.h"
+#include "modsdir.h"
 #include "play.h"
 #include "boot_splash.h"
 #include "splash.h"
@@ -39,7 +40,7 @@ namespace zengine {
 namespace menu {
 
 struct Result {
-    enum class Kind { None, Play, Home, Quit, Story, Gallery, Credits } kind = Kind::None;
+    enum class Kind { None, Play, Home, Quit, Story, Gallery, Credits, ReloadMods } kind = Kind::None;   // ReloadMods: Extras -> Mods -> Apply: the mods folder changed, rescan the data
     bool contributors = false;              // Kind::Credits: the backers' list instead of the credits
     play::Mode mode = play::Mode::VsCpu;  // for Kind::Play
     std::string storyChar;                  // Kind::Story: character id from the Character Select ("filia"), "" = the story screen's own list
@@ -50,6 +51,9 @@ class MenuScreen {
 public:
     // Call after every (re)scan of the data folder.
     void setGameData(const GameData* gd, const Inventory* inv);
+    // What the mods folder holds (Extras -> Mods) and where it lives.  The report is read, never written; the switches edit mods.ini
+    // through modsdir::setItemEnabled and take effect when the data is rescanned (Result::Kind::ReloadMods).
+    void setMods(const modsdir::Report* rep, const std::string& dataRoot);
     // Folder where menu_settings.txt lives; loads the saved settings.
     void setPrefsDir(const std::string& dir);
     // "en", "es", ... : overrides the Language setting (command line / tests).  Empty = use the setting.
@@ -154,6 +158,14 @@ private:
     std::map<std::string, MenuDef> defs_;  // by .ini name (cached)
     std::map<std::string, std::string> settings_;
     std::map<std::string, std::string> defaults_;
+    // ---- Extras -> Mods
+    const modsdir::Report* mods_ = nullptr;
+    std::string modsRoot_;
+    std::map<std::string, bool> modOn_;   // "kind:id" -> the switch as the player left it (the report is only rebuilt on a rescan)
+    bool modsDirty_ = false;
+    MenuDef modsPage(const std::string& file) const;
+    bool modEnabled(const std::string& key) const;
+    void toggleMod(const MenuOption& o);
 
     // ---- state
     State state_ = State::Disclaimer;
