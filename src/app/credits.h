@@ -48,6 +48,10 @@ int slotCapacity(Page::Layout l);
 // The file's text -> pages (overflow spills into AllText pages).  Pure function, used by the tests.
 std::vector<Page> parseCredits(const std::string& text);
 
+// The last page of Extras -> Credits: who made ZGirls Loader.  Only their names, no roles: Claude by Anthropic, Destroyer, Nitro.
+// The game's own credits come first, untouched; the contributors' list is the game's and gets no extra page.
+Page developersPage(const std::string& lang);
+
 class CreditsScreen {
 public:
     void setGameData(const GameData* gd);

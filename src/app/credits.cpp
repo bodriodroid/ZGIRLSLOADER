@@ -237,6 +237,29 @@ std::vector<Page> parseCredits(const std::string& text) {
     return pages;
 }
 
+Page developersPage(const std::string& lang) {
+    Page p;
+    p.layout = Page::Layout::AllText;
+    auto blank = [&]() { p.rows.push_back(Entry{}); };
+    auto name = [&](const char* n) {
+        Entry e;
+        e.kind = Entry::Kind::Credit;
+        e.name = n;
+        e.centered = true;
+        p.rows.push_back(std::move(e));
+    };
+    for (int i = 0; i < 6; ++i) blank();   // 18 slots on the page: 6 + header (2) + blank + 3 names + the rest below = centred on the screen
+    Entry h;
+    h.kind = Entry::Kind::Header;
+    h.name = lang.rfind("es", 0) == 0 ? "Desarrollado por" : "Developed by";
+    p.rows.push_back(std::move(h));
+    blank();
+    name("Claude by Anthropic");
+    name("Destroyer");
+    name("Nitro");
+    return p;
+}
+
 void CreditsScreen::setGameData(const GameData* gd) {
     gd_ = gd;
     loaded_ = false;
@@ -281,6 +304,7 @@ void CreditsScreen::begin(const std::string& lang, bool contributors, bool thank
             for (const char* n : normal)
                 if (pages_.empty() && gd_->vfs().readText(n, txt)) pages_ = parseCredits(txt);
         }
+        if (!contributors) pages_.push_back(developersPage(lang_));   // after the game's own credits
         std::printf("[credits] %zu pages (%s)\n", pages_.size(), contributors ? "contributors" : "credits");
         if (std::getenv("ZDROID_CREDITS_DEBUG"))
             for (size_t i = 0; i < pages_.size(); ++i) {
