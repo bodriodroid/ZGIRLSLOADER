@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "bar_fill.h"
+#include "target_switch.h"
 
 using namespace zengine;
 
@@ -92,6 +93,51 @@ int main() {
     CHECK(!bf2.begin(r2, 640, 360));
     SDL_DestroyRenderer(r2);
     SDL_FreeSurface(s2);
+    // TargetSwitch: a texture inside a texture gives the scale of the first one back (the bug that drew the HUD and the touch buttons at a third of
+    // their size once the shadow layer ran inside BarFill's picture); a texture inside the window gives the window its own
+    {
+        SDL_Surface* s3 = SDL_CreateRGBSurfaceWithFormat(0, 800, 360, 32, SDL_PIXELFORMAT_ARGB8888);
+        SDL_Renderer* r3 = SDL_CreateSoftwareRenderer(s3);
+        SDL_Texture* a = SDL_CreateTexture(r3, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, 300, 100);
+        SDL_Texture* c = SDL_CreateTexture(r3, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET, 100, 50);
+        CHECK(a && c);
+        float sx = 0, sy = 0;
+        SDL_SetRenderTarget(r3, a);
+        SDL_RenderSetScale(r3, 3.0f, 2.0f);
+        {
+            TargetSwitch ts;
+            CHECK(ts.enter(r3, c));
+            CHECK(ts.active() && SDL_GetRenderTarget(r3) == c);
+            SDL_RenderGetScale(r3, &sx, &sy);
+            CHECK(sx == 1.0f && sy == 1.0f);   // SDL starts a texture target at 1
+            ts.leave();
+            CHECK(!ts.active() && SDL_GetRenderTarget(r3) == a);
+            SDL_RenderGetScale(r3, &sx, &sy);
+            CHECK(sx == 3.0f && sy == 2.0f);   // ... and we gave the first one its scale back
+            ts.leave();                        // a second leave does nothing
+            CHECK(SDL_GetRenderTarget(r3) == a);
+        }
+        {
+            TargetSwitch ts;   // the destructor leaves too
+            CHECK(ts.enter(r3, c));
+        }
+        SDL_RenderGetScale(r3, &sx, &sy);
+        CHECK(SDL_GetRenderTarget(r3) == a && sx == 3.0f && sy == 2.0f);
+        SDL_SetRenderTarget(r3, nullptr);
+        SDL_RenderSetScale(r3, 2.5f, 2.5f);
+        {
+            TargetSwitch ts;
+            CHECK(ts.enter(r3, c));
+        }
+        SDL_RenderGetScale(r3, &sx, &sy);
+        CHECK(SDL_GetRenderTarget(r3) == nullptr && sx == 2.5f && sy == 2.5f);
+        TargetSwitch none;
+        CHECK(!none.enter(nullptr, c));
+        SDL_DestroyTexture(a);
+        SDL_DestroyTexture(c);
+        SDL_DestroyRenderer(r3);
+        SDL_FreeSurface(s3);
+    }
     bf.release();
     SDL_DestroyRenderer(ren);
     SDL_FreeSurface(surf);

@@ -49,6 +49,7 @@
 #include "splash.h"
 #include "shadow_layer.h"
 #include "stage3d_gfx.h"
+#include "target_switch.h"
 #include "touch_pad.h"
 #include "ui.h"
 
@@ -558,6 +559,7 @@ private:
     bool bgPano_ = false;             // a real 2D backdrop (3750x2000 = the .lvl's StageSize): laid over the stage 1 pixel = 1 stage unit
     // render resolution < 100 %: the match is drawn into this smaller texture, then stretched over the window
     SDL_Texture* rt_ = nullptr;
+    TargetSwitch scaledSwitch_;   // beginScaled() .. endScaled()
     int rtW_ = 0, rtH_ = 0;
     bool beginScaled(SDL_Renderer* r);
     void endScaled(SDL_Renderer* r);

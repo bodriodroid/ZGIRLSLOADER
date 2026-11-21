@@ -2263,7 +2263,7 @@ bool PlayScreen::beginScaled(SDL_Renderer* r) {
         rtH_ = th;
         if (rt_) SDL_SetTextureScaleMode(rt_, dev_.smooth ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
     }
-    if (!rt_ || SDL_SetRenderTarget(r, rt_) != 0) return false;
+    if (!rt_ || !scaledSwitch_.enter(r, rt_)) return false;
     SDL_RenderSetScale(r, static_cast<float>(tw) / static_cast<float>(viewW_), static_cast<float>(th) / 360.0f);   // keep drawing in logical units
     SDL_SetRenderDrawColor(r, 0, 0, 0, 255);
     SDL_RenderClear(r);
@@ -2271,7 +2271,7 @@ bool PlayScreen::beginScaled(SDL_Renderer* r) {
 }
 
 void PlayScreen::endScaled(SDL_Renderer* r) {
-    SDL_SetRenderTarget(r, nullptr);   // restores the window's logical size and scale
+    scaledSwitch_.leave();   // back to what was being drawn into (the window, or BarFill's picture), with its scale
     if (!rt_) return;
     SDL_SetTextureBlendMode(rt_, SDL_BLENDMODE_NONE);
     const SDL_Rect full{0, 0, viewW_, 360};

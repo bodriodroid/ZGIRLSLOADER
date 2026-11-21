@@ -1,5 +1,7 @@
 #include "shadow_layer.h"
 
+#include "target_switch.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -64,8 +66,8 @@ int ShadowLayer::draw(SDL_Renderer* r, const std::vector<Piece>& pieces, const s
         h_ = nh;
     }
 
-    SDL_Texture* const prev = SDL_GetRenderTarget(r);
-    if (SDL_SetRenderTarget(r, tex_) != 0) {
+    TargetSwitch into;   // gives the picture's scale back when the layer is done (a texture target forgets it)
+    if (!into.enter(r, tex_)) {
         failed_ = true;
         return -1;
     }
@@ -92,7 +94,7 @@ int ShadowLayer::draw(SDL_Renderer* r, const std::vector<Piece>& pieces, const s
         for (int i = 0; i < 4; ++i) v[i].color = SDL_Color{0, 0, 0, static_cast<Uint8>(i < 2 ? 254 : 255)};
         if (SDL_RenderGeometry(r, p.tex, v, 4, quad, 6) == 0) ++drawn;
     }
-    SDL_SetRenderTarget(r, prev);
+    into.leave();
     if (drawn == 0) return 0;
 
     // 2. the layer over the picture, once: rows of vertices carry the opacity (linear between the stops, constant beyond the first / last one), the
