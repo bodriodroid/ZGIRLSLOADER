@@ -702,10 +702,7 @@ void GalleryScreen::drawGrid(Ui& ui, SDL_Renderer* r, bool& leave) {
         ui.text(560 + (24 - Ui::textW(pg)) / 2, 345, pg, kDim);
         if (ui.button(5201, Rect{588, 341, 44, 17}, ">", page_ + 1 < pages && !busy)) startPage(group_, page_ + 1, sel_);
     }
-    if (items_.empty()) {
-        ui.text(16, 60, "No gallery pictures found in the mounted data.", kWarn);
-        ui.text(16, 76, "Looked for: ui_artgallery/gallery.ini, ui_artgallery/*.dds, story_art/<Char>/*.dds", kDim);
-    }
+    if (items_.empty()) emptyNotice(ui, 60);
 }
 
 // ---------------------------------------------------------------------------------------- jukebox
@@ -976,15 +973,23 @@ void GalleryScreen::drawViewer(Ui& ui, SDL_Renderer* r) {
 }
 
 
+// No pictures in the mounted data: say so and where they are looked for, in the player's language, in lines that fit the 640 px canvas.
+void GalleryScreen::emptyNotice(Ui& ui, int y) {
+    const bool es = lang_.rfind("es", 0) == 0;
+    const char* lines[] = {es ? "No hay imagenes de la galeria en los datos montados." : "No gallery pictures found in the mounted data.",
+                           es ? "Se buscan en: ui_artgallery/gallery.ini," : "Looked for: ui_artgallery/gallery.ini,",
+                           "ui_artgallery/*.dds, story_art/Cinematics/<Char>/*.dds",
+                           es ? "(copialas de la carpeta de tu juego)" : "(copy them from your game folder)"};
+    for (int i = 0; i < 4; ++i) ui.text(16, y + i * 14, lines[i], i == 0 ? kWarn : kDim);
+}
+
 // ---- fallbacks without ArtGallery.gbs: plain panels
 void GalleryScreen::drawGridPlain(Ui& ui, SDL_Renderer* r, bool& leave) {
     ui.fill(Rect{0, 0, 640, 360}, Col{10, 10, 16, 150});
     ui.text(16, 10, upperStr(loc_.trOr("Art Gallery", "Art Gallery")), kAccent, 2);
     if (ui.button(5000, Rect{536, 6, 96, 24}, "BACK")) leave = true;
     if (items_.empty()) {
-        ui.text(16, 60, "No gallery pictures found in the mounted data.", kWarn);
-        ui.text(16, 80, "Looked for: ui_artgallery/gallery.ini, ui_artgallery/*.dds,", kDim);
-        ui.text(16, 94, "story_art/Cinematics/<Char>/*.dds (copy them from your game folder).", kDim);
+        emptyNotice(ui, 60);
         return;
     }
     int open = 0;

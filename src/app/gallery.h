@@ -97,6 +97,7 @@ private:
     bool jukeDragging_ = false;
     int jukePlayOnOpen_ = 0;         // smoke tests
     std::string prefsDir_, lang_ = "en";
+    void emptyNotice(Ui& ui, int y);
     Localization loc_;
     ZgProgress prog_;
     std::set<std::string> storyChars_;   // zgKey of every character that has a .stm
