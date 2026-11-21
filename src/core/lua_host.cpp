@@ -353,21 +353,35 @@ struct LuaHost::Impl {
         return 1;
     }
 
+    // the getChar index of a sprite (-1 = it is not one of the six characters: a child or an effect)
+    int charIndex(const rt::Object* o) const {
+        if (!o || !h->fight_) return -1;
+        for (int i = 0; i < kChars; ++i)
+            if (h->fight_->character(i) == o) return i;
+        return -1;
+    }
     static int mAddForbiddenTag(lua_State* L) {
         Impl* I = of(L);
+        const int c = I->charIndex(spriteArg(L, 1)->o);
+        if (c < 0) return 0;
+        auto& list = I->h->forbidden_[c];
         for (int i = 2; i <= lua_gettop(L); ++i)
             if (lua_type(L, i) == LUA_TSTRING) {
                 const uint32_t hsh = palfx::nameHash(lua_tostring(L, i));
-                if (std::find(I->h->forbidden_.begin(), I->h->forbidden_.end(), hsh) == I->h->forbidden_.end()) I->h->forbidden_.push_back(hsh);
+                if (std::find(list.begin(), list.end(), hsh) == list.end()) list.push_back(hsh);
             }
         return 0;
     }
     static int mClearForbiddenTags(lua_State* L) {
-        of(L)->h->forbidden_.clear();
+        Impl* I = of(L);
+        const int c = I->charIndex(spriteArg(L, 1)->o);
+        if (c >= 0) I->h->forbidden_[c].clear();
         return 0;
     }
     static int mBlockingAllowed(lua_State* L) {
-        of(L)->h->blockingAllowed_ = lua_toboolean(L, 2) != 0;
+        Impl* I = of(L);
+        const int c = I->charIndex(spriteArg(L, 1)->o);
+        if (c >= 0) I->h->blocking_[c] = lua_toboolean(L, 2) != 0;
         return 0;
     }
 
@@ -855,8 +869,8 @@ bool LuaHost::load(FightAccess* fight, UiSink* ui, ReadText read, const std::str
     read_ = std::move(read);
     error_.clear();
     log_.clear();
-    forbidden_.clear();
-    blockingAllowed_ = true;
+    for (auto& f : forbidden_) f.clear();
+    for (bool& b : blocking_) b = true;
     p1Disabled_ = false;
     missionComplete_ = false;
     started_ = false;

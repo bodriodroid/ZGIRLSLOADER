@@ -170,8 +170,8 @@ end)
     CHECK((f.o[0].flags[0] & (1u << 5)) != 0);
     CHECK(ui.has("add:sametruefalsetrue1:0/0"));
     CHECK(ui.has("add:tagfalse:0/0"));
-    CHECK(h.forbiddenTags().size() == 2 && h.forbiddenTags()[0] == palfx::nameHash("Taunt"));
-    CHECK(!h.blockingAllowed());
+    CHECK(h.forbiddenTags(0).size() == 2 && h.forbiddenTags(0)[0] == palfx::nameHash("Taunt") && h.forbiddenTags(3).empty());
+    CHECK(!h.blockingAllowed(3) && h.blockingAllowed(0));   // p2:blockingAllowed(false): the dummy, not the player
     bool scripted = true;
     script::InputFrame in = h.takeInput(&scripted);
     CHECK(!scripted && in.dir == 8 && in.buttons == 0);

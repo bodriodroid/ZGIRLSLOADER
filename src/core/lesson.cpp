@@ -25,16 +25,26 @@ uint16_t padFromFrame(const InputFrame& f, bool facingRight) {
 }
 
 bool Lesson::begin(fight::FoitDuel* duel, UiSink* ui, ReadText read, const std::string& scriptName) {
-    duel_ = nullptr;
+    end();
     started_ = false;
     if (!duel || !duel->valid()) return false;
     access_ = std::make_unique<DuelAccess>(duel);
     if (!host_.load(access_.get(), ui, std::move(read), scriptName)) return false;
     duel_ = duel;
+    duel_->setPreStep([this](uint16_t& p1, uint16_t& p2) { onPads(p1, p2); });
     return true;
 }
 
-void Lesson::step(uint16_t playerPad, uint16_t dummyPad) {
+void Lesson::end() {
+    if (duel_) {
+        duel_->setPreStep(nullptr);
+        duel_->setRules(0, {}, false);
+        duel_->setRules(1, {}, false);
+    }
+    duel_ = nullptr;
+}
+
+void Lesson::onPads(uint16_t& p1, uint16_t& p2) {
     if (!duel_) return;
     if (!started_ && duel_->fighting()) {
         started_ = true;
@@ -43,9 +53,10 @@ void Lesson::step(uint16_t playerPad, uint16_t dummyPad) {
     if (started_) host_.tick();
     bool scripted = false;
     const InputFrame in = host_.takeInput(&scripted);
-    const uint16_t p1 = host_.p1Disabled() ? static_cast<uint16_t>(0) : playerPad;
-    const uint16_t p2 = scripted ? padFromFrame(in, duel_->body(1).facingRight()) : dummyPad;
-    duel_->step(p1, p2);
+    if (host_.p1Disabled()) p1 = 0;
+    if (scripted) p2 = padFromFrame(in, duel_->body(1).facingRight());
+    duel_->setRules(0, host_.forbiddenTags(0), !host_.blockingAllowed(0));
+    duel_->setRules(1, host_.forbiddenTags(3), !host_.blockingAllowed(3));
 }
 
 }  // namespace script

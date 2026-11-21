@@ -275,6 +275,11 @@ struct World {
     // slots up to date, links every object's `enemy` to the opposing point character, and answers the TAGTO the scripts write.
     bool teams = false;
     float anchor[2][3] = {};         // per side: where the last visible point character stood (x, y, facing): what POINTX / POINTY / POINTFACING report
+    // Lesson rules (the tutorial / trial scripts' addForbiddenTag / blockingAllowed on a side's point character).  The host sets them before every
+    // tick; they are configuration, not match state: not saved, not hashed.  `forbidden`: name hashes of tags; a transition into a state that
+    // carries one of them is refused.  `noBlock`: the character never blocks (every hit lands).
+    std::vector<uint32_t> forbidden[2];
+    bool noBlock[2] = {false, false};
     World() {
         for (float& g : globals) g = 0;
     }

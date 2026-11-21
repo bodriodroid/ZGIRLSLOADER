@@ -129,6 +129,7 @@ bool FoitDuel::init(const FoitDuelConfig& cfg) {
 
 void FoitDuel::step(uint16_t in0, uint16_t in1) {
     if (!ready_) return;
+    if (preStep_) preStep_(in0, in1);
     const uint16_t raw[2] = {expandMacros(in0), expandMacros(in1)};
     const int phase = w_.match.phase;
     // An attack button pressed (a new press, not one held since before) during the entrance cuts it short.  It is part of the
@@ -156,6 +157,10 @@ void FoitDuel::step(uint16_t in0, uint16_t in1) {
     }
     const uint64_t hitsBefore = w_.stats.hits + w_.stats.blocks;
     w_.events.clear();
+    for (int i = 0; i < 2; ++i) {   // the lesson's rules (a load of the world gives the defaults back, so they are set again every tick)
+        w_.forbidden[i] = rules_[i].forbidden;
+        w_.noBlock[i] = rules_[i].noBlock;
+    }
     rt::tickAll(w_, s, 2);
     events_.swap(w_.events);
     w_.events.clear();

@@ -42,19 +42,31 @@ uint16_t padFromFrame(const InputFrame& f, bool facingRight);
 
 class Lesson {
 public:
-    // `scriptName` = the lesson's `LuaFile`.  false = the script did not load (host().lastError()).
+    Lesson() = default;
+    ~Lesson() { end(); }
+    Lesson(const Lesson&) = delete;
+    Lesson& operator=(const Lesson&) = delete;
+
+    // `scriptName` = the lesson's `LuaFile`.  false = the script did not load (host().lastError()).  The lesson hooks into the duel (every
+    // step of it runs the script first) until end() or the destructor; the duel must outlive the lesson or be released with end().
     bool begin(fight::FoitDuel* duel, UiSink* ui, ReadText read, const std::string& scriptName);
+    void end();
     bool active() const { return duel_ != nullptr && host_.loaded(); }
 
-    // One tick of the fight: runs the script (once the fight has begun), builds both pads and advances the duel.
-    // `playerPad` = fight.h bits of the player; `dummyPad` = what a second human (versus a lesson) holds, when the script types nothing.
-    void step(uint16_t playerPad, uint16_t dummyPad = 0);
+    // One tick of the fight with the pads of the people playing: the duel's step runs the script (once the fight has begun) and swaps in
+    // what it decides - the dummy's pad when the script types, no pad for the player while the lesson disabled it, the forbidden tags and
+    // the blocking switch for both sides.  (The Play screen just steps its duel as usual; this is the same thing for tests and the probe.)
+    void step(uint16_t playerPad, uint16_t dummyPad = 0) {
+        if (duel_) duel_->step(playerPad, dummyPad);
+    }
 
     LuaHost& host() { return host_; }
     const LuaHost& host() const { return host_; }
     fight::FoitDuel* duel() { return duel_; }
 
 private:
+    void onPads(uint16_t& p1, uint16_t& p2);
+
     fight::FoitDuel* duel_ = nullptr;
     std::unique_ptr<DuelAccess> access_;
     LuaHost host_;

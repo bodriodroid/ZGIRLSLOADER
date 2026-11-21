@@ -11,6 +11,7 @@
 #include "foit.h"
 #include "foit_names.h"
 #include "lesson.h"
+#include "palfx.h"
 #include "vfs.h"
 
 using namespace zengine;
@@ -127,6 +128,8 @@ int main(int argc, char** argv) {
     std::printf("script loaded; running %d ticks\n", ticks);
     int shown = 0;
     int explainAge = 0;
+    int attackTicks = 0, blockTicks = 0;
+    const uint32_t attackTag = palfx::nameHash("Attack");
     const bool bot = std::getenv("PROBE_BOT") != nullptr;
     uint32_t rng = 12345;
     uint16_t pad = 0;
@@ -144,6 +147,8 @@ int main(int argc, char** argv) {
             if (((rng >> 16) & 3) != 0) pad = static_cast<uint16_t>(pad | (1u << (4 + ((rng >> 20) % 6))));
         }
         lesson.step(bot ? pad : 0);
+        if (foit::rt::objectHasTag(duel.body(0), attackTag)) ++attackTicks;
+        if (duel.body(1).fb & foit::rt::fl::B_Blocking) ++blockTicks;
         if (!lesson.host().loaded()) {
             std::printf("script stopped at tick %d: %s\n", t, lesson.host().lastError().c_str());
             break;
@@ -165,6 +170,7 @@ int main(int argc, char** argv) {
             break;
         }
     }
+    std::printf("p1 ticks in an Attack state: %d, p2 ticks blocking: %d\n", attackTicks, blockTicks);
     std::printf("done: %llu script ticks, %d ui calls, fighting=%d\n", static_cast<unsigned long long>(lesson.host().ticks()), sink.calls,
                 duel.fighting() ? 1 : 0);
     for (const auto& m : missing) std::printf("  missing file: %s\n", m.c_str());

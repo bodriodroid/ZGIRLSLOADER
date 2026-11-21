@@ -107,9 +107,11 @@ public:
     InputFrame takeInput(bool* scripted = nullptr);
     bool p1Disabled() const { return p1Disabled_; }
     bool missionComplete() const { return missionComplete_; }
-    // Forbidden tags the lesson put on the player (addForbiddenTag): the app refuses moves that carry one of them.
-    const std::vector<uint32_t>& forbiddenTags() const { return forbidden_; }
-    bool blockingAllowed() const { return blockingAllowed_; }
+    // What the lesson asked of a character (index as in getChar: 0 P1, 3 P2, ...): the tags it may not use (addForbiddenTag, name hashes) and
+    // whether it may block (blockingAllowed).  The app applies them to the fight.
+    static constexpr int kChars = 6;
+    const std::vector<uint32_t>& forbiddenTags(int index = 0) const { return forbidden_[index >= 0 && index < kChars ? index : 0]; }
+    bool blockingAllowed(int index = 0) const { return blocking_[index >= 0 && index < kChars ? index : 0]; }
     bool slowMotion(float* pct) const { if (pct) *pct = slowMo_; return slowMo_ > 0; }
     const std::string& lastError() const { return error_; }
     const std::vector<std::string>& log() const { return log_; }
@@ -130,8 +132,8 @@ private:
     ReadText read_;
     std::string error_;
     std::vector<std::string> log_;
-    std::vector<uint32_t> forbidden_;
-    bool blockingAllowed_ = true;
+    std::vector<uint32_t> forbidden_[kChars];
+    bool blocking_[kChars] = {true, true, true, true, true, true};
     bool p1Disabled_ = false;
     bool missionComplete_ = false;
     bool started_ = false;

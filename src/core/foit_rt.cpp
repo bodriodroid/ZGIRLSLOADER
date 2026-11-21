@@ -550,7 +550,19 @@ void enterState(Object& o, World& w, int s) {
 // ======================================================================================================================
 static void refreshSlots(Object& o, World& w);
 
+// True when the state a transition leads to carries one of the tags a lesson forbids.
+static bool refused(const Object& o, uint16_t target, const std::vector<uint32_t>& forbidden) {
+    if (!o.def || target >= o.def->states.size()) return false;
+    for (uint32_t h : o.def->states[target].hashes)
+        if (std::find(forbidden.begin(), forbidden.end(), h) != forbidden.end()) return true;
+    return false;
+}
+
 static void evaluateTransitions(Object& o, World& w, const Sample* input) {
+    // only a side's own body is held to the lesson's list (its children and the offscreen members have their own scripts)
+    const std::vector<uint32_t>* forbidden = nullptr;
+    for (int side = 0; side < 2; ++side)
+        if (!w.forbidden[side].empty() && w.objects.size() > static_cast<size_t>(side) && w.objects[static_cast<size_t>(side)] == &o) forbidden = &w.forbidden[side];
     if (input) o.ring.push(*input);
     refreshSlots(o, w);
     const State& S = o.st();
@@ -568,6 +580,10 @@ static void evaluateTransitions(Object& o, World& w, const Sample* input) {
         const bool m = matchCommand(c, o.ring, window, right, cx, &age, &ticks);
         setBit(o, i, m);
         if (!m) continue;
+        if (forbidden && refused(o, S.transitions[static_cast<size_t>(i)].target, *forbidden)) {   // a lesson forbids that move
+            setBit(o, i, false);
+            continue;
+        }
         o.slots[146] = static_cast<float>(ticks);
         const bool prio = (c.flags & 1) != 0;  // "closest in time wins" transitions
         if (!prio) {
@@ -1336,7 +1352,12 @@ void resolveHits(World& w) {
             makeContext(*d, w, host, cx);
             if (!vm::testChain(h->chains[2], cx)) continue;
         }
-        const bool blocked = (static_cast<int>(d->slots[60]) & level) != 0;
+        bool blocked = (static_cast<int>(d->slots[60]) & level) != 0;
+        if (blocked) {   // a lesson can switch a side's blocking off (the dummy that has to take the hit)
+            const Object* dc = characterOf(d);
+            for (int side = 0; side < 2; ++side)
+                if (w.noBlock[side] && w.objects.size() > static_cast<size_t>(side) && w.objects[static_cast<size_t>(side)] == dc) blocked = false;
+        }
         const bool ground = static_cast<int>(d->slots[62]) == 2 && d->slots[5] != 0 && d->slots[159] <= 0;
         // the first pair of result codes and the first chain are for a defender that is NOT standing on the floor, the second pair and
         // chain for a grounded one (a ground throw is (0,0 | 3,3): it grabs grounded opponents only)

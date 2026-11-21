@@ -19,6 +19,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -78,6 +79,16 @@ public:
     // ---- one tick (GGPO "advance_frame"): both fighters' raw buttons (fight.h bits).
     void step(uint16_t in0, uint16_t in1);
 
+    // ---- lesson hooks (lua_host.h / lesson.h): not part of a networked match, never saved or hashed.
+    // `preStep` runs at the start of every step with both raw pads, which it may replace (the lesson's script types for the dummy, the
+    // player's pad is cut while an explanation is up).  `setRules` is what the script asked for: tags a side may not use, blocking off.
+    using PreStep = std::function<void(uint16_t& in0, uint16_t& in1)>;
+    void setPreStep(PreStep f) { preStep_ = std::move(f); }
+    void setRules(int side, const std::vector<uint32_t>& forbidden, bool noBlock) {
+        rules_[side & 1].forbidden = forbidden;
+        rules_[side & 1].noBlock = noBlock;
+    }
+
     // ---- snapshots (GGPO save / load): the whole world plus the input edge state.
     void save(std::vector<uint8_t>& out) const;
     bool load(const uint8_t* data, size_t size);
@@ -136,6 +147,11 @@ private:
     rt::Sample prev_[2];     // last sample each fighter was fed (edge state of the pad)
     uint16_t rawPrev_[2] = {0, 0};   // last raw buttons (for the "press during the entrance" edge)
     float maxLife_[2] = {rt::kStartHealth, rt::kStartHealth};
+    PreStep preStep_;
+    struct LessonRules {
+        std::vector<uint32_t> forbidden;
+        bool noBlock = false;
+    } rules_[2];
     std::vector<rt::Event> events_;
     int lastHits_ = 0;
     bool ready_ = false;
