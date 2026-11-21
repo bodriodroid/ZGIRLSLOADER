@@ -1,13 +1,17 @@
 // test_lua_host.cpp - the Lua host of the lessons (src/core/lua_host.*): motions, sprites (slots / flags / tags), callbacks, coroutines, the dummy's
 // pad, saveState, require, ui.*.  A fake fight with two bare objects, no game data.
 #include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
 
 #include "foit_names.h"
+#include "lesson_data.h"
 #include "lua_host.h"
 #include "palfx.h"
+#include "vfs.h"
 
 using namespace zengine;
 
@@ -272,6 +276,59 @@ end)
     CHECK(h.loaded());
 }
 
+// ---- lesson data: fight inis, the TOC + .stm chapters, challenges.ini
+static void testLessonData() {
+    lessons::FightIni fi;
+    CHECK(lessons::parseFightIni("TrainingMode 1\n\nPlayer 1\nFighter Filia\nColor 2\n\nPlayer 2\nFighter Peacock\nFighter Parasoul\nColor 1\n\n"
+                                 "UseAI 1\nLuaFile training/beginner/basicmovement.lua\n\nWorld Class_Notes \t\t#case insensitive", fi));
+    CHECK(fi.fighter[0] == "Filia" && fi.fighter[1] == "Peacock" && fi.color[0] == 2 && fi.color[1] == 1);   // a team lists more: the first
+    CHECK(fi.training && fi.useAI && fi.luaFile == "training/beginner/basicmovement.lua" && fi.world == "Class_Notes");
+    CHECK(!lessons::parseFightIni("Player 1\nFighter Filia\n", fi));   // one fighter: nothing to start
+
+    // a folder with a TOC and two maps (the second one has a scene node and nodes out of order)
+    const std::string dir = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") + "/zg_lesson_data_test";
+    std::system(("rm -rf '" + dir + "' && mkdir -p '" + dir + "/training'").c_str());
+    auto put = [&](const std::string& name, const std::string& text) { std::ofstream(dir + "/" + name, std::ios::binary) << text; };
+    put("training/trainingTOC.ini", "# comment\nFile: One.stm\nFile: Missing.stm\nFile: Two.stm\n");
+    put("training/One.stm", "CharName beginner\nCharIcon Textures/Tutorials/ch_num01.png\n\n"
+                            "StoryNode\nNodeType Fight\nFileName training/beginner/b.ini\nDisplayName B Title\nDisplayText B\nTimelinePos 2\n\n"
+                            "StoryNode\nNodeType Fight\nFileName training/beginner/a.ini\nDisplayName A Title\nDisplayText A\nTimelinePos 1\n"
+                            "NodeUnlockedImg Textures/Tutorials/tut_num01.png\nNodeCompletedImg Textures/Tutorials/tut_num_complete01.png\n");
+    put("training/Two.stm", "CharName empty\n\nStoryNode\nNodeType NewScene\nFileName scene.ini\nTimelinePos 1\n");
+    Vfs vfs;
+    vfs.mount(dir);
+    const std::vector<lessons::Chapter> ch = lessons::loadChapters(vfs, "trainingTOC.ini");
+    CHECK(ch.size() == 1);   // the missing map and the one without a fight are left out
+    if (ch.size() == 1) {
+        CHECK(ch[0].stem == "One" && ch[0].name == "beginner" && ch[0].entries.size() == 2);
+        CHECK(ch[0].entries[0].file == "training/beginner/a.ini" && ch[0].entries[0].title == "A Title" && ch[0].entries[1].pos == 2);   // by TimelinePos
+        CHECK(ch[0].entries[0].icon == "Textures/Tutorials/tut_num01.png" && !ch[0].entries[0].doneIcon.empty());
+        CHECK(ch[0].progressKey(ch[0].entries[0]) == "lesson.training/beginner/a.ini");
+    }
+    CHECK(lessons::loadChapters(vfs, "nothing.ini").empty());
+    std::system(("rm -rf '" + dir + "'").c_str());
+
+    const std::vector<lessons::Challenge> c = lessons::parseChallenges(
+        "####  Basic\nChalName: Challenge1\nTimeLimit: 99\nWinCond: _KO_\nWorld: Arena\nPlayerTeam: Any\n#PlayerAssist:\n"
+        "EnemyTeam: Filia, Cerebella, Peacock\nEnemyColor: 1, 2, 3\nEnemyAssist: Filia_Updo_AssistH, Cerebella_Cerecopter\n"
+        "Health: 80, _NONE_, 100, _REGEN_\nMeter: 5, _NONE_, 1, _HOLD_\nPlayerLocked: None\nPlayerAllowDamage: All\nEnemyLocked: None\n"
+        "AIFile: AI/ArcadeMode/Random.lua\nAILevel: 5\n\n"
+        "ChalName: Challenge2\nTimeLimit: 45\nWinCond: _TIME_\nWorld: Medici_Tower\nPlayerTeam: Squigly\nPlayerLocked: Normal, Jump\n"
+        "PlayerAllowDamage: Special, ComboOver2\nEnemyTeam: BigBand\nAILevel: 6\n");
+    CHECK(c.size() == 2);
+    if (c.size() == 2) {
+        CHECK(c[0].name == "Challenge1" && c[0].timeLimit == 99 && c[0].winCond == "_KO_" && c[0].world == "Arena" && c[0].freePick());
+        CHECK(c[0].enemyTeam.size() == 3 && c[0].enemyTeam[2] == "Peacock" && c[0].enemyColor.size() == 3 && c[0].enemyColor[2] == 3);
+        CHECK(c[0].enemyAssist.size() == 2 && c[0].playerAssist.empty());
+        CHECK(c[0].health.playerPct == 80 && c[0].health.enemyPct == 100 && c[0].health.enemyMod == "_REGEN_" && c[0].health.playerMod == "_NONE_");
+        CHECK(c[0].meter.playerPct == 5 && c[0].meter.enemyPct == 1 && c[0].meter.enemyMod == "_HOLD_");
+        CHECK(c[0].playerLocked.empty() && c[0].playerAllowDamage.empty() && c[0].aiFile == "AI/ArcadeMode/Random.lua" && c[0].aiLevel == 5);
+        CHECK(c[1].name == "Challenge2" && !c[1].freePick() && c[1].playerTeam[0] == "Squigly" && c[1].winCond == "_TIME_" && c[1].timeLimit == 45);
+        CHECK(c[1].playerLocked.size() == 2 && c[1].playerLocked[1] == "Jump");
+        CHECK(c[1].playerAllowDamage.size() == 2 && c[1].playerAllowDamage[1] == "ComboOver2" && c[1].aiLevel == 6);
+    }
+}
+
 static void testErrors() {
     Fake f;
     script::LuaHost h;
@@ -288,6 +345,7 @@ int main() {
     testMotions();
     testHost();
     testSequences();
+    testLessonData();
     testErrors();
     std::printf("lua_host tests: %d checks, %d failed\n", g_checks, g_fail);
     return g_fail ? 1 : 0;

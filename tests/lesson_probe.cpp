@@ -11,6 +11,7 @@
 #include "foit.h"
 #include "foit_names.h"
 #include "lesson.h"
+#include "lesson_data.h"
 #include "palfx.h"
 #include "vfs.h"
 
@@ -87,6 +88,33 @@ int main(int argc, char** argv) {
 
     Vfs vfs;
     std::printf("mounted %zu files from %s\n", vfs.mount(root), root.c_str());
+    if (script == "--list") {   // what the menus would show: the chapters of both TOCs and the challenges (c1 = the ui folder of challenges.ini)
+        for (const char* toc : {"trainingTOC.ini", "trialsTOC.ini"}) {
+            const auto chs = lessons::loadChapters(vfs, toc);
+            std::printf("%s: %zu chapters\n", toc, chs.size());
+            for (const auto& c : chs) {
+                std::printf("  %s (%s) %zu entries\n", c.stem.c_str(), c.name.c_str(), c.entries.size());
+                for (const auto& e : c.entries) {
+                    std::string t;
+                    lessons::FightIni fi;
+                    const bool ok = vfs.readText(e.file, t) && lessons::parseFightIni(t, fi);
+                    std::printf("    %d %s [%s vs %s on %s] lua=%s %s\n", e.pos, e.file.c_str(), fi.fighter[0].c_str(), fi.fighter[1].c_str(), fi.world.c_str(),
+                                fi.luaFile.c_str(), ok ? "" : "  <-- ini missing or incomplete");
+                }
+            }
+        }
+        std::string t;
+        if (vfs.readText("challenges.ini", t)) {
+            const auto cs = lessons::parseChallenges(t);
+            std::printf("challenges.ini: %zu\n", cs.size());
+            for (const auto& c : cs)
+                std::printf("  %s: %ds %s on %s, enemy team %zu, ai %s lvl %d, locked %zu, allowdmg %zu\n", c.name.c_str(), c.timeLimit, c.winCond.c_str(), c.world.c_str(),
+                            c.enemyTeam.size(), c.aiFile.c_str(), c.aiLevel, c.playerLocked.size(), c.playerAllowDamage.size());
+        } else {
+            std::printf("challenges.ini not found under %s\n", root.c_str());
+        }
+        return 0;
+    }
 
     fight::FoitDuelConfig cfg;
     cfg.ch[0] = loadChar(charDir, c1);

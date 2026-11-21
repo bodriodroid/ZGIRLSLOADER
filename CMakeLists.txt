@@ -41,6 +41,7 @@ target_compile_options(zlua PRIVATE $<$<OR:$<C_COMPILER_ID:GNU>,$<C_COMPILER_ID:
 add_library(zengine_core STATIC
   src/core/lua_host.cpp
   src/core/lesson.cpp
+  src/core/lesson_data.cpp
   src/core/vfs.cpp
   src/core/vault.cpp
   src/core/palfx.cpp
