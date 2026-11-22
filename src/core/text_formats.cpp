@@ -164,6 +164,8 @@ StmFile parseStm(std::string_view text) {
             cur->arg = rest;
         } else if (key == "CharName" && !cur) {
             f.charName = rest;
+        } else if (key == "CharIcon" && !cur) {
+            f.charIcon = rest;
         } else if (cur) {
             cur->fields.emplace_back(key, rest);
         }

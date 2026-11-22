@@ -47,6 +47,7 @@ struct NodeState {
     float forceW = 0, forceH = 0;
     int fitOverride = -1;            // label: lay the text out with this fit mode (GbsTextFit) instead of the scene's own
     float textBoxH = 0;              // label: lay the text out in a box this tall (kept centred / aligned on the node's own box)
+    bool ignorePoseAlpha = false;    // the running animation's opacity is not applied (a node the scene's own code fades in: it rests at alpha 0)
     bool pivotAnchored = false;      // animated pose: the key's position is where the pivot sits (top-left = position - pivot), so a
                                      //   sprite whose size and pivot grow together expands about its centre (banner bars)
 };

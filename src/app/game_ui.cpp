@@ -516,10 +516,11 @@ void GameUi::drawNodesXf(const std::vector<GbsNode>& nodes, const Xf& parent, co
             pvx = ps->pivotX;
             pvy = ps->pivotY;
             if (ps->kind == 'S' || ps->kind == 'L') {
-                alpha *= ps->alpha();
-                tint = modulate(tint, ps->argb);
-                textColor = modulate(textColor, ps->argb);
-                flat = ps->argb;
+                const uint32_t argb = st.ignorePoseAlpha ? (ps->argb | 0xFF000000u) : ps->argb;
+                if (!st.ignorePoseAlpha) alpha *= ps->alpha();
+                tint = modulate(tint, argb);
+                textColor = modulate(textColor, argb);
+                flat = argb;
                 hasFlat = true;
             }
             if (ps->kind == 'L') lblScale = ps->scaleX;

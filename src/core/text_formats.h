@@ -51,6 +51,7 @@ struct StmNode {
 };
 struct StmFile {
     std::string charName;
+    std::string charIcon;   // "CharIcon Textures/Tutorials/symbol_filia01.png" (the trial / tutorial chapter lists)
     std::vector<StmNode> nodes;
 };
 StmFile parseStm(std::string_view text);

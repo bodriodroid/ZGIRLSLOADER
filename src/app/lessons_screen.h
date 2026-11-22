@@ -17,7 +17,9 @@
 #include <string>
 #include <vector>
 
+#include "game_ui.h"
 #include "gamedata.h"
+#include "gbs_anim.h"
 #include "lesson_data.h"
 #include "menu_data.h"
 #include "music_player.h"
@@ -64,6 +66,12 @@ private:
     std::string lessonTitle(const Chapter& ch, size_t i) const;
     bool lessonDone(const Chapter& ch, size_t i) const;
     int doneIn(const Chapter& ch) const;
+    // ---- the game's own scenes (Main.gbs: "Challenges", "TrainingMode_TOC_New"); the plain screens below are the fallback without them
+    void bindGfx(SDL_Renderer* r);
+    void stepAnims(int dtMs);
+    void drawBackdrop();
+    void drawChallengesGbs(Ui& ui, Out& out);
+    void drawTocGbs(Ui& ui, Out& out);   // Tutorials and Trials: the chalkboard ("TrainingMode_TOC_New")
     void drawChapters(Ui& ui, Out& out);
     void drawLessons(Ui& ui, Out& out);
     void drawChallenges(Ui& ui, Out& out);
@@ -90,6 +98,20 @@ private:
     int runChallenge_ = -1, runEnemy_ = 0;
     std::string runPlayer_;
     std::string note_;       // line under the list ("not done yet", "challenge complete")
+
+    GameUi gfx_;
+    bool gfxAttached_ = false;
+    SDL_Renderer* ren_ = nullptr;
+    bool gfxDirty_ = true;   // the views have to be (re)bound and their intro played
+    const GbsSceneView* bgView_ = nullptr;
+    const GbsSceneView* chalView_ = nullptr;
+    const GbsSceneView* tocView_ = nullptr;
+    GbsAnimPlayer bgAnim_, chalAnim_, tocAnim_;
+    double animAcc_ = 0;
+    int shownChal_ = -1;     // the challenge whose data the view shows (changes when "Challenge_Data_Out" has finished)
+    int pendChal_ = -1;      // the one it is changing to
+    int rowOff_ = 0;         // first lesson row shown on the chalkboard
+    int andyLine_ = 0;       // which of Andy's seven lines
 };
 
 }  // namespace lessons

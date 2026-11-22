@@ -111,6 +111,7 @@ std::vector<Chapter> loadChapters(const Vfs& vfs, const std::string& toc) {
         Chapter ch;
         ch.stem = stm.substr(0, stm.find_last_of('.'));
         ch.name = f.charName;
+        ch.icon = f.charIcon;
         for (const StmNode& n : f.nodes) {
             if (n.kind != "StoryNode") continue;
             const std::string* type = n.get("NodeType");
