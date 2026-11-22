@@ -50,6 +50,7 @@
 #include "credits.h"
 #include "gallery.h"
 #include "lesson_data.h"
+#include "lessons_screen.h"
 #include "story_mode.h"
 #include "steam_task.h"
 #include "ui.h"  // Col / Rect / Input / Ui: shared with the Play screen
@@ -83,11 +84,11 @@ std::string lower(std::string s) {
 
 
 // ---------------------------------------------------------------------------------------- application state
-enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits };   // Story after Menu: the top bar maps tabs 0..3
+enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits, Lessons };   // Story after Menu: the top bar maps tabs 0..3
 
 struct Options {
     std::vector<std::string> dirs;
-    std::string story, fight, lesson, csP2, smokePng, screen, character, cat, pal, zoom, exe, steamUser, steamPassEnv, steamCode, smokePhase, lang;
+    std::string story, fight, lesson, lessonsList, challenge, csP2, smokePng, screen, character, cat, pal, zoom, exe, steamUser, steamPassEnv, steamCode, smokePhase, lang;
     int frame = 0, bg = -1, smokeFrames = 4, loadDelayMs = 0, smokeScale = 1, fixedDtMs = 0, smokeW = 640;   // smokeW: capture window width in logical units (No Limits Screen)
     bool steamAutostart = false, skipTitle = false, acceptNotice = false, smokeLoading = false, gallery = false, credits = false, contributors = false;
     int csStep = 0, csPal = 0;
@@ -290,6 +291,7 @@ struct App {
     menu::MenuScreen menu;
     gallery::GalleryScreen gallery;   // Extras -> Art Gallery
     credits::CreditsScreen credits;   // Extras -> Credits / Contributors
+    lessons::LessonsScreen lessons;   // Training -> Tutorials / Trials / Challenges
     story::StoryScreen story;   // Story Mode (Visual Novel): cutscenes + fights, front door is the menu
     Audio audio;  // menu theme + UI sounds (silent when there is no device or no wav)
     MusicLibrary musicLib;   // every theme the data has (music.ini + the .wav files), and which screen plays which
@@ -367,6 +369,11 @@ struct App {
         menu.setGameData(&gd, &inv);
         menu.setMods(&modsRep, dataRoot);
         story.setGameData(&gd);
+        {
+            std::vector<std::string> names;
+            for (const CharacterAssets& c : inv.characters) names.push_back(c.name);
+            lessons.setGameData(&gd, names);
+        }
         gallery.setGameData(&gd);
         credits.setGameData(&gd);
         std::vector<LevelMusic> levelMusic;   // what each stage's own .lvl says about its music: it decides what a fight plays
@@ -1044,6 +1051,8 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--credits") o.credits = true;   // open the credits roll (smoke; ZDROID_CREDITS_PAGE=n starts on page n, ZDROID_CREDITS_THANKS=1 jumps to the card)
         else if (a == "--contributors") o.credits = o.contributors = true;
         else if (a == "--story") o.story = val(i);   // "filia" / "random" / "list": open Story Mode (smoke)
+        else if (a == "--challenge") o.challenge = val(i);   // "1" or "1:annie:2": challenge number [:player [:enemy number]] on the Play screen (smoke)
+        else if (a == "--lessons") o.lessonsList = val(i);   // "tutorials" / "trials" / "challenges", optionally ":<chapter>": open that list (smoke)
         else if (a == "--lesson") o.lesson = val(i);   // "training/beginner/basicmovement.ini": start that tutorial / trial on the Play screen (smoke)
         else if (a == "--fight") o.fight = val(i);   // "annie:beowulf:new_meridian": start a match like the Character Select would (smoke)
         else if (a == "--cs-pal") o.csPal = std::max(0, std::atoi(val(i).c_str()));
@@ -1200,11 +1209,13 @@ int main(int argc, char** argv) {
     app.menu.setAudio(&app.audio);
     app.play.setAudio(&app.audio);
     app.story.setPrefsDir(app.prefsDir);
+    app.lessons.setPrefsDir(app.prefsDir);
     app.gallery.setPrefsDir(app.prefsDir);
     app.story.setAudio(&app.audio);
     app.play.setMusic(&app.musicPlayer);
     app.story.setMusic(&app.musicPlayer);
     app.gallery.setMusic(&app.musicPlayer);
+    app.lessons.setMusic(&app.musicPlayer);
     app.credits.setMusic(&app.musicPlayer);
     // Normal start: show the splash at once and index the data on a worker thread.  The scripted
     // screenshot runs (and any --screen shortcut that needs the data up front) load synchronously.
@@ -1268,6 +1279,35 @@ int main(int argc, char** argv) {
         } else {
             std::fprintf(stderr, "--lesson: %s is not a readable fight .ini in the mounted data\n", opt.lesson.c_str());
         }
+    }
+    if (!opt.challenge.empty() && kFightEnabled) {
+        std::vector<std::string> w;
+        size_t from = 0;
+        for (;;) {
+            const size_t c = opt.challenge.find(':', from);
+            w.push_back(opt.challenge.substr(from, c == std::string::npos ? std::string::npos : c - from));
+            if (c == std::string::npos) break;
+            from = c + 1;
+        }
+        std::string text;
+        std::vector<lessons::Challenge> cs;
+        if (app.gd.vfs().readText("challenges.ini", text)) cs = lessons::parseChallenges(text);
+        const int n = std::atoi(w[0].c_str()) - 1;
+        if (n >= 0 && n < static_cast<int>(cs.size())) {
+            const std::string who = w.size() > 1 && !w[1].empty() ? w[1] : (cs[static_cast<size_t>(n)].freePick() ? std::string("Filia") : cs[static_cast<size_t>(n)].playerTeam.front());
+            app.play.enterLesson(ren, lessons::LessonsScreen::challengeRun(cs[static_cast<size_t>(n)], who, w.size() > 2 ? std::atoi(w[2].c_str()) : 0, -1.0f));
+            app.screen = Screen::Play;
+        } else {
+            std::fprintf(stderr, "--challenge: no challenge %s in challenges.ini\n", w[0].c_str());
+        }
+    }
+    if (!opt.lessonsList.empty()) {
+        const size_t c = opt.lessonsList.find(':');
+        const std::string w = opt.lessonsList.substr(0, c);
+        app.lessons.begin(w == "trials" ? lessons::LessonsScreen::Kind::Trials : w == "challenges" ? lessons::LessonsScreen::Kind::Challenges : lessons::LessonsScreen::Kind::Tutorials,
+                          opt.lang.empty() ? std::string("en") : opt.lang);
+        if (c != std::string::npos) app.lessons.openChapter(std::atoi(opt.lessonsList.c_str() + c + 1));
+        app.screen = Screen::Lessons;
     }
     if (opt.gallery) {
         app.gallery.begin(opt.lang.empty() ? std::string("en") : opt.lang);
@@ -1431,6 +1471,7 @@ int main(int argc, char** argv) {
                 ui.focus = 0;
             else if (app.screen == Screen::Story && app.story.onBack()) { /* closed something inside the story */ }
             else if (app.screen == Screen::Gallery && app.gallery.onBack()) { /* closed the full-screen picture */ }
+            else if (app.screen == Screen::Lessons && app.lessons.onBack()) { /* back from a chapter to the chapter list */ }
             else if (app.screen == Screen::Browse && app.modsView) app.modsView = false;
             else if (app.screen == Screen::Menu) {
                 if (!app.menu.onBack()) running = false;  // back on the title screen leaves the app
@@ -1482,6 +1523,14 @@ int main(int argc, char** argv) {
                     app.menu.reloadSettings();   // the match's Options page writes the same [options] as the menu's Settings
                     app.story.fightResult(o == play::PlayScreen::StoryOutcome::Won ? 1 : o == play::PlayScreen::StoryOutcome::Quit ? -1 : 0);
                     app.screen = Screen::Story;
+                } else if (app.play.inLesson() && app.play.lessonOutcome() != play::PlayScreen::LessonOutcome::None) {   // a tutorial / trial / challenge ended
+                    const bool done = app.play.lessonOutcome() == play::PlayScreen::LessonOutcome::Done;
+                    const float life = app.play.lessonPlayerLife();
+                    app.play.leaveLesson();
+                    app.menu.reloadSettings();
+                    const lessons::Out next = app.lessons.lessonResult(done, life);
+                    if (next.kind == lessons::Out::Kind::Start) app.play.enterLesson(ren, next.run);   // the next enemy of a challenge
+                    else app.screen = Screen::Lessons;
                 } else if (app.play.takeCredits()) {   // Arcade: the boss fell - the credits, then the Thanks card, then the menu
                     app.play.takeExit();
                     app.menu.reloadSettings();
@@ -1508,6 +1557,16 @@ int main(int argc, char** argv) {
             case Screen::Credits:
                 if (!app.credits.frame(ui, ren, dtMs)) app.screen = Screen::Menu;
                 break;
+            case Screen::Lessons: {
+                const lessons::Out lo = app.lessons.frame(ui, ren, dtMs);
+                if (lo.kind == lessons::Out::Kind::Start) {
+                    app.play.enterLesson(ren, lo.run);
+                    app.screen = Screen::Play;
+                } else if (lo.kind == lessons::Out::Kind::Back) {
+                    app.screen = Screen::Menu;
+                }
+                break;
+            }
             case Screen::Menu: {
                 const menu::Result mr = app.menu.frame(ui, ren, dtMs);
                 if (mr.kind == menu::Result::Kind::Play) {
@@ -1516,6 +1575,12 @@ int main(int argc, char** argv) {
                 } else if (mr.kind == menu::Result::Kind::Story) {
                     app.story.begin(mr.storyChar, app.menu.language());
                     app.screen = Screen::Story;
+                } else if (mr.kind == menu::Result::Kind::Tutorials || mr.kind == menu::Result::Kind::Trials || mr.kind == menu::Result::Kind::Challenges) {
+                    app.lessons.begin(mr.kind == menu::Result::Kind::Tutorials ? lessons::LessonsScreen::Kind::Tutorials
+                                      : mr.kind == menu::Result::Kind::Trials ? lessons::LessonsScreen::Kind::Trials
+                                                                              : lessons::LessonsScreen::Kind::Challenges,
+                                      app.menu.language());
+                    app.screen = Screen::Lessons;
                 } else if (mr.kind == menu::Result::Kind::Gallery) {
                     app.gallery.begin(app.menu.language());
                     app.screen = Screen::Gallery;
@@ -1534,7 +1599,7 @@ int main(int argc, char** argv) {
         }
         // last, so it sits above scrolled content; the menu and a running match are full-screen (the HUD needs the top)
         const bool inMatch = app.screen == Screen::Play && app.play.phase() != play::Phase::Select;
-        if (app.screen != Screen::Menu && app.screen != Screen::Story && app.screen != Screen::Gallery && app.screen != Screen::Credits && !inMatch) drawTopBar(ui, app);
+        if (app.screen != Screen::Menu && app.screen != Screen::Story && app.screen != Screen::Gallery && app.screen != Screen::Credits && app.screen != Screen::Lessons && !inMatch) drawTopBar(ui, app);
         ui.endFrame();
         if (barFill) bars.end(ren);
 

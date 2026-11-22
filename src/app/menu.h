@@ -40,7 +40,7 @@ namespace zengine {
 namespace menu {
 
 struct Result {
-    enum class Kind { None, Play, Home, Quit, Story, Gallery, Credits, ReloadMods } kind = Kind::None;   // ReloadMods: Extras -> Mods -> Apply: the mods folder changed, rescan the data
+    enum class Kind { None, Play, Home, Quit, Story, Gallery, Credits, ReloadMods, Tutorials, Trials, Challenges } kind = Kind::None;   // ReloadMods: Extras -> Mods -> Apply: the mods folder changed, rescan the data
     bool contributors = false;              // Kind::Credits: the backers' list instead of the credits
     play::Mode mode = play::Mode::VsCpu;  // for Kind::Play
     std::string storyChar;                  // Kind::Story: character id from the Character Select ("filia"), "" = the story screen's own list

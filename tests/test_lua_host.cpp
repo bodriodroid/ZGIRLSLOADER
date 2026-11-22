@@ -9,6 +9,7 @@
 
 #include "foit_names.h"
 #include "lesson_data.h"
+#include "lesson_rules.h"
 #include "lua_host.h"
 #include "palfx.h"
 #include "vfs.h"
@@ -346,7 +347,32 @@ static void testErrors() {
     CHECK(h3.lastError().find("missing") != std::string::npos);
 }
 
+static void testChallengeRules() {
+    using script::Rules;
+    CHECK(Rules::modOf("_REGEN_") == Rules::Mod::Regen);
+    CHECK(Rules::modOf("_DRAIN_") == Rules::Mod::Drain);
+    CHECK(Rules::modOf("_HOLD_") == Rules::Mod::Hold);
+    CHECK(Rules::modOf("_NONE_") == Rules::Mod::None);
+    CHECK(Rules::modOf("") == Rules::Mod::None);
+    // the first block of the shipped challenges.ini: life 80% / 100% with a regenerating enemy, 5 bars for the player, 1 for the enemy
+    const auto cs = lessons::parseChallenges(
+        "ChalName: Challenge1\nTimeLimit: 99\nWinCond: _KO_\nWorld: Arena\nPlayerTeam: Any\nEnemyTeam: Filia, Cerebella, Peacock\n"
+        "Health: 80, _NONE_, 100, _REGEN_\nMeter: 5, _NONE_, 1, _NONE_\nPlayerLocked: Jump, Super\nEnemyLocked: None\nAIFile: AI/ArcadeMode/Random.lua\nAILevel: 5\n");
+    CHECK(cs.size() == 1);
+    if (!cs.empty()) {
+        const lessons::Challenge& c = cs[0];
+        CHECK(c.freePick());
+        CHECK(c.enemyTeam.size() == 3);
+        CHECK(c.health.playerPct == 80 && c.health.enemyPct == 100);
+        CHECK(Rules::modOf(c.health.enemyMod) == Rules::Mod::Regen);
+        CHECK(c.meter.playerPct == 5 && c.meter.enemyPct == 1);
+        CHECK(c.playerLocked.size() == 2 && c.playerLocked[1] == "Super");
+        CHECK(c.aiLevel == 5);
+    }
+}
+
 int main() {
+    testChallengeRules();
     testMotions();
     testHost();
     testSequences();

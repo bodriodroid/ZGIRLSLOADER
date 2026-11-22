@@ -713,6 +713,7 @@ bool MenuScreen::isFightAction(const std::string& k) {
 bool MenuScreen::actionImplemented(const std::string& k) const {
     if (k == "ACT_EXTRAS_GALLERY") return true;   // Extras -> Art Gallery (gallery.cpp)
     if (k == "ACT_CREDITSNORMAL" || k == "ACT_CREDITSCONT") return true;   // Extras -> Credits / Contributors (credits.cpp)
+    if (k == "ACT_TUTORIAL" || k == "ACT_TRIALS" || k == "ACT_CHALLENGES") return true;   // Training -> lists (lessons_screen.cpp)
     if (k == "ACT_STORY") return true;   // the Character Select (no stage, no 2nd fighter) or the story screen's own list
     if (isFightAction(k)) return kFightEnabled || charSel_.ready();
     if (k == "ACT_MOVELISTS" || k == "ACT_MOVELIST") return true;   // Help & Options -> Command Lists -> a character's moves (movelist_<Name>.ini)
@@ -960,6 +961,12 @@ Result MenuScreen::runAction(const MenuOption& o) {
     } else if (k == "ACT_CREDITSNORMAL" || k == "ACT_CREDITSCONT") {
         res.kind = Result::Kind::Credits;
         res.contributors = k == "ACT_CREDITSCONT";
+    } else if (k == "ACT_TUTORIAL") {
+        res.kind = Result::Kind::Tutorials;
+    } else if (k == "ACT_TRIALS") {
+        res.kind = Result::Kind::Trials;
+    } else if (k == "ACT_CHALLENGES") {
+        res.kind = Result::Kind::Challenges;
     } else if (k == "ACT_STORY") {
         if (!showCharSelect(true)) res.kind = Result::Kind::Story;   // no Charselect.gbs: the story screen lists the characters itself
     } else if (isFightAction(k)) {   // the game's own Character Select picks the fighters; Confirm starts the match

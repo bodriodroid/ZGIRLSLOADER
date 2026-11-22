@@ -53,6 +53,8 @@ void PlayScreen::enterLesson(SDL_Renderer* r, const LessonRun& run) {
     startMatch();
 }
 
+float PlayScreen::lessonPlayerLife() const { return foit_ ? foit_->lifeFraction(0) : 1.0f; }
+
 void PlayScreen::leaveLesson() {
     job_.reset();
     lesson_.reset();
@@ -86,6 +88,7 @@ void PlayScreen::beginLessonScript() {
         std::printf("[lesson] %s did not load: %s\n", lessonRun_.script.c_str(), lesson->host().lastError().c_str());
         return;
     }
+    if (lessonRun_.hasRules) lesson->setRules(lessonRun_.rules);
     lesson_ = std::move(lesson);
 }
 

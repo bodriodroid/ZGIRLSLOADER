@@ -11,8 +11,10 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "foit_duel.h"
+#include "lesson_rules.h"
 #include "lua_host.h"
 
 namespace zengine {
@@ -63,6 +65,9 @@ public:
         if (duel_) duel_->step(playerPad, dummyPad);
     }
 
+    // A challenge's rules (call right after begin(): the life and meter set-up is applied at once, the rest every tick).
+    void setRules(const Rules& r);
+
     LuaHost& host() { return host_; }
     const LuaHost& host() const { return host_; }
     fight::FoitDuel* duel() { return duel_; }
@@ -74,6 +79,9 @@ private:
     std::unique_ptr<DuelAccess> access_;
     LuaHost host_;
     bool started_ = false;
+    Rules rules_;
+    std::vector<uint32_t> locked_[2];   // rules_.locked as tag hashes
+    float lifeHold_[2] = {0, 0}, meterHold_[2] = {0, 0};
 };
 
 }  // namespace script

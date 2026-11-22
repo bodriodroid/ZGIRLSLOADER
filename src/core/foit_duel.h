@@ -126,6 +126,9 @@ public:
     // What a fighter's own body keeps in its four PALFX values (status, self, self2, hit): 32-bit hashes of effect names from the
     // palette-effects table (0 = none).  Presentation only (palfx.h).
     std::array<uint32_t, 4> palFx(int side) const;
+    // A challenge's start-of-match set-up: the fighter's full life as a percentage of the usual (<= 0 = leave it), the bars of super meter it
+    // starts with (< 0 = leave it; 0..5).  Call before the first tick; like fillMeter it changes the simulation.
+    void setStart(int side, int lifePct, int meterBars);
     // Tops up a fighter's super bar.  A capture / test aid (changes the simulation: never use it in a networked match).
     void fillMeter(int side);
     // Everything on screen, the two bodies first.  Fills `out` (cleared first).

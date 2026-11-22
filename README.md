@@ -36,11 +36,16 @@ then `ctest`. `python3 -I tests/real_diff.py <dir> annie <zdroid_probe --records
 `zdroid_viewer <data folder>` starts on the loader's own splash (its logo, `android/branding/boot_logo.png`, and a four-stage loader), then - only the first time - the notice (`docs/DISCLAIMER.md`), then the photosensitivity warning, the opening montage and the menu.
 The root list follows the PC edition (Download Content, Achievements, Leaderboards, Extras, Single Player, Versus, Training, Help & Options, Exit; the first three are shown dimmed - they need Lab Zero's online services). Fight entries open the Character Select (fight mode is on by default; `-DZDROID_FIGHT_MODE=OFF` hides it, see `src/app/zd_features.h`). Implemented entries: Arcade Mode / CPU Quick Match (one match vs CPU), Local Versus, Training Room, Controls,
 Settings (language, difficulty, rounds, time limit, saved to `menu_settings.txt`), Exit. Everything else the original
-menu lists (Story, Survival, Tutorials, Challenges, Trials, Extras, Movelist, online) is shown dimmed with a note.
+menu lists (Survival, online) is shown dimmed with a note.
 Without game data a small built-in menu is used and says so. Useful flags for tests: `--lang es`, `--accept-notice`,
 `--skip-title`, `--smoke-loading`, `--load-delay-ms N`, `--smoke-scale N` (capture at N x 640x360), `--dt N` (fixed frame time in ms,
 so a capture of N frames is repeatable), `--click X,Y` (logical 640x360 coordinates, repeatable),
 `--screen menu|splash|attract|charselect|home|browse|steam|play` (`--screen attract --attract-shot N --attract-tick T` jumps into the opening montage).
+
+**Tutorials, Trials, Challenges (Training menu).**  The lists come from your own copy of the game: `training/trainingTOC.ini` and `trialsTOC.ini` -> the chapter `.stm` files -> one fight `.ini` per lesson, and `ui/config/MainMenu/challenges.ini`.
+A lesson is the game's own Lua script (`LuaFile` of that `.ini`) running on the real data-driven fight: `src/core/lua_host.*` rebuilds the script API (sprites over the fight's objects, `ui.*`, the dummy's pad, forbidden move tags, saved states), `src/core/lesson.*` plugs it into the duel and `src/app/lesson_hud.*` draws the objective list, hint line and explanation pages with the game's texts.  Nothing of the scripts is bundled.
+Completed lessons are remembered in `zgirls.savini` (`lesson.<fight ini>`).  Challenges are team fights in the game; the duel engine is one against one, so they are played as a row of single fights against the enemy team (the player's life carries over); life / meter set-up, regeneration / drain, locked move kinds, the time limit and the CPU script apply, assists and the `AllowDamage` limits do not (yet).
+Smoke: `--lessons tutorials[:chapter]|trials|challenges`, `--lesson training/beginner/basicmovement.ini`, `--challenge 1[:fighter[:enemy]]`, `ZDROID_LESSON_AUTOPAGE=1` turns the explanation pages by itself.
 
 **Start-up order.** splash + loader (logo, four stages: opening the data, mods and resource packs, indexing, preparing the interface and audio; at least 2.6 s) -> the notice (red; only until it
 has been accepted once: `[loader] notice=1` in `zgirls.savini`, delete it to see it again) -> the photosensitivity warning (`FrontCredits.gbs`) -> the opening montage (`AttractMode.gbs`: 17 shots, any tap / key or Back skips it; it hands over to the menu) -> the menu.  There is no title screen and no logo loader (the publisher marks are never shown).

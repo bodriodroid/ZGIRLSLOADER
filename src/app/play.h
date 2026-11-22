@@ -342,12 +342,16 @@ public:
         bool training = true;             // TrainingMode: the match never ends
         int timeLimitSec = 0;             // 0 = no clock
         int level_ai = 3;                 // what getDifficulty() answers in the scripts (the challenge's AILevel)
+        bool hasRules = false;            // a challenge: `rules` apply (life / meter set-up and modifiers, locked move kinds)
+        script::Rules rules;
     };
     enum class LessonOutcome { None, Done, Quit };
     void enterLesson(SDL_Renderer* r, const LessonRun& run);
     bool inLesson() const { return lessonMode_; }
     // Set once the lesson was completed (a moment after the script said so) or the player gave it up.
     LessonOutcome lessonOutcome() const { return lessonOutcome_; }
+    // The player's life left when the lesson ended, 0..1 (a challenge carries it into the next fight).
+    float lessonPlayerLife() const;
     void leaveLesson();
 
     // language of the localised menu texts ("en", "es" ...); the pause / end-of-match menus read <lang>_loc.json

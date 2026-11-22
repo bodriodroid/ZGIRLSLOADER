@@ -247,6 +247,16 @@ float FoitDuel::lifeFraction(int side) const {
     return std::clamp(obj_[i]->life() / maxLife_[i], 0.0f, 1.0f);
 }
 
+void FoitDuel::setStart(int side, int lifePct, int meterBars) {
+    const int i = side & 1;
+    rt::Object& o = *obj_[i];
+    if (lifePct > 0) {
+        maxLife_[i] = std::max(1.0f, maxLife_[i] * static_cast<float>(lifePct) / 100.0f);
+        o.life() = maxLife_[i];
+    }
+    if (meterBars >= 0) o.slots[kSlotSuperBar] = static_cast<float>(std::clamp(meterBars, 0, 5)) * 100.0f;
+}
+
 void FoitDuel::fillMeter(int side) {
     rt::Object& o = *obj_[side & 1];
     if (o.slots[kSlotSuperBar] < 500.0f) o.slots[kSlotSuperBar] = 500.0f;

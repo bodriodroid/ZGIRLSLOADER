@@ -263,7 +263,7 @@ if(ZDROID_BUILD_VIEWER)
   endif()
   if(ZDROID_SDL2_TARGET)
     # viewer sources: the loader screens (zdroid_viewer.cpp) + the UI layer + the Play screen
-    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/play_lesson.cpp src/app/gallery.cpp src/app/lesson_hud.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/movelist_dialog.cpp src/app/audio.cpp src/app/splash.cpp src/app/boot_splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/spark_fx.cpp src/app/bar_fill.cpp src/app/colour_editor.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp src/app/fx_gl.cpp src/app/stage3d_gfx.cpp src/app/shadow_layer.cpp)
+    set(ZDROID_VIEWER_SOURCES src/app/zdroid_viewer.cpp src/app/ui.cpp src/app/play.cpp src/app/play_hud.cpp src/app/play_menu.cpp src/app/play_lesson.cpp src/app/gallery.cpp src/app/lesson_hud.cpp src/app/lessons_screen.cpp src/app/credits.cpp src/app/menu.cpp src/app/game_ui.cpp src/app/menu_scene.cpp src/app/movelist_dialog.cpp src/app/audio.cpp src/app/splash.cpp src/app/boot_splash.cpp src/app/charselect.cpp src/app/attract.cpp src/app/char_sprite.cpp src/app/spark_fx.cpp src/app/bar_fill.cpp src/app/colour_editor.cpp src/app/app_paths.cpp src/app/zg_progress.cpp src/app/story_mode.cpp src/app/confirm_dialog.cpp src/app/err_overlay.cpp src/app/fx_gl.cpp src/app/stage3d_gfx.cpp src/app/shadow_layer.cpp)
     if(ANDROID)
       # SDLActivity calls SDL_main() inside a library that must be called "main"
       add_library(main SHARED ${ZDROID_VIEWER_SOURCES})

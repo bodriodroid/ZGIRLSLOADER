@@ -670,7 +670,8 @@ void PlayScreen::drawEndMenu(Ui& ui, SDL_Renderer* r) {
     hudInit(r);
     std::vector<std::string> rows;
     std::vector<int> ids;   // 0 again, 1 characters, 2 stage, 3 main menu, 10 continue, 11 retry, 12 give up
-    if (storyMode_ || arcadeMode_) {
+    const bool ladderStyle = storyMode_ || arcadeMode_ || (lessonMode_ && !training_);   // a challenge ends like a story fight: continue / retry / give up
+    if (ladderStyle) {
         if (lastWinner_ == 0) { rows = {tr("continue_btn", "Continue")}; ids = {10}; }
         else { rows = {tr("Retry", lang_ == "es" ? "Reintentar" : "Retry"), tr("GiveUp", "Give Up")}; ids = {11, 12}; }
     } else {
@@ -693,7 +694,7 @@ void PlayScreen::drawEndMenu(Ui& ui, SDL_Renderer* r) {
             csAnim_.tick();
             hud_.setViewport(0, 0, kCanvas);
             hud_.setAnimPlayer(&csAnim_);
-            const char* header = (storyMode_ || arcadeMode_) ? (lastWinner_ == 0 ? "posthud_cservheader_small03" : "posthud_cservheader_small02")
+            const char* header = ladderStyle ? (lastWinner_ == 0 ? "posthud_cservheader_small03" : "posthud_cservheader_small02")
                                                              : "posthud_cservheader_small01b";
             hud_.drawView(*cs, [&](const GbsNode& n, NodeState& st) {
                 if (n.name == "Continue Service Header") {   // its keys put the pivot, not the corner, at the position
@@ -737,7 +738,8 @@ void PlayScreen::drawEndMenu(Ui& ui, SDL_Renderer* r) {
         case 10:
             if (arcadeMode_) { arcadeNext(); break; }
             overlay_ = Overlay::None;
-            storyOutcome_ = StoryOutcome::Won;
+            if (lessonMode_) lessonOutcome_ = LessonOutcome::Done;
+            else storyOutcome_ = StoryOutcome::Won;
             break;
         case 11:
             overlay_ = Overlay::None;
@@ -785,6 +787,7 @@ void PlayScreen::drawGameOver(Ui& ui, SDL_Renderer* r) {
         overlay_ = Overlay::None;
         goBound_ = false;
         if (storyMode_) storyOutcome_ = StoryOutcome::Lost;
+        else if (lessonMode_) lessonOutcome_ = LessonOutcome::Quit;
         else leaveMatch();
     }
 }
