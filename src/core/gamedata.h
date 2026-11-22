@@ -34,7 +34,7 @@ struct SceneInfo {
 struct Inventory {
     size_t files = 0;
     size_t luaFiles = 0, iniFiles = 0, stmFiles = 0, seqFiles = 0, glslFiles = 0, ddsFiles = 0, pcxFiles = 0;
-    size_t gfsFiles = 0;  // packed archives that still need unpacking (format not implemented yet)
+    size_t gfsFiles = 0;  // packed archives that still need unpacking (core/gfs.h reads them)
     std::vector<CharacterAssets> characters;
     std::vector<StageEntry> stages;
     std::vector<MusicTrack> music;

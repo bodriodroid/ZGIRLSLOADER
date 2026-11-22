@@ -26,6 +26,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <set>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -38,6 +39,7 @@
 #include "audio.h"
 #include "music_lib.h"
 #include "music_player.h"
+#include "gfs.h"
 #include "gamedata.h"
 #include "zd_features.h"
 #include "bar_fill.h"
@@ -266,6 +268,13 @@ struct App {
     size_t dlGfs = 0, dlFiles = 0;
     uint64_t dlBytes = 0;
 
+    // ---- .gfs unpacking (core/gfs.h): a worker thread writes every archive into <data>/unpacked_gfs/<archive>/, then the data is rescanned
+    std::thread gfsThread;
+    std::atomic<bool> gfsRunning{false}, gfsDone{false}, gfsStop{false};
+    std::atomic<size_t> gfsFile{0}, gfsFiles{0}, gfsArc{0}, gfsArcs{0};
+    std::mutex gfsMu;
+    std::string gfsName, gfsResultTmp, gfsResult;
+
     // ---- browser
     int charIdx = -1;
     ArtFile art;
@@ -306,6 +315,8 @@ struct App {
     bool codeAutoSent = false;
 
     ~App() {
+        gfsStop = true;
+        if (gfsThread.joinable()) gfsThread.join();
         if (loader.joinable()) loader.join();
         task.cancel();
         task.join();
@@ -334,6 +345,82 @@ struct App {
     }
 
     void scanDownload() { scanDownloadDir(steamDir(), dlGfs, dlFiles, dlBytes); }
+
+    std::string unpackDir() const { return (fs::path(dataRoot) / "unpacked_gfs").string(); }
+    // every .gfs the data folder or the Steam download folder holds (real files only)
+    std::vector<std::string> findGfs() const {
+        std::set<std::string> found;
+        for (const std::string& f : gd.vfs().listByExt(".gfs"))
+            if (!vault::isVirtualPath(f)) found.insert(f);
+        std::error_code ec;
+        for (fs::recursive_directory_iterator it(steamDir(), fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+            std::error_code e2;
+            if (it->is_regular_file(e2) && it->path().extension() == ".gfs") found.insert(it->path().string());
+        }
+        return std::vector<std::string>(found.begin(), found.end());
+    }
+    void startUnpack() {
+        if (gfsRunning) return;
+        if (gfsThread.joinable()) gfsThread.join();
+        const std::vector<std::string> list = findGfs();
+        gfsResult.clear();
+        if (list.empty()) {
+            gfsResult = "No .gfs archives found.";
+            return;
+        }
+        gfsRunning = true;
+        gfsDone = false;
+        gfsStop = false;
+        gfsFile = gfsFiles = 0;
+        gfsArc = 0;
+        gfsArcs = list.size();
+        gfsThread = std::thread([this, list, out = unpackDir()] {
+            size_t files = 0, problems = 0;
+            std::string firstErr;
+            for (size_t i = 0; i < list.size() && !gfsStop; ++i) {
+                const std::string stem = fs::path(list[i]).stem().string();
+                gfsArc = i + 1;
+                {
+                    std::lock_guard<std::mutex> lk(gfsMu);
+                    gfsName = stem;
+                }
+                gfsFile = gfsFiles = 0;
+                gfs::ExtractStats st;
+                std::string err;
+                // an archive unpacked before is not written again (same size = skipped), so a second run only finishes what is missing
+                if (!gfs::extract(list[i], (fs::path(out) / stem).string(), st, [this](size_t d, size_t t) {
+                        gfsFile = d;
+                        gfsFiles = t;
+                        return !gfsStop.load();
+                    }, false, &err)) {
+                    ++problems;
+                    if (firstErr.empty()) firstErr = stem + ": " + err;
+                }
+                files += st.files + st.skipped;
+                problems += st.problems.size();
+                if (firstErr.empty() && !st.problems.empty()) firstErr = stem + ": " + st.problems.front();
+            }
+            std::string msg = "Unpacked " + std::to_string(files) + " files from " + std::to_string(list.size()) + " archive(s) into unpacked_gfs.";
+            if (problems) msg += " " + std::to_string(problems) + " problem(s), first: " + firstErr;
+            {
+                std::lock_guard<std::mutex> lk(gfsMu);
+                gfsResultTmp = msg;
+            }
+            gfsDone = true;
+        });
+    }
+    // Call from the Home screen: when the worker has finished, join it, show its result and rescan so the new files are mounted.
+    void pollUnpack() {
+        if (!gfsDone) return;
+        gfsDone = false;
+        if (gfsThread.joinable()) gfsThread.join();
+        gfsRunning = false;
+        {
+            std::lock_guard<std::mutex> lk(gfsMu);
+            gfsResult = gfsResultTmp;
+        }
+        rescan();
+    }
 
     std::vector<std::string> extraDirs() const {
         std::vector<std::string> v;
@@ -538,6 +625,11 @@ void drawTopBar(Ui& ui, App& app) {
 }
 
 void drawHome(Ui& ui, App& app) {
+    app.pollUnpack();
+    if (static bool once = false; !once && std::getenv("ZDROID_SMOKE_UNPACK")) {   // smoke: press "Unpack .gfs" once
+        once = true;
+        app.startUnpack();
+    }
     ui.text(20, 38, "Data folder (extracted game files: .foit .art .art-pt .dds .gbs .ini ...)", kDim);
     ui.field(20, Rect{20, 50, 420, 24}, app.dataRootEdit, "/path/to/unpacked");
     if (ui.button(21, Rect{446, 50, 84, 24}, "Apply")) {
@@ -566,10 +658,21 @@ void drawHome(Ui& ui, App& app) {
     {
         std::string v = std::to_string(app.dlFiles) + " files, " + humanBytes(app.dlBytes) + ", " + std::to_string(app.dlGfs) + " .gfs";
         line("Steam download (SKGSTEAM)", v, app.dlFiles ? kGood : kDim);
-        if (app.dlGfs || inv.gfsFiles) {
-            ui.text(20, y, Ui::fit(".gfs archives are packed. Unpacking them is NOT implemented yet:", kW - 40), kWarn);
-            y += 12;
-            ui.text(20, y, Ui::fit("extract them (e.g. with SkullMod) and point the data folder at the result.", kW - 40), kWarn);
+        if (app.gfsRunning) {
+            std::string name;
+            {
+                std::lock_guard<std::mutex> lk(app.gfsMu);
+                name = app.gfsName;
+            }
+            ui.text(20, y, Ui::fit("Unpacking " + std::to_string(app.gfsArc.load()) + "/" + std::to_string(app.gfsArcs.load()) + ": " + name + "  (" +
+                                       std::to_string(app.gfsFile.load()) + "/" + std::to_string(app.gfsFiles.load()) + " files)", kW - 40), kWarn);
+            y += 14;
+        } else if (app.dlGfs || inv.gfsFiles) {
+            ui.text(20, y, Ui::fit("Packed .gfs found: \"Unpack .gfs\" extracts them to unpacked_gfs.", kW - 40), kWarn);
+            y += 14;
+        }
+        if (!app.gfsResult.empty() && !app.gfsRunning) {
+            ui.text(20, y, Ui::fit(app.gfsResult, kW - 40), kGood);
             y += 14;
         }
     }
@@ -588,6 +691,7 @@ void drawHome(Ui& ui, App& app) {
         if (app.charIdx < 0) app.selectChar(0);
     }
     if (ui.button(24, Rect{180, 318, 150, 30}, "Steam download")) app.screen = Screen::Steam;
+    if (ui.button(25, Rect{340, 318, 150, 30}, app.gfsRunning ? "Unpacking..." : "Unpack .gfs", !app.gfsRunning && (app.dlGfs || inv.gfsFiles))) app.startUnpack();
 }
 
 // Browse -> Mods: everything the <data>/mods folder holds (resource packs, mods, stages, custom palettes by character) with an

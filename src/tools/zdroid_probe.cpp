@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     std::printf("  ini %zu | lua %zu | stm %zu | seq %zu | glsl %zu | dds %zu | pcx %zu\n", inv.iniFiles, inv.luaFiles,
                 inv.stmFiles, inv.seqFiles, inv.glslFiles, inv.ddsFiles, inv.pcxFiles);
     if (inv.gfsFiles)
-        std::printf("  .gfs archives: %zu  (not unpacked yet: the container format is not implemented)\n", inv.gfsFiles);
+        std::printf("  .gfs archives: %zu  (use zdroid_gfs unpack <file> <dir>, or Unpack .gfs in the viewer)\n", inv.gfsFiles);
     std::printf("  stages (stages.ini): %zu | music tracks (music.ini): %zu | arcade timelines (toc.ini): %zu\n",
                 inv.stages.size(), inv.music.size(), inv.tocFiles.size());
     std::printf("  characters built by the game (compile.ini): %zu\n", inv.compileJobs.size());

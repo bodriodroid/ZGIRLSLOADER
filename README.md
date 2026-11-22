@@ -30,7 +30,9 @@ Play -> Training / Local Versus. Keys (P1): WASD move (double-tap = dash, W = ju
 Step by step guide in Spanish: `docs/es/PRUEBA_PELEA.md`.
 The data folder may be nested any way (`core/core/...`, `sg_dump/unpacked/sprites/...`): the VFS indexes every file under
 all of its path suffixes, case-insensitively, and skips `extract build analysis analysis_v2 SKGSTEAM mods`.
-You need the **unpacked** files (`.gfs` packages are not unpacked by this project yet; SkullMod does it).
+You need the **unpacked** files. The `.gfs` packages can be unpacked by the app itself (Home → **Unpack .gfs**, which writes them to
+`<data>/unpacked_gfs/<package>/` and rescans) or from a terminal: `zdroid_gfs list <file.gfs>` / `zdroid_gfs unpack <file.gfs> <dir>`
+(format: `src/core/gfs.h`; read-only, paths that would leave the output folder are refused).
 
 Tests: `-DZDROID_BUILD_TESTS=ON -DZDROID_TEST_DATA=<core>:<Win>:<ui> -DZDROID_TEST_CHAR=<folder with annie.*> -DZDROID_TEST_ORACLE=<dir from tests/oracle/gen_oracle.py>`
 then `ctest`. `python3 -I tests/real_diff.py <dir> annie <zdroid_probe --records output>` re-checks every record against the Python reference.
@@ -83,7 +85,7 @@ The Steam screen runs DepotDownloader for app 245170 with **your** account; Stea
 (no anonymous/leaked manifests, no account sharing). The password and Steam Guard codes go only to the child's stdin
 (never on a command line, redacted from logs). DepotDownloader is found via `ZDROID_DEPOTDOWNLOADER`,
 `$ZDROID_NATIVE_LIB_DIR/libdepotdownloader.so`, `--exe`, or `PATH`. Files land in `<data folder>/SKGSTEAM`; the login token
-lives in the app's own prefs folder. The download is the packed `.gfs` form: it still has to be unpacked.
+lives in the app's own prefs folder. The download is the packed `.gfs` form: unpack it with Home → **Unpack .gfs**.
 
 ## Layout
 
