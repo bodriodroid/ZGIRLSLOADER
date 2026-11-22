@@ -44,6 +44,7 @@ add_library(zengine_core STATIC
   src/core/lesson_data.cpp
   src/core/vfs.cpp
   src/core/vault.cpp
+  src/core/gfs.cpp
   src/core/palfx.cpp
   src/core/screen_layout.cpp
   src/core/text_formats.cpp
@@ -113,6 +114,8 @@ endif()
 # skipping them keeps the APK build (and the .so list) small.
 if(NOT ANDROID)
   add_executable(zdroid_probe src/tools/zdroid_probe.cpp)
+  add_executable(zdroid_gfs src/tools/zdroid_gfs.cpp)
+  target_link_libraries(zdroid_gfs PRIVATE zengine_core)
   add_executable(zdroid_pafx src/tools/zdroid_pafx.cpp)
   target_link_libraries(zdroid_pafx PRIVATE zengine_core)
   target_link_libraries(zdroid_probe PRIVATE zengine_core)
@@ -176,6 +179,10 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   target_link_libraries(zdroid_fx_tests PRIVATE zengine_core)
   add_test(NAME zdroid_fx_tests COMMAND zdroid_fx_tests)
   set_tests_properties(zdroid_fx_tests PROPERTIES ENVIRONMENT "ZDROID_TEST_DATA=${ZDROID_TEST_DATA}")
+  add_executable(zdroid_gfs_tests tests/test_gfs.cpp)
+  target_link_libraries(zdroid_gfs_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_gfs_tests COMMAND zdroid_gfs_tests)
+
   add_executable(zdroid_vault_tests tests/test_vault.cpp)
   target_link_libraries(zdroid_vault_tests PRIVATE zengine_core)
   add_test(NAME zdroid_vault_tests COMMAND zdroid_vault_tests)
