@@ -24,11 +24,11 @@ uint16_t padFromFrame(const InputFrame& f, bool facingRight) {
     return pad;
 }
 
-bool Lesson::begin(fight::FoitDuel* duel, UiSink* ui, ReadText read, const std::string& scriptName) {
+bool Lesson::begin(fight::FoitDuel* duel, UiSink* ui, ReadText read, const std::string& scriptName, int difficulty) {
     end();
     started_ = false;
     if (!duel || !duel->valid()) return false;
-    access_ = std::make_unique<DuelAccess>(duel);
+    access_ = std::make_unique<DuelAccess>(duel, difficulty);
     if (!host_.load(access_.get(), ui, std::move(read), scriptName)) return false;
     duel_ = duel;
     duel_->setPreStep([this](uint16_t& p1, uint16_t& p2) { onPads(p1, p2); });

@@ -15,6 +15,7 @@
 #pragma once
 #include <SDL.h>
 
+
 #include <future>
 #include <memory>
 #include <string>
@@ -40,6 +41,8 @@
 #include "foit_duel.h"
 #include "fx_gl.h"
 #include "gamedata.h"
+#include "lesson.h"
+#include "lesson_hud.h"
 #include "level.h"
 #include "menu_data.h"
 #include "spark_fx.h"
@@ -331,6 +334,22 @@ public:
     // Back to the normal modes (clears the outcome, shows the character select next time).
     void leaveStory();
 
+    // ---- Lessons (play_lesson.cpp): Tutorials, Trials and Challenges.  A fight in the data driven engine whose second fighter and rules are run by
+    // one of the game's Lua scripts (core/lesson.h); the lesson's HUD (objectives, explanation pages) is drawn over the match.
+    struct LessonRun {
+        std::string p1, p2, level;        // fighter names as the .ini writes them, level = the .ini's `World`
+        std::string script;               // the `LuaFile` ("" = no script: a challenge's rules only)
+        bool training = true;             // TrainingMode: the match never ends
+        int timeLimitSec = 0;             // 0 = no clock
+        int level_ai = 3;                 // what getDifficulty() answers in the scripts (the challenge's AILevel)
+    };
+    enum class LessonOutcome { None, Done, Quit };
+    void enterLesson(SDL_Renderer* r, const LessonRun& run);
+    bool inLesson() const { return lessonMode_; }
+    // Set once the lesson was completed (a moment after the script said so) or the player gave it up.
+    LessonOutcome lessonOutcome() const { return lessonOutcome_; }
+    void leaveLesson();
+
     // language of the localised menu texts ("en", "es" ...); the pause / end-of-match menus read <lang>_loc.json
     void setLanguage(const std::string& lang);
 
@@ -492,6 +511,17 @@ private:
     bool startPrev_ = false;
     int stageIdx_ = 0;
     bool storyMode_ = false;                         // the fight was started by Story Mode
+    // ---- Lessons (play_lesson.cpp)
+    bool lessonMode_ = false;
+    LessonRun lessonRun_;
+    LessonOutcome lessonOutcome_ = LessonOutcome::None;
+    std::unique_ptr<script::Lesson> lesson_;         // the script of the lesson, hooked into foit_
+    LessonHud lessonHud_;
+    int lessonDoneTicks_ = 0;                        // the "lesson complete" banner counts down, then the outcome is Done
+    uint16_t lessonPadPrev_ = 0;
+    void beginLessonScript();                        // after buildFoit(): loads the script (a failure is logged; the fight goes on without it)
+    void lessonTick(uint16_t p1);                    // every simulated tick, before the step
+    void drawLessonHud(Ui& ui);
     // ---- Arcade Mode: the ladder (core/arcade.h) decides who comes next; the match flow around it is the normal one
     bool arcadeMode_ = false, arcadeCredits_ = false;
     arcade::Ladder ladder_;

@@ -285,6 +285,11 @@ static void testLessonData() {
     CHECK(fi.training && fi.useAI && fi.luaFile == "training/beginner/basicmovement.lua" && fi.world == "Class_Notes");
     CHECK(!lessons::parseFightIni("Player 1\nFighter Filia\n", fi));   // one fighter: nothing to start
 
+    CHECK(lessons::formatText("Dodge ({1}/{2}) items") == "Dodge (0/0) items");
+    CHECK(lessons::formatText("Dodge ({1}/{2})", 2, 3) == "Dodge (2/3)");
+    CHECK(lessons::formatText("s.{lk} {seqs} {qcf}+{HP} {unknown} { open") == "s.LK > QCF+HP {unknown} { open");
+    CHECK(lessons::formatText("{d}{df}{f} {lplk}") == "DDFF LP+LK");
+
     // a folder with a TOC and two maps (the second one has a scene node and nodes out of order)
     const std::string dir = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") + "/zg_lesson_data_test";
     std::system(("rm -rf '" + dir + "' && mkdir -p '" + dir + "/training'").c_str());

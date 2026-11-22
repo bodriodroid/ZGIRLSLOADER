@@ -190,5 +190,60 @@ std::vector<Challenge> parseChallenges(std::string_view text) {
     return out;
 }
 
+std::string formatText(const std::string& text, int progress, int maxProgress) {
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] != '{') {
+            out += text[i];
+            continue;
+        }
+        const size_t e = text.find('}', i);
+        if (e == std::string::npos || e - i > 8) {
+            out += text[i];
+            continue;
+        }
+        const std::string k = lowerOf(text.substr(i + 1, e - i - 1));
+        std::string rep;
+        bool known = true;
+        if (k == "1") rep = std::to_string(progress);
+        else if (k == "2") rep = std::to_string(maxProgress);
+        else if (k == "seqs" || k == "seq") rep = ">";
+        else if (k == "plus") rep = "+";
+        else if (k == "ap") rep = "P";
+        else if (k == "ak") rep = "K";
+        else if (k == "lplk") rep = "LP+LK";
+        else if (k == "lpmp") rep = "LP+MP";
+        else if (k == "mphp") rep = "MP+HP";
+        else if (k == "lphp") rep = "LP+HP";
+        else if (k == "lpmk") rep = "LP+MK";
+        else if (k == "mplk") rep = "MP+LK";
+        else if (k == "mphk") rep = "MP+HK";
+        else if (k == "hpmk") rep = "HP+MK";
+        else if (k == "mpmk") rep = "MP+MK";
+        else if (k == "hphk") rep = "HP+HK";
+        else if (k == "lkhk") rep = "LK+HK";
+        else if (k == "lkmk") rep = "LK+MK";
+        else if (k == "mkhk") rep = "MK+HK";
+        else if (k == "lp" || k == "mp" || k == "hp" || k == "lk" || k == "mk" || k == "hk" || k == "pp" || k == "kk" || k == "qcf" || k == "qcb" ||
+                 k == "dp" || k == "rdp" || k == "df" || k == "db" || k == "uf" || k == "ub" || k == "360") {
+            rep = k;
+            for (char& c : rep) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        } else if (k == "f" || k == "b" || k == "d" || k == "u") {
+            rep = k;
+            for (char& c : rep) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        } else {
+            known = false;
+        }
+        if (known) {
+            out += rep;
+            i = e;
+        } else {
+            out += text[i];   // not one of ours: kept as written
+        }
+    }
+    return out;
+}
+
 }  // namespace lessons
 }  // namespace zengine

@@ -71,5 +71,9 @@ struct Challenge {
 };
 std::vector<Challenge> parseChallenges(std::string_view text);
 
+// A lesson text ready for the screen.  {1} / {2} = the objective's progress / maximum; the game draws its own pictures for the other
+// placeholders ({lp} {hk} {qcf} {df} {seqs} ...), here they become plain text: buttons in capitals, directions as letters, {seqs} as ">".
+std::string formatText(const std::string& text, int progress = 0, int maxProgress = 0);
+
 }  // namespace lessons
 }  // namespace zengine

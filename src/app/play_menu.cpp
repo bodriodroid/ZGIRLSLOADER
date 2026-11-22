@@ -296,6 +296,7 @@ void PlayScreen::doConfirmed(ConfirmAct act) {
         case ConfirmAct::ExitMatch:
             overlay_ = Overlay::None;
             if (storyMode_) storyOutcome_ = StoryOutcome::Quit;
+            else if (lessonMode_) lessonOutcome_ = LessonOutcome::Quit;
             else leaveMatch();
             break;
         case ConfirmAct::ReturnToMenu: overlay_ = Overlay::None; leaveMatch(); break;

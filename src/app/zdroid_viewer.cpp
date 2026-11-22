@@ -49,6 +49,7 @@
 #include "vault.h"
 #include "credits.h"
 #include "gallery.h"
+#include "lesson_data.h"
 #include "story_mode.h"
 #include "steam_task.h"
 #include "ui.h"  // Col / Rect / Input / Ui: shared with the Play screen
@@ -86,7 +87,7 @@ enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits }; 
 
 struct Options {
     std::vector<std::string> dirs;
-    std::string story, fight, csP2, smokePng, screen, character, cat, pal, zoom, exe, steamUser, steamPassEnv, steamCode, smokePhase, lang;
+    std::string story, fight, lesson, csP2, smokePng, screen, character, cat, pal, zoom, exe, steamUser, steamPassEnv, steamCode, smokePhase, lang;
     int frame = 0, bg = -1, smokeFrames = 4, loadDelayMs = 0, smokeScale = 1, fixedDtMs = 0, smokeW = 640;   // smokeW: capture window width in logical units (No Limits Screen)
     bool steamAutostart = false, skipTitle = false, acceptNotice = false, smokeLoading = false, gallery = false, credits = false, contributors = false;
     int csStep = 0, csPal = 0;
@@ -1043,6 +1044,7 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--credits") o.credits = true;   // open the credits roll (smoke; ZDROID_CREDITS_PAGE=n starts on page n, ZDROID_CREDITS_THANKS=1 jumps to the card)
         else if (a == "--contributors") o.credits = o.contributors = true;
         else if (a == "--story") o.story = val(i);   // "filia" / "random" / "list": open Story Mode (smoke)
+        else if (a == "--lesson") o.lesson = val(i);   // "training/beginner/basicmovement.ini": start that tutorial / trial on the Play screen (smoke)
         else if (a == "--fight") o.fight = val(i);   // "annie:beowulf:new_meridian": start a match like the Character Select would (smoke)
         else if (a == "--cs-pal") o.csPal = std::max(0, std::atoi(val(i).c_str()));
         else if (a == "--attract-shot") o.attractShot = std::max(1, std::atoi(val(i).c_str())) - 1;
@@ -1250,6 +1252,22 @@ int main(int argc, char** argv) {
         w.resize(3);
         app.play.enterMatch(ren, std::getenv("ZDROID_PLAY_ARCADE") ? play::Mode::Arcade : (std::getenv("ZDROID_PLAY_TRAINING") ? play::Mode::Training : play::Mode::VsCpu), app.menu.rules(), w[0], w[1], w[2], "");
         app.screen = Screen::Play;
+    }
+    if (!opt.lesson.empty() && kFightEnabled) {
+        std::string text;
+        lessons::FightIni fi;
+        if (app.gd.vfs().readText(opt.lesson, text) && lessons::parseFightIni(text, fi)) {
+            play::PlayScreen::LessonRun run;
+            run.p1 = fi.fighter[0];
+            run.p2 = fi.fighter[1];
+            run.level = fi.world;
+            run.script = fi.luaFile;
+            run.training = fi.training;
+            app.play.enterLesson(ren, run);
+            app.screen = Screen::Play;
+        } else {
+            std::fprintf(stderr, "--lesson: %s is not a readable fight .ini in the mounted data\n", opt.lesson.c_str());
+        }
     }
     if (opt.gallery) {
         app.gallery.begin(opt.lang.empty() ? std::string("en") : opt.lang);

@@ -786,6 +786,10 @@ bool PlayScreen::onBack() {
         storyOutcome_ = StoryOutcome::Quit;
         return true;
     }
+    if (lessonMode_) {  // a lesson: Back gives it up and returns to the list
+        lessonOutcome_ = LessonOutcome::Quit;
+        return true;
+    }
     if (phase_ == Phase::Select) return false;
     leaveMatch();
     return true;
@@ -1795,6 +1799,8 @@ bool PlayScreen::buildFoit(const LevelInfo* lv) {
     auto fd = std::make_unique<fight::FoitDuel>();
     if (!fd->init(c)) return false;
     foit_ = std::move(fd);
+    lesson_.reset();
+    if (lessonMode_) beginLessonScript();
     sparks_.reset();
     if (gd_ && !zgFlag("ZDROID_PLAY_NOSPARKS", "nosparks")) sparks_.load(gd_->vfs());   // hit / block sparks (no hitspark.foit = none)
     return true;
@@ -2023,6 +2029,10 @@ void PlayScreen::update(Ui& ui, int dtMs) {
         acc_ -= kTickMs;
         uint16_t p1 = cpu_[0] ? aiButtons(0) : humanButtons(0, ui);
         uint16_t p2 = cpu_[1] ? aiButtons(1) : humanButtons(1, ui);
+        if (lessonMode_) {
+            p2 = 0;   // the dummy is the script's
+            lessonTick(p1);
+        }
         if (foitMode_) {
             // The world gates the pad itself (nobody acts during the entrance / the card); what must get through is a human's attack
             // press, which cuts the entrance short - decided inside the world from the replicated input.
@@ -2158,6 +2168,7 @@ void PlayScreen::render(Ui& ui, SDL_Renderer* r) {
     bool inSafe = wide && beginOverlay(r, ui);
     drawHud(ui, r);
     if (arcadeMode_ && overlay_ == Overlay::None && (phase_ == Phase::Fight || phase_ == Phase::RoundEnd)) drawArcadeTag(ui, r);
+    if (lessonMode_ && overlay_ == Overlay::None && phase_ != Phase::Loading) drawLessonHud(ui);
     if (inSafe) endOverlay(r, ui);
     if (padVisible_ && overlay_ == Overlay::None) drawPad(ui, r);
 

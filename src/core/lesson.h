@@ -20,7 +20,8 @@ namespace script {
 
 class DuelAccess : public FightAccess {
 public:
-    explicit DuelAccess(fight::FoitDuel* d) : d_(d) {}
+    explicit DuelAccess(fight::FoitDuel* d, int difficulty = 3) : d_(d), difficulty_(difficulty) {}
+    int difficulty() override { return difficulty_; }
     foit::rt::World* world() override { return &d_->worldMut(); }
     foit::rt::Object* character(int index) override {
         if (index == 0) return &d_->bodyMut(0);
@@ -35,6 +36,7 @@ public:
 
 private:
     fight::FoitDuel* d_;
+    int difficulty_;
 };
 
 // One pad tick of the dummy (relative to the way it faces) -> the fight.h bits.
@@ -49,7 +51,8 @@ public:
 
     // `scriptName` = the lesson's `LuaFile`.  false = the script did not load (host().lastError()).  The lesson hooks into the duel (every
     // step of it runs the script first) until end() or the destructor; the duel must outlive the lesson or be released with end().
-    bool begin(fight::FoitDuel* duel, UiSink* ui, ReadText read, const std::string& scriptName);
+    // `difficulty` is what getDifficulty() answers (the AI scripts' level; a challenge's AILevel).
+    bool begin(fight::FoitDuel* duel, UiSink* ui, ReadText read, const std::string& scriptName, int difficulty = 3);
     void end();
     bool active() const { return duel_ != nullptr && host_.loaded(); }
 
