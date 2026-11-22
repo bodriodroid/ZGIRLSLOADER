@@ -28,6 +28,7 @@ public:
         std::string name;                        // suggested name of the favourite
         coledit::Fav editing;                    // an existing favourite (file set): Save overwrites it and Delete is offered
         std::string lang;                        // "es" or anything else (English)
+        std::string foitPath, artPath, artPtPath;   // the character's fight art: its Stand pose is the preview (empty / unreadable = the Character Select sprite)
     };
     struct Result {
         enum class Kind { None, Saved, Cancelled, Deleted } kind = Kind::None;

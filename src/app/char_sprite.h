@@ -59,6 +59,10 @@ public:
     // (No SDL calls in the destructor: at shutdown the renderer is already gone - the owner calls close() while it is alive.)
     // Composes the frame; `pal` colours it.  false when the user's data has no such sprite.
     bool open(GameUi& gfx, const std::string& name, const Palette& pal);
+    // The same, from the FIGHT art: the "Stand" pose (the plain idle, no attack) of <name>.foit / .art / .art-pt at full resolution, all of its image
+    // layers put together, coloured by `pal` exactly like the fight does (tone + line darkening).  Much sharper than the Character Select sprite
+    // (which is stored at half size).  false when a file is missing or the character has no standing pose; the caller then uses open().
+    bool openArt(GameUi& gfx, const std::string& foitPath, const std::string& artPath, const std::string& artPtPath, const Palette& pal);
     void close();   // destroys the texture (call while the renderer is alive)
     bool isOpen() const { return tex_ != nullptr; }
     // Looks the texels up again in `pal`.  `region` (>= 1) is brightened by `pulse` (0..1) to show which part is being edited; 0 = none.
@@ -78,6 +82,7 @@ private:
     int w_ = 0, h_ = 0;
     float hotX_ = 0, hotY_ = 0;
     SDL_Rect bounds_{0, 0, 0, 0};
+    std::vector<uint8_t> band_, grad_;   // openArt(): the frame's palette row and grad value per pixel (w*h each); raw_ stays empty then
     std::vector<uint8_t> raw_;   // w*h*4: the atlas texels as stored
     std::vector<uint8_t> out_;   // w*h*4: what was uploaded last
 };

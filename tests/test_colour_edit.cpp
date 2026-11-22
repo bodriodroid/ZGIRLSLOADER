@@ -244,6 +244,56 @@ int main() {
         CHECK(slug("***") == "colour");
         CHECK(slug("") == "colour");
     }
+    // ---- the favourite as a community .pal: same colours once the game's baking is applied
+    {
+        const std::vector<int>* counts = palmod::regionCounts("filia");
+        CHECK(counts != nullptr);
+        if (counts) {
+            Scheme f;
+            f.character = "filia";
+            f.name = "pal test";
+            for (size_t r = 0; r < counts->size(); ++r) {
+                Region rg;
+                for (int k = 0; k < (*counts)[r]; ++k) {
+                    const int v = 255 - 200 * k / std::max(1, (*counts)[r] - 1);   // light -> dark
+                    rg.key.push_back({static_cast<uint8_t>(v), static_cast<uint8_t>((v * (r + 3)) % 256), static_cast<uint8_t>(255 - v)});
+                }
+                f.regions.push_back(rg);
+            }
+            palmod::PalFile pf;
+            std::string e;
+            CHECK(toPalFile(f, pf, &e));
+            CHECK(pf.character == "Filia" && pf.numColors == pf.colors.size() + 1 && pf.line == 0);
+            const std::vector<uint8_t> bytes = palmod::serialize(pf);
+            palmod::PalFile back;
+            CHECK(palmod::parse(bytes.data(), bytes.size(), back, &e) && back.colors == pf.colors);
+            Palette viaPal;
+            CHECK(palmod::toPalette(back, viaPal, &e));
+            const Palette viaScheme = bake(f);
+            CHECK(viaPal.bands == viaScheme.bands && viaPal.tones == viaScheme.tones);
+            int worst = 0;
+            for (int b = 1; b < viaPal.bands && b < viaScheme.bands; ++b)
+                for (int t = 0; t < viaPal.tones; ++t)
+                    for (int ch = 0; ch < 3; ++ch) worst = std::max(worst, std::abs(int(viaPal.at(b, t)[ch]) - int(viaScheme.at(b, t)[ch])));
+            CHECK(worst <= 1);
+            // another number of keys than the table: not written
+            Scheme bad = f;
+            bad.regions[0].key.push_back({1, 2, 3});
+            CHECK(!toPalFile(bad, pf, &e) && !e.empty());
+            Scheme unknown = f;
+            unknown.character = "nobody";
+            CHECK(!toPalFile(unknown, pf, &e));
+            // saved on disk next to the other two files, and removed with them
+            namespace fs = std::filesystem;
+            const fs::path dir = fs::temp_directory_path() / ("zg_fav_pal_" + std::to_string(std::rand()));
+            fs::remove_all(dir);
+            Favourites fav(dir.string());
+            Fav out;
+            CHECK(fav.save(f, bake(f), "", out, &e) && !out.pal.empty() && fs::exists(out.pal));
+            CHECK(fav.remove(out) && !fs::exists(out.pal));
+            fs::remove_all(dir);
+        }
+    }
     // ---- favourites on disk
     {
         namespace fs = std::filesystem;

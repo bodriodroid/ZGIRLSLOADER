@@ -50,7 +50,10 @@ bool ColourEditor::open(GameUi& gfx, const coledit::Favourites& favs, Setup s) {
     cur_ = setup_.scheme;
     orig_ = cur_;
     pal_ = coledit::bake(cur_);
-    if (!sprite_.open(gfx, setup_.character, pal_)) return false;
+    // the fight art's standing pose (full resolution); the Character Select sprite is the fallback when the art cannot be read
+    if (!(!setup_.foitPath.empty() && sprite_.openArt(gfx, setup_.foitPath, setup_.artPath, setup_.artPtPath, pal_)) &&
+        !sprite_.open(gfx, setup_.character, pal_))
+        return false;
     name_ = setup_.name;
     region_ = 0;
     keyIdx_ = -1;

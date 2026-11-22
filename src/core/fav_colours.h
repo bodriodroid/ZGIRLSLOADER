@@ -2,6 +2,8 @@
 //
 //   <dir>/<character>/<name>.zgcol   the keys (colour_edit.h, a small text file)
 //   <dir>/<character>/<name>.dds     the baked palette texture the fight and the selector read (written together with it)
+//   <dir>/<character>/<name>.pal     the same colours as a community .pal (palmod.h), to share or drop into mods/pal (written when the
+//                                    character's region table fits; see toPalFile)
 //
 // Not a mod: nothing here goes through the mod loader, the mods folders or the game's files; deleting the folder deletes the favourites and nothing else.
 #pragma once
@@ -9,6 +11,7 @@
 #include <vector>
 
 #include "colour_edit.h"
+#include "palmod.h"
 
 namespace zengine {
 namespace coledit {
@@ -17,7 +20,12 @@ struct Fav {
     std::string character, name;
     std::string file;   // the .zgcol
     std::string dds;    // the baked palette texture
+    std::string pal;    // the .pal written with it ("" when the scheme does not fit the region table)
 };
+
+// The scheme as the community's .pal: the keys of every region light -> dark, the character name as the roster spells it ("MsFortune").
+// false (+ *err) when the character is not in the region table or a region's number of keys does not match it (a palette of another build).
+bool toPalFile(const Scheme& s, palmod::PalFile& out, std::string* err = nullptr);
 
 class Favourites {
 public:

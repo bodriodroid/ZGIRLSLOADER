@@ -773,6 +773,14 @@ void MenuScreen::openColourEditor(const std::string& name, int palIdx) {
     su.character = name;
     su.title = hudart::displayName(name);
     su.lang = langCode_;
+    if (inv_)
+        for (const CharacterAssets& ca : inv_->characters)
+            if (ca.name == name) {
+                su.foitPath = ca.foitPath;
+                su.artPath = ca.artPath;
+                su.artPtPath = ca.artPtPath;
+                break;
+            }
     if (!coledit::fromPalette(base, palmod::regionCounts(name), su.scheme)) return;
     su.scheme.character = name;
     if (loadPal(it->second[0].path, own) && own.bands == base.bands && own.alpha.size() == static_cast<size_t>(own.bands) * own.tones)
