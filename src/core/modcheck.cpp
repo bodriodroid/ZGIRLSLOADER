@@ -178,7 +178,7 @@ std::string Result::firstProblem() const {
     return std::string();
 }
 
-Result check(const std::string& dir, size_t maxFiles) {
+Result check(const std::string& dir, size_t maxFiles, const std::vector<std::string>& ignoreExt) {
     Result res;
     std::error_code ec;
     if (!fs::is_directory(dir, ec)) return res;
@@ -198,6 +198,7 @@ Result check(const std::string& dir, size_t maxFiles) {
             continue;
         }
         if (!fs::is_regular_file(ls)) continue;
+        if (!ignoreExt.empty() && std::find(ignoreExt.begin(), ignoreExt.end(), lowerExt(p)) != ignoreExt.end()) continue;
         if (res.files >= maxFiles) {
             res.scanCut = true;
             break;

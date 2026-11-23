@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <map>
 
 #include "modloader.h"
+#include "pack_changes.h"
 #include "zipread.h"
 
 namespace fs = std::filesystem;
@@ -103,10 +105,17 @@ const char* kVoiceReadme =
     "Voces japonesas, misma estructura que las carpetas de sonido del juego. Solo se usan con voces en japones.\n";
 
 const char* kPacksReadme =
-    "One folder per resource pack, mirroring the game's layout (textures, sounds, text).  pack.ini is optional\n"
-    "(name / description / priority / enabled).  Packs are mounted over the game but under modscustom;\n"
-    "the original files are never modified - remove the folder and everything is back.\n\n"
-    "Una carpeta por pack. Reemplaza contenido sin tocar el core ni los .dds originales: borra la carpeta y vuelve todo.\n";
+    "One folder (or .zip) per resource pack.  pack.ini is optional (name / description / priority / enabled).\n"
+    "Packs are mounted over the game but under modscustom; the original files are never modified - remove the\n"
+    "folder and everything is back.\n\n"
+    "Two modes:\n"
+    "  * with a changes.lua  -> only what its rules say changes (each rule names a game file and the pack file that replaces it).\n"
+    "  * without changes.lua -> every file of the pack replaces the game's files with the same NAME, in any folder.\n"
+    ".foit / .art / .art-pt are not part of a resource pack (those are mods: put them in ../modscustom).\n"
+    "Details: docs/MODS.md.\n\n"
+    "Una carpeta (o .zip) por pack. Con changes.lua: solo cambia lo que dicen sus reglas. Sin changes.lua: cada archivo reemplaza\n"
+    "por NOMBRE al del juego. Los .foit / .art / .art-pt no van en un pack (son mods). Nunca se tocan los archivos originales:\n"
+    "borra la carpeta y vuelve todo.\n";
 
 bool writeText(const fs::path& p, const std::string& text) {
     std::FILE* f = std::fopen(p.string().c_str(), "wb");
@@ -171,7 +180,7 @@ size_t unzipIn(const std::string& folder, std::vector<std::string>& log, std::ve
         if (stem.empty() || stem[0] == '.') continue;
         std::error_code e2;
         const fs::path dest = fs::path(folder) / stem;
-        const std::string stamp = std::to_string(fs::file_size(z, e2)) + ":" + std::to_string(fs::last_write_time(z, e2).time_since_epoch().count());
+        const std::string stamp = std::to_string(fs::file_size(z, e2)) + ":" + std::to_string(static_cast<long long>(fs::last_write_time(z, e2).time_since_epoch().count()));
         const fs::path stampFile = dest / ".zipsrc";
         if (fs::exists(dest, e2)) {
             if (!fs::exists(stampFile, e2)) {
@@ -197,9 +206,87 @@ size_t unzipIn(const std::string& folder, std::vector<std::string>& log, std::ve
     return n;
 }
 
+// What a resource pack's changes.lua may ask the loader (hasMod / getModVersion) and where its scratch files go.
+struct PackEnv {
+    std::string gameDir;
+    std::string cacheRoot;                           // <mods>/.cache/changes
+    std::map<std::string, double> versions;          // lowercase id / name of every mod, pack and stage -> version (1 when it has none)
+};
+
+std::string safeName(std::string s) {
+    for (char& c : s)
+        if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_' || c == '.')) c = '_';
+    return s.empty() ? std::string("pack") : s;
+}
+
+// A resource pack, mounted one of two ways (the game's own files are never written to, either way):
+//   changes.lua  -> "rules": only what its rules say changes (packchanges::run), as overrides in the Vfs
+//   no changes.lua -> "name": every file replaces the game's files of the same name; .foit / .art / .art-pt (mods) and the pack's own
+//                     metadata are left out
+// Returns the files / rules that took effect (0 = nothing mounted).
+size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, const PackEnv& env, std::vector<modcheck::Layer>& layers) {
+    const fs::path changes = fs::path(m.dir) / "changes.lua";
+    std::error_code ec;
+    if (fs::is_regular_file(changes, ec)) {
+        if (item) item->mode = "rules";
+        const fs::path work = fs::path(env.cacheRoot) / safeName(fs::path(m.dir).filename().string());
+        packchanges::Context ctx;
+        ctx.packDir = m.dir;
+        ctx.tempDir = (work / "tmp").string();
+        ctx.outDir = (work / "out").string();
+        ctx.base = &vfs;
+        ctx.gameDir = env.gameDir;
+        ctx.modVersion = [&env](const std::string& n) {
+            const auto f = env.versions.find(lower(n));
+            return f == env.versions.end() ? 0.0 : f->second;
+        };
+        const packchanges::Result r = packchanges::run(changes.string(), ctx);
+        for (const std::string& l : r.log) rep.log.push_back("pack " + m.id + ": " + l);
+        for (const std::string& w : r.warnings) rep.warnings.push_back("pack " + m.id + ": " + w);
+        if (item && !fs::exists(fs::path(m.dir) / "pack.ini", ec) && !fs::exists(fs::path(m.dir) / "mod.ini", ec)) {
+            // no ini of its own: what the script says about itself (ModInfo) is the pack's name / version / author
+            if (!r.name.empty()) item->name = r.name;
+            if (!r.version.empty()) item->version = r.version;
+            if (!r.author.empty()) item->author = r.author;
+            if (!r.description.empty()) item->description = r.description;
+        }
+        if (!r.ok) {
+            if (item) {
+                item->blocked = true;
+                item->problem = "changes.lua: " + r.error;
+            }
+            rep.warnings.push_back("pack " + m.id + ": changes.lua failed, nothing of this pack is applied: " + r.error);
+            return 0;
+        }
+        std::vector<Vfs::Override> rules;
+        for (const packchanges::Rule& x : r.rules) rules.push_back({x.game, x.real});
+        const size_t n = vfs.mountOverrides(rules);
+        if (n) rep.log.push_back("pack " + m.id + " (changes.lua): " + std::to_string(n) + " rule(s)");
+        return n;
+    }
+    if (item) item->mode = "name";
+    std::vector<std::string> skipped;
+    const size_t files = vfs.mountByName(m.dir, {".foit", ".art", ".art-pt", "pack.ini", "mod.ini", "readme.txt", "readme.md", "changes.lua"}, &skipped);
+    std::string ignored;
+    size_t mods = 0;
+    for (const std::string& s : skipped) {
+        const std::string l = lower(s);
+        if (!packchanges::isModFile(l)) continue;
+        if (mods++ < 3) ignored += (ignored.empty() ? "" : ", ") + s;
+    }
+    if (mods)
+        rep.warnings.push_back("pack " + m.id + ": " + std::to_string(mods) + " mod file(s) left out (" + ignored + (mods > 3 ? ", ..." : "") +
+                               "): .foit / .art / .art-pt are mods, put them in mods/modscustom");
+    if (files) {
+        layers.push_back({"pack:" + m.id, m.dir});
+        rep.log.push_back("pack " + m.id + " (by name): " + std::to_string(files) + " file(s)");
+    }
+    return files;
+}
+
 // Lists every folder of `set` for the Mods screen and, when `mount`, mounts the enabled ones (priority order).
 size_t mountSet(Vfs& vfs, const mods::ModSet& set, const char* kind, Report& rep, bool mount, std::vector<modcheck::Layer>& layers,
-                std::vector<StageMod>* stageOut = nullptr) {
+                std::vector<StageMod>* stageOut = nullptr, const PackEnv* env = nullptr) {
     const size_t first = rep.items.size();
     for (const mods::ModInfo& m : set.mods) {
         Item it;
@@ -218,7 +305,8 @@ size_t mountSet(Vfs& vfs, const mods::ModSet& set, const char* kind, Report& rep
     if (!mount) return 0;
     size_t n = 0;
     for (mods::ModInfo m : mods::loadOrder(set)) {
-        if (!mods::vet(m, kind, &rep.log)) {   // damaged / altering folders are never mounted
+        static const std::vector<std::string> kModExt = {".foit", ".art", ".art-pt"};   // not used by a resource pack, so they cannot block it
+        if (!mods::vet(m, kind, &rep.log, std::string(kind) == "pack" ? kModExt : std::vector<std::string>())) {   // damaged / altering folders are never mounted
             for (size_t i = first; i < rep.items.size(); ++i)
                 if (rep.items[i].dir == m.dir) {
                     rep.items[i].blocked = true;
@@ -227,7 +315,18 @@ size_t mountSet(Vfs& vfs, const mods::ModSet& set, const char* kind, Report& rep
             rep.warnings.push_back(std::string(kind) + " " + m.id + ": " + m.problem);
             continue;
         }
-        const size_t files = vfs.mount(m.dir);
+        size_t files;
+        if (env && std::string(kind) == "pack") {
+            Item* self = nullptr;
+            for (size_t i = first; i < rep.items.size(); ++i)
+                if (rep.items[i].dir == m.dir) self = &rep.items[i];
+            files = mountPack(vfs, m, self, rep, *env, layers);
+            if (files == 0) continue;
+            ++n;
+            if (self) self->mounted = true;
+            continue;   // mountPack logged and registered the layer
+        }
+        files = vfs.mount(m.dir);
         if (files == 0) continue;
         ++n;
         layers.push_back({std::string(kind) + ":" + m.id, m.dir});
@@ -368,7 +467,17 @@ Report mountAll(Vfs& vfs, const std::string& gameDir, bool japaneseVoices) {
         for (const std::string& w : s->warnings)
             if (w.find("enabled=0") == std::string::npos) rep.warnings.push_back(w);
     std::vector<modcheck::Layer> layers;   // mount order, later wins
-    rep.packs = mountSet(vfs, packs, "pack", rep, enabled, layers);
+    PackEnv env;
+    env.gameDir = gameDir;
+    env.cacheRoot = (fs::path(l.root) / ".cache" / "changes").string();
+    for (const auto* s : {&packs, &custom, &stages})
+        for (const mods::ModInfo& m : s->mods) {
+            double v = std::atof(m.version.c_str());
+            if (v <= 0) v = 1;
+            env.versions[lower(m.id)] = v;
+            env.versions[lower(m.name)] = v;
+        }
+    rep.packs = mountSet(vfs, packs, "pack", rep, enabled, layers, nullptr, &env);
     rep.mods = mountSet(vfs, custom, "mod", rep, enabled, layers);
     rep.stages = mountSet(vfs, stages, "stage", rep, enabled, layers, &rep.stageMods);
     if (!enabled) return rep;

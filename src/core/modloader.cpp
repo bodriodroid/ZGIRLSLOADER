@@ -216,8 +216,8 @@ ModSet scan(const std::string& gameDir) {
     return s;
 }
 
-bool vet(ModInfo& m, const char* kind, std::vector<std::string>* log) {
-    const modcheck::Result r = modcheck::check(m.dir);
+bool vet(ModInfo& m, const char* kind, std::vector<std::string>* log, const std::vector<std::string>& ignoreExt) {
+    const modcheck::Result r = modcheck::check(m.dir, 50000, ignoreExt);
     if (!r.blocked()) return true;
     m.blocked = true;
     m.problem = r.firstProblem();

@@ -38,6 +38,19 @@ public:
     // vault is registered (vault::registerVault) and its files get virtual paths.  Returns the number of entries (0 = empty).
     size_t mountVault(std::shared_ptr<const vault::Vault> v);
 
+    // Resource packs (the game's files are never written to; these only change what a lookup resolves to).
+    // mountByName: like mount(), and in addition every file of `dir` replaces EVERY already indexed file that has the same name, whatever
+    // its folder ("filia_1p.dds" answers to "characters/filia_1p.dds" and to "data/characters/filia_1p.dds").  Files left out and listed in *skipped:
+    // those whose name ends in an entry of `skipExt` that starts with a dot (".foit"), or whose own name is an entry that does not
+    // ("pack.ini"), case-insensitive.  Returns the files taken.
+    size_t mountByName(const std::string& dir, const std::vector<std::string>& skipExt, std::vector<std::string>* skipped = nullptr);
+    // mountOverrides: `game` path -> real file.  Every indexed path that is `game` or ends with "/" + `game` now resolves to the real file.
+    // A later rule for the same path wins.  Returns the rules applied.
+    struct Override {
+        std::string game, real;
+    };
+    size_t mountOverrides(const std::vector<Override>& rules);
+
     bool resolve(std::string_view path, std::string* realPath = nullptr) const;
     bool exists(std::string_view path) const { return resolve(path, nullptr); }
     bool read(std::string_view path, std::vector<uint8_t>& out) const;

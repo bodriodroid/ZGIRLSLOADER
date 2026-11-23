@@ -72,7 +72,7 @@ ModSet scanFolder(const std::string& modsFolder, const std::string& globalIni);
 // Looks the folder over (modcheck.h) before it is mounted.  true = fine.  false = `m.blocked` and `m.problem` are set, the folder must
 // not be mounted, the problem is appended to `log` and error code 4 / 5 is raised in err::global().  `kind` is "mod", "pack" or
 // "stage" and only goes into the messages.
-bool vet(ModInfo& m, const char* kind, std::vector<std::string>* log = nullptr);
+bool vet(ModInfo& m, const char* kind, std::vector<std::string>* log = nullptr, const std::vector<std::string>& ignoreExt = {});
 
 // Enabled mods, sorted by (priority asc, id asc).  Later entries override earlier.
 std::vector<ModInfo> loadOrder(const ModSet& set);

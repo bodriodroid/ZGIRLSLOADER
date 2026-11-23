@@ -58,10 +58,52 @@ The output is derived from your game's palette textures: keep it for yourself, d
 One folder per mod; inside, mirror the game's layout (`mymod/characters/filia.foit`, `mymod/UISound/x.wav` ...).  Optional
 `mod.ini`: `name`, `version`, `author`, `description`, `priority` (higher wins, default 100), `enabled`.
 
-## resourcepacks/ — replacement packs
+## resourcepacks/ — resource packs (two modes)
 
-Same as a mod but mounted **under** `modscustom`, so a pack never beats a gameplay mod.  Optional `pack.ini` (same keys).
-Delete the folder and the original content is back; nothing in the core / `.dds` files is touched.
+A pack is a folder (or a `.zip`, unpacked like a mod) in `resourcepacks/`.  It is mounted **under** `modscustom`, so a pack never beats a
+gameplay mod.  Optional `pack.ini` (same keys as `mod.ini`).  A pack works in one of two modes, decided by one file:
+
+| the pack has | mode | what changes |
+|---|---|---|
+| a `changes.lua` | **rules** | only what the script says: each rule names a game file and the pack file that answers for it.  The pack's other files do nothing by themselves. |
+| no `changes.lua` | **automatic (by name)** | every file of the pack replaces the game's file(s) with the same **name**, whatever the folder (`filia_1p.dds` answers to `characters/filia_1p.dds`) |
+
+In both modes:
+
+* The game's files are **never written to**.  A rule or a name only changes what a lookup resolves to, in memory; delete the folder and
+  everything is back.  Anything a script writes goes to `mods/.cache/changes/<pack>/` and nowhere else.
+* **`.foit`, `.art` and `.art-pt` are not part of a resource pack** (that is a mod: put it in `modscustom/`).  Automatic mode leaves them
+  out (the Mods screen warns with the first names), a rule that targets one is refused, and they cannot block the pack.
+* The pack is checked before it is loaded like any other folder (damaged files → error 4, native code → error 5).
+* The Mods screen / `zdroid_probe` show the mode of each pack.
+
+### changes.lua (rules mode)
+
+A Lua 5.1 script run once at start in a sandbox (no `require`, no `os.execute`, no `io.popen`; `io.open` / `os.remove` only reach the
+pack's scratch folder; a script that runs too long is stopped).  If it fails, **nothing** of that pack is applied (all or nothing) and
+the error is shown.  Two styles, both accepted:
+
+1. The community loader's style (SkullLoader "CCLib"): `ModInfo`, `Mod.install()` (or a global `install()` / `init()`), calling
+   `CCLib.gfsAddFile(archive, "game/path.ext", "file of the pack")`.  Supported: `gfsAddFile`, `gfsAddFiles` (a folder), `gfsExtractFile(s)`
+   (copy a game file, or what an earlier rule made of it, to a scratch path so the script can edit it), `gfsCommitChanges` (no-op),
+   `addLocalization(key, text)` (adds the key to a *copy* of every `*_loc.json`), `addNewPermission` (accepted, nothing to do),
+   `hasMod` / `getModVersion`, `getWorkingDirectory`, `work_dir` / `data01_dir` / `data02_dir`.  `gbsMerge` and the memory functions are
+   refused with a warning (they would change the running game, not its files).  The archive name is accepted and ignored.
+2. Plain tables, returned or in a global `Changes` / `changes` / `Rules`:
+
+```lua
+return {
+  ["characters/filia_1p.dds"] = "mine/filia.dds",                  -- game path = file of the pack
+  { game = "UISound/hit.wav", source = "sfx/hit.wav" },
+  { "ui/Win/Main.gbs", "ui/Main.gbs" },
+}
+```
+
+Paths of the pack are relative to its folder (`<work_dir>\\mods\\<name>\\x` is understood too).  A game path may not leave the game
+(`..` or an absolute path is refused).
+
+**Not verified against a real AOTC `changes.lua`**: the format above is read from the community loader's documentation plus plain tables.
+If a real pack does something this does not cover, send its `changes.lua` (and the pack's folder listing) and it gets fixed.
 
 ## stages/ — custom stages
 
@@ -124,9 +166,9 @@ work the same.  Details:
 * The folder is `<game folder>/mods/`.  On Android the game folder is the one chosen at setup, or the app's own folder
   `Android/data/org.bodriodroid.zgirlsmobile/files/` (the Mods screen shows the exact path).
 
-**AOTC (Skullgirls: Ahead of the Curve):** not verified.  Its installer / Mod Manager format has not been checked against a real copy, so
-nothing here is claimed to work with it yet.  If it ships plain game-layout files (characters, scripts, UI) they load as a mod or pack,
-zipped or not; anything that needs the original loader's native code is refused by design.
+**AOTC (Skullgirls: Ahead of the Curve)** is a resource pack: put it in `resourcepacks/` (folder or `.zip`).  With a `changes.lua` it loads in
+rules mode, without one by name (see above).  Not tested against a real copy yet; anything that needs the original loader's native code
+is refused by design.
 
 ---
 
@@ -135,3 +177,8 @@ zipped or not; anything that needs the original loader's native code is refused 
 Al arrancar se crea sola `mods/` dentro de la carpeta del juego con `pal`, `modscustom`, `stages`, `sdvoice_japanese` y
 `resourcepacks`. Un mod puede ser una carpeta o un `.zip` (se descomprime solo, quitando la carpeta envoltorio). Los `.pal` se hornean a un `.dds` de paleta normal y salen como colores extra de su personaje (Tab en el
 selector). Orden: juego < resourcepacks < modscustom < stages < voces japonesas. Los archivos originales nunca se tocan.
+
+**Resource packs (AOTC es uno):** dos modos. Con `changes.lua` → solo cambia lo que dicen sus reglas (cada regla nombra un archivo del juego y
+el archivo del pack que lo reemplaza; todo en memoria, el juego original no se toca). Sin `changes.lua` → automático: cada archivo del pack
+reemplaza a los del juego con el mismo **nombre**. En ambos modos `.foit`, `.art` y `.art-pt` no se incluyen en un pack (eso son mods,
+van a `modscustom/`). Si `changes.lua` falla, no se aplica nada de ese pack.

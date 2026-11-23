@@ -46,6 +46,7 @@ add_library(zengine_core STATIC
   src/core/vault.cpp
   src/core/gfs.cpp
   src/core/zipread.cpp
+  src/core/pack_changes.cpp
   src/core/palfx.cpp
   src/core/screen_layout.cpp
   src/core/text_formats.cpp
@@ -183,6 +184,10 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   add_executable(zdroid_zip_tests tests/test_zipread.cpp)
   target_link_libraries(zdroid_zip_tests PRIVATE zengine_core)
   add_test(NAME zdroid_zip_tests COMMAND zdroid_zip_tests)
+
+  add_executable(zdroid_pack_tests tests/test_packs.cpp)
+  target_link_libraries(zdroid_pack_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_pack_tests COMMAND zdroid_pack_tests)
 
   add_executable(zdroid_gfs_tests tests/test_gfs.cpp)
   target_link_libraries(zdroid_gfs_tests PRIVATE zengine_core)

@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <set>
+#include <unordered_map>
 
 #include "vault.h"
 
@@ -29,6 +30,13 @@ const std::set<std::string>& skipDirs() {
 std::string baseName(const std::string& key) {
     size_t p = key.rfind('/');
     return p == std::string::npos ? key : key.substr(p + 1);
+}
+
+// ".ext" = the file ends with it; anything else = the file's own name (case-insensitive)
+bool skipMatches(const std::string& lowRel, const std::string& rule) {
+    if (rule.empty()) return false;
+    if (rule[0] == '.') return lowRel.size() >= rule.size() && lowRel.compare(lowRel.size() - rule.size(), rule.size(), rule) == 0;
+    return baseName(lowRel) == rule;
 }
 
 }  // namespace
@@ -110,6 +118,85 @@ void Vfs::addFile(const std::string& real, const std::string& rel, int order) {
         pos = slash + 1;
     }
     byName_[baseName(key)].push_back(real);
+}
+
+size_t Vfs::mountByName(const std::string& dir, const std::vector<std::string>& skipExt, std::vector<std::string>* skipped) {
+    std::error_code ec;
+    if (!fs::is_directory(dir, ec)) return 0;
+    const int order = static_cast<int>(mounts_.size());
+    mounts_.push_back(dir);
+    std::unordered_map<std::string, std::vector<std::string>> keysByName;   // built before the pack's own files go in
+    for (const auto& kv : bySuffix_) keysByName[baseName(kv.first)].push_back(kv.first);
+    std::vector<std::pair<std::string, std::string>> found;
+    fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+    for (; !ec && it != end; it.increment(ec)) {
+        const fs::directory_entry& de = *it;
+        std::error_code ec2;
+        if (de.is_directory(ec2)) {
+            if (skipDirs().count(lowerCopy(de.path().filename().string()))) it.disable_recursion_pending();
+            continue;
+        }
+        if (!de.is_regular_file(ec2)) continue;
+        std::string rel = fs::relative(de.path(), dir, ec2).generic_string();
+        if (ec2 || rel.empty()) continue;
+        found.emplace_back(std::move(rel), de.path().string());
+    }
+    std::sort(found.begin(), found.end());
+    size_t taken = 0;
+    for (const auto& [rel, real] : found) {
+        const std::string low = lowerCopy(rel);
+        bool skip = false;
+        for (const std::string& ext : skipExt)
+            if (skipMatches(low, lowerCopy(ext))) skip = true;
+        if (skip) {
+            if (skipped) skipped->push_back(rel);
+            continue;
+        }
+        addFile(real, rel, order);
+        ++taken;
+        const std::string key = normalizeKey(rel);
+        const size_t parts = static_cast<size_t>(std::count(key.begin(), key.end(), '/')) + 1;
+        const auto named = keysByName.find(baseName(key));
+        if (named == keysByName.end()) continue;
+        for (const std::string& k : named->second) {
+            Entry& e = bySuffix_[k];
+            if (e.mountOrder < order) {
+                e.real = real;
+                e.mountOrder = order;
+                e.depth = parts;
+            }
+        }
+    }
+    return taken;
+}
+
+size_t Vfs::mountOverrides(const std::vector<Override>& rules) {
+    if (rules.empty()) return 0;
+    const int order = static_cast<int>(mounts_.size());
+    mounts_.push_back("<overrides>");
+    std::unordered_map<std::string, std::vector<std::string>> keysByName;
+    for (const auto& kv : bySuffix_) keysByName[baseName(kv.first)].push_back(kv.first);
+    size_t n = 0;
+    for (const Override& r : rules) {
+        const std::string key = normalizeKey(r.game);
+        if (key.empty() || r.real.empty()) continue;
+        addFile(r.real, r.game, order);
+        ++n;
+        const auto named = keysByName.find(baseName(key));
+        if (named == keysByName.end()) continue;
+        const size_t parts = static_cast<size_t>(std::count(key.begin(), key.end(), '/')) + 1;
+        for (const std::string& k : named->second) {
+            const bool ends = k == key || (k.size() > key.size() && k.compare(k.size() - key.size(), key.size(), key) == 0 && k[k.size() - key.size() - 1] == '/');
+            if (!ends) continue;
+            Entry& e = bySuffix_[k];
+            if (e.mountOrder < order) {
+                e.real = r.real;
+                e.mountOrder = order;
+                e.depth = parts;
+            }
+        }
+    }
+    return n;
 }
 
 size_t Vfs::mountVault(std::shared_ptr<const vault::Vault> v) {

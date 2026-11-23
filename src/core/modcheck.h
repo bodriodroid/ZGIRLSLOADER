@@ -43,8 +43,9 @@ struct Result {
     std::string firstProblem() const;
 };
 
-// Scans `dir` recursively.  A folder that does not exist gives an empty, clean result.
-Result check(const std::string& dir, size_t maxFiles = 50000);
+// Scans `dir` recursively.  A folder that does not exist gives an empty, clean result.  Files whose extension is in `ignoreExt`
+// (lowercase, with the dot) are not looked at: a resource pack does not use .foit / .art / .art-pt, so those cannot block it.
+Result check(const std::string& dir, size_t maxFiles = 50000, const std::vector<std::string>& ignoreExt = {});
 
 // Checks one file's bytes against its extension (lowercase, with dot).  Returns true when it is fine; otherwise *what says why.
 // Exposed for the tests and for tools that already have the bytes.
