@@ -54,6 +54,7 @@
 #include "stage3d_gfx.h"
 #include "target_switch.h"
 #include "touch_pad.h"
+#include "chord_assist.h"
 #include "ui.h"
 
 namespace zengine {
@@ -508,6 +509,8 @@ private:
     int shake_ = 0;
     uint32_t aiSeed_ = 0x9E3779B9u;
     bool padVisible_ = false;
+    int chordWindow_ = 3;            // option "Super Chord Assist": ticks a lone attack press may wait for its partner (0 = off)
+    fight::ChordAssist chord_[2];   // PP / KK / PPP / KKK for a thumb pair: holds a lone press back a few ticks while a super is affordable
     touch::TouchPad touchPad_;     // stick + buttons (src/core/touch_pad.h); layout from touch_layout.txt if present
     bool padForced_ = false;       // ZDROID_PLAY_PAD=1: show the pad without a touch screen (desktop / screenshots)
     std::vector<touch::Finger> fakeFingers_;  // ZDROID_PLAY_FAKETOUCH="x,y;x,y": fingers held for captures / tests
@@ -683,6 +686,7 @@ private:
     void stepSim(uint16_t p1, uint16_t p2);
     void prefetchFrames();
     uint16_t humanButtons(int player, Ui& ui);
+    uint16_t chordPass(int player, uint16_t raw);   // humanButtons -> ChordAssist, exactly once per simulated tick
     uint16_t aiButtons(int me);
     uint32_t aiRandom();
     void leaveMatch();

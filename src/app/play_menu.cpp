@@ -370,6 +370,7 @@ void PlayScreen::applyOptions() {
         audio_->setVolumes(static_cast<float>(val("OPT_INT_MASTER_VOL", 0, 100, 100)) / 100.0f,
                            static_cast<float>(val("OPT_INT_MUSIC", 0, 100, 100)) / 100.0f,
                            static_cast<float>(val("OPT_INT_EFFECTS", 0, 100, 100)) / 100.0f);
+    chordWindow_ = val("ZD_CHORD_ASSIST", 0, 6, 3);
     touch::Layout lay = touchPad_.layout();
     const float sc = static_cast<float>(val("ZD_TOUCH_SCALE", 60, 150, 100)) / 100.0f;
     const int op = val("ZD_TOUCH_OPACITY", 20, 100, 60) * 255 / 100;

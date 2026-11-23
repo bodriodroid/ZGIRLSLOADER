@@ -1431,6 +1431,8 @@ void PlayScreen::finishLoad() {
 }
 
 void PlayScreen::startRound() {
+    chord_[0].reset();
+    chord_[1].reset();
     if (foitMode_) {   // the world places the fighters and runs the entrance / card / fight itself: only the screen's own state restarts
         round_ = foit_->round();
         for (int i = 0; i < 2; ++i) {
@@ -1611,6 +1613,16 @@ uint16_t PlayScreen::humanButtons(int player, Ui& ui) {
         if (ks[SDL_SCANCODE_KP_6] || ks[SDL_SCANCODE_6]) b |= kHK;
     }
     return b;
+}
+
+// A human's buttons for one simulated tick through the chord assist (chord_assist.h): two punches / two kicks that land a few ticks apart
+// reach the fight as one chord, so a super (PP / KK / PPP / KKK) comes out with two thumbs.  Only while the fighter has a bar to spend,
+// so a fighter with no meter pays no delay at all.  Must be called exactly once per tick.
+uint16_t PlayScreen::chordPass(int player, uint16_t raw) {
+    const int side = player & 1;
+    chord_[side].setWindow(chordWindow_);
+    const bool affordable = foitMode_ && phase_ == Phase::Fight && st_.p[side].meter >= 1000;
+    return chord_[side].filter(raw, affordable);
 }
 
 // The picture of a super move.  The world only raises two switches on the super's owner (SUPERSHADOWS while the stage is dark around it,
@@ -2027,8 +2039,8 @@ void PlayScreen::update(Ui& ui, int dtMs) {
     int guard = 0;
     while (acc_ >= kTickMs && guard++ < 5) {
         acc_ -= kTickMs;
-        uint16_t p1 = cpu_[0] ? aiButtons(0) : humanButtons(0, ui);
-        uint16_t p2 = cpu_[1] ? aiButtons(1) : humanButtons(1, ui);
+        uint16_t p1 = cpu_[0] ? aiButtons(0) : chordPass(0, humanButtons(0, ui));
+        uint16_t p2 = cpu_[1] ? aiButtons(1) : chordPass(1, humanButtons(1, ui));
         if (lessonMode_) {
             p2 = 0;   // the dummy is the script's
             lessonTick(p1);
