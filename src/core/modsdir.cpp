@@ -6,6 +6,7 @@
 #include <map>
 
 #include "modloader.h"
+#include "zipread.h"
 
 namespace fs = std::filesystem;
 
@@ -150,6 +151,50 @@ std::string iniWith(const std::string& text, const std::string& key, const std::
         out += key + " = " + value + "\n";
     }
     return out;
+}
+
+// A "<name>.zip" next to the mod folders is unpacked into "<name>/" (same folder, wrapper folder taken off) and then behaves like any
+// other folder: mod.ini, switches, checks.  "<name>/.zipsrc" remembers which zip (size:mtime) it came from, so an unchanged zip is not
+// unpacked again, a replaced zip is unpacked again, and a folder the player made himself with the same name is never touched.
+size_t unzipIn(const std::string& folder, std::vector<std::string>& log, std::vector<std::string>& warnings) {
+    std::error_code ec;
+    if (!fs::is_directory(folder, ec)) return 0;
+    std::vector<fs::path> zips;
+    for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
+        std::error_code e2;
+        if (it->is_regular_file(e2) && lower(it->path().extension().string()) == ".zip") zips.push_back(it->path());
+    }
+    std::sort(zips.begin(), zips.end());
+    size_t n = 0;
+    for (const fs::path& z : zips) {
+        const std::string stem = z.stem().string();
+        if (stem.empty() || stem[0] == '.') continue;
+        std::error_code e2;
+        const fs::path dest = fs::path(folder) / stem;
+        const std::string stamp = std::to_string(fs::file_size(z, e2)) + ":" + std::to_string(fs::last_write_time(z, e2).time_since_epoch().count());
+        const fs::path stampFile = dest / ".zipsrc";
+        if (fs::exists(dest, e2)) {
+            if (!fs::exists(stampFile, e2)) {
+                warnings.push_back(z.filename().string() + ": a folder named " + stem + " already exists, the zip is ignored");
+                continue;
+            }
+            if (readText(stampFile) == stamp) continue;   // already unpacked, unchanged
+            fs::remove_all(dest, e2);                     // the zip was replaced: ours to redo
+        }
+        zipread::ExtractStats st;
+        std::string err;
+        if (!zipread::extract(z.string(), dest.string(), st, true, &err)) {
+            fs::remove_all(dest, e2);
+            warnings.push_back(z.filename().string() + ": " + err);
+            continue;
+        }
+        writeText(stampFile, stamp);
+        ++n;
+        log.push_back("unzipped " + z.filename().string() + " -> " + stem + "/ (" + std::to_string(st.files) + " file(s)" +
+                      (st.strippedFolder.empty() ? "" : ", folder " + st.strippedFolder + " taken off") + ")");
+        for (const std::string& p : st.problems) warnings.push_back(z.filename().string() + ": " + p);
+    }
+    return n;
 }
 
 // Lists every folder of `set` for the Mods screen and, when `mount`, mounts the enabled ones (priority order).
@@ -314,6 +359,8 @@ Report mountAll(Vfs& vfs, const std::string& gameDir, bool japaneseVoices) {
     rep.allEnabled = enabled;
     rep.root = l.root;
     if (!enabled) rep.warnings.push_back("mods/mods.ini has enabled = 0: mods, packs, stages and palettes are off");
+    if (enabled)   // .zip mods / packs / stages become folders first (zipread.h)
+        for (const std::string& d : {l.packs, l.custom, l.stages}) unzipIn(d, rep.log, rep.warnings);
     const mods::ModSet packs = mods::scanFolder(l.packs, ini);
     const mods::ModSet custom = mods::scanFolder(l.custom, ini);
     const mods::ModSet stages = mods::scanFolder(l.stages, ini);

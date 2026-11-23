@@ -159,6 +159,19 @@ ModSet scanFolder(const std::string& modsDir, const std::string& globalIni) {
         // mod.ini (SKGLoader mods) or pack.ini (resource packs): same keys
         std::map<std::string, std::string> ini = readIni(join(dir, "mod.ini"));
         if (ini.empty()) ini = readIni(join(dir, "pack.ini"));
+        if (ini.empty()) {   // a folder inside a wrapper folder ("mymod/mymod-master/mod.ini"): look one level down, when it is the only folder
+            std::string only;
+            int folders = 0;
+            for (const std::string& sub : listDir(dir))
+                if (isDir(join(dir, sub)) && !sub.empty() && sub[0] != '.') {
+                    only = sub;
+                    ++folders;
+                }
+            if (folders == 1) {
+                ini = readIni(join(join(dir, only), "mod.ini"));
+                if (ini.empty()) ini = readIni(join(join(dir, only), "pack.ini"));
+            }
+        }
         auto get = [&](const char* k, const std::string& def) -> std::string {
             const auto it = ini.find(k);
             return (it == ini.end() || it->second.empty()) ? def : it->second;

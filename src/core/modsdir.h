@@ -19,7 +19,8 @@
 // The base game folder is never written to except for creating `mods/` itself.  Mount order, later wins:
 //   game  <  resourcepacks  <  modscustom  <  stages  <  sdvoice_japanese
 //
-// Not supported yet: packs / mods as .zip files (unzip them into the folder).
+// A mod / pack / stage may also be a .zip file dropped into its folder: it is unpacked next to itself (<name>.zip -> <name>/, a single
+// wrapper folder such as "mymod-master/" is taken off) and then loaded like any folder.  A folder inside a wrapper folder is fine too.
 #pragma once
 #include <string>
 #include <vector>

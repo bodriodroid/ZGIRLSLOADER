@@ -96,12 +96,42 @@ disabled = id1, id2      # switch single mods / packs / stages off
 japanese_voices = auto   # auto | 1 | 0
 ```
 
-Not supported yet: `.zip` packs (unzip them into the folder); the old `SKGLoader/mods/<id>/` folders keep working (see MODLOADER.md).
+The old `SKGLoader/mods/<id>/` folders keep working (see MODLOADER.md).
+
+## Shipping a mod as a `.zip`
+
+Drop `mymod.zip` into `modscustom/`, `resourcepacks/` or `stages/`.  At the next start it is unpacked next to itself (`mymod.zip` →
+`mymod/`) and loaded like any folder: `mod.ini` / `pack.ini`, the on/off switch of the Mods screen, the checks and the conflict list all
+work the same.  Details:
+
+* A single wrapper folder (`mymod-master/…`, what GitHub's "Download ZIP" makes) is taken off; `__MACOSX/` and `.DS_Store` are skipped.
+  A mod that is already inside a wrapper *folder* works too: its `mod.ini` is found one level down.
+* `mymod/.zipsrc` remembers the zip's size and date: an unchanged zip is not unpacked again, a replaced zip is.  A folder with the same
+  name that you made yourself is never overwritten (a warning says so).
+* Stored and deflate entries only (what every zip tool writes).  Not supported, and reported instead of guessed: encryption, ZIP64
+  (> 4 GiB), other compression methods.  Every entry's size and CRC-32 are checked; one file may not expand past 1 GiB, the zip not
+  past 4 GiB; paths that would leave the folder (`../`, absolute, `C:`) are refused.  Reader: `src/core/zipread.h`.
+* The same safety rules as for folders: a mod with native code or scripts (`.so .dll .exe .sh .bin …`) is listed but **not loaded**
+  (error code 5), a damaged texture / sound is error code 4 — see `src/core/modcheck.h`.
+
+## For mod authors
+
+* Mirror the game's layout or not: files are matched by path *suffix*, case-insensitive (`characters/filia_1p.dds` and
+  `data/characters/filia_1p.dds` replace the same file).
+* `mod.ini` keys: `name`, `version`, `author`, `description`, `priority` (higher is mounted later and wins), `enabled`, `id`.
+  Two mods that hold the same file: the later one wins, and the Mods screen / `zdroid_probe` list who beats whom.
+* Test a mod without the app: `zdroid_probe <game folder>` prints the mounted mods, warnings and conflicts.
+* The folder is `<game folder>/mods/`.  On Android the game folder is the one chosen at setup, or the app's own folder
+  `Android/data/org.bodriodroid.zgirlsmobile/files/` (the Mods screen shows the exact path).
+
+**AOTC (Skullgirls: Ahead of the Curve):** not verified.  Its installer / Mod Manager format has not been checked against a real copy, so
+nothing here is claimed to work with it yet.  If it ships plain game-layout files (characters, scripts, UI) they load as a mod or pack,
+zipped or not; anything that needs the original loader's native code is refused by design.
 
 ---
 
 ### Resumen (es)
 
 Al arrancar se crea sola `mods/` dentro de la carpeta del juego con `pal`, `modscustom`, `stages`, `sdvoice_japanese` y
-`resourcepacks`. Los `.pal` se hornean a un `.dds` de paleta normal y salen como colores extra de su personaje (Tab en el
+`resourcepacks`. Un mod puede ser una carpeta o un `.zip` (se descomprime solo, quitando la carpeta envoltorio). Los `.pal` se hornean a un `.dds` de paleta normal y salen como colores extra de su personaje (Tab en el
 selector). Orden: juego < resourcepacks < modscustom < stages < voces japonesas. Los archivos originales nunca se tocan.
