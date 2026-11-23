@@ -1,0 +1,2364 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZGirlsLoader & ZGirlsMobile — Modloader, Engine Port & Sample Ecosystem</title>
+  <meta name="description" content="Portal oficial de ZGirlsLoader / ZGirlsMobile por bodriodroid. Cargador modular C++17 + SDL2 + OpenGL, Core Vault para Android, editor de paletas, Lua 5.1 y Sample Stage Anna_Killer_ZGirlsLoaderPort." />
+  <meta name="theme-color" content="#e11d48" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --bg-base: #06070c;
+      --bg-elevated: #0b0d16;
+      --bg-card: #101320;
+      --bg-card-hover: #151a2b;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.18);
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+
+      /* Paleta de dominios */
+      --c-blue: #38bdf8;
+      --c-blue-bd: rgba(56, 189, 248, 0.35);
+      --c-purple: #a855f7;
+      --c-purple-bd: rgba(168, 85, 247, 0.35);
+      --c-amber: #f59e0b;
+      --c-amber-bd: rgba(245, 158, 11, 0.35);
+      --c-emerald: #10b981;
+      --c-emerald-bd: rgba(16, 185, 129, 0.35);
+      --c-crimson: #f43f5e;
+      --c-crimson-bd: rgba(244, 63, 94, 0.38);
+
+      --accent: #e11d48;
+      --accent-glow: rgba(225, 29, 72, 0.35);
+      --radius: 14px;
+      --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-display: 'Space Grotesk', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.85em;
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #e5e7eb;
+    }
+
+    .bg-grid {
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 12% 8%, rgba(225, 29, 72, 0.12), transparent 36%),
+        radial-gradient(circle at 86% 18%, rgba(56, 189, 248, 0.09), transparent 36%),
+        radial-gradient(circle at 50% 78%, rgba(16, 185, 129, 0.06), transparent 42%),
+        linear-gradient(to right, rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 100% 100%, 42px 42px, 42px 42px;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 1340px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Strip de telemetría superior (estilo Modrinth / SMAPI) */
+    .top-strip {
+      background: linear-gradient(90deg, rgba(225,29,72,0.16), rgba(56,189,248,0.12), rgba(16,185,129,0.12));
+      border-bottom: 1px solid var(--border);
+      padding: 7px 16px;
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: #d1d5db;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .top-strip a { color: #7dd3fc; text-decoration: none; font-weight: 600; }
+    .top-strip a:hover { text-decoration: underline; }
+
+    /* Header */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 60;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      background: rgba(6, 7, 12, 0.86);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 68px;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      text-decoration: none;
+      color: var(--text-main);
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, var(--accent), #881337);
+      display: grid; place-items: center;
+      font-family: var(--font-mono);
+      font-weight: 700; font-size: 0.9rem;
+      box-shadow: 0 0 22px var(--accent-glow);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+    }
+
+    .nav-links { display: flex; align-items: center; gap: 20px; }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.86rem;
+      font-weight: 500;
+      transition: color 0.18s;
+      white-space: nowrap;
+    }
+    .nav-links a:hover { color: #fff; }
+
+    .nav-actions { display: flex; align-items: center; gap: 10px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 10px;
+      font-size: 0.87rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.18s ease;
+      font-family: var(--font-sans);
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 4px 20px var(--accent-glow); }
+    .btn-primary:hover { background: #f43f5e; transform: translateY(-1px); }
+    .btn-ghost { background: rgba(255, 255, 255, 0.04); color: var(--text-main); border-color: var(--border); }
+    .btn-ghost:hover { background: rgba(255, 255, 255, 0.09); border-color: var(--border-strong); }
+    .btn-sm { padding: 6px 12px; font-size: 0.78rem; border-radius: 8px; }
+
+    .mobile-toggle {
+      display: none;
+      background: none;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 7px 11px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    /* Hero */
+    .hero { padding: 64px 0 48px; }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.12fr 0.88fr;
+      gap: 42px;
+      align-items: center;
+    }
+
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-family: var(--font-mono);
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+    }
+    .badge-dev { border-color: rgba(245, 158, 11, 0.4); background: rgba(245, 158, 11, 0.1); color: #fbbf24; }
+    .badge-mit { border-color: rgba(16, 185, 129, 0.35); background: rgba(16, 185, 129, 0.1); color: #34d399; }
+    .badge-arch { border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.1); color: #7dd3fc; }
+
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2.25rem, 4.3vw, 3.55rem);
+      line-height: 1.07;
+      letter-spacing: -0.03em;
+      margin-bottom: 16px;
+    }
+
+    .gradient-text {
+      background: linear-gradient(135deg, #ffffff 25%, #fb7185 68%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      font-size: 1.02rem;
+      color: var(--text-muted);
+      max-width: 620px;
+      margin-bottom: 24px;
+    }
+
+    .hero-cta { display: flex; flex-wrap: wrap; gap: 11px; margin-bottom: 28px; }
+
+    .hero-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .metric-val { font-family: var(--font-display); font-size: 1.3rem; font-weight: 700; color: #fff; }
+    .metric-label { font-size: 0.75rem; color: var(--text-dim); }
+
+    /* Engine Card */
+    .engine-card {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(225, 29, 72, 0.08);
+    }
+    .engine-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--text-muted);
+    }
+    .window-dots { display: flex; gap: 6px; }
+    .window-dots span { width: 10px; height: 10px; border-radius: 50%; }
+    .engine-body { padding: 18px; font-family: var(--font-mono); font-size: 0.78rem; }
+
+    .boot-stage {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 11px; border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      margin-bottom: 7px;
+    }
+    .boot-stage.done { border-color: rgba(16, 185, 129, 0.28); }
+    .boot-stage.active { border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.07); }
+    .tag-ok { color: var(--c-emerald); font-weight: 600; }
+    .tag-run { color: var(--c-blue); font-weight: 600; }
+    .tag-wip { color: var(--c-amber); font-weight: 600; }
+
+    .hitbox-preview {
+      margin-top: 13px; padding: 12px; border-radius: 10px;
+      background: #05060b; border: 1px solid var(--border);
+    }
+    .hitbox-canvas {
+      height: 108px; position: relative;
+      background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 16px 16px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .box-push { width: 46px; height: 74px; border: 1.5px solid #fbbf24; background: rgba(251, 191, 36, 0.1); position: relative; display: flex; align-items: center; justify-content: center; }
+    .box-hurt { position: absolute; width: 68px; height: 82px; border: 1.5px solid #38bdf8; background: rgba(56, 189, 248, 0.1); }
+    .box-hit { position: absolute; right: -46px; top: 10px; width: 48px; height: 24px; border: 1.5px solid #f43f5e; background: rgba(244, 63, 94, 0.25); animation: hitFlash 2.2s infinite; }
+    .spark-fx { position: absolute; right: -34px; top: 14px; width: 16px; height: 16px; border-radius: 50%; background: radial-gradient(circle, #fff 0%, #fb7185 55%, transparent 75%); animation: sparkPop 2.2s infinite; }
+    @keyframes hitFlash { 0%, 55%, 100% { opacity: 0.3; } 72% { opacity: 1; box-shadow: 0 0 14px rgba(244, 63, 94, 0.65); } }
+    @keyframes sparkPop { 0%, 60%, 100% { transform: scale(0.4); opacity: 0; } 72% { transform: scale(1.7); opacity: 1; } }
+
+    /* Secciones */
+    section { padding: 68px 0; }
+    .section-header { margin-bottom: 32px; max-width: 780px; }
+    .section-eyebrow { font-family: var(--font-mono); font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--accent); margin-bottom: 8px; display: block; }
+    h2 { font-family: var(--font-display); font-size: clamp(1.7rem, 3vw, 2.3rem); letter-spacing: -0.02em; margin-bottom: 10px; }
+    .section-sub { color: var(--text-muted); font-size: 0.97rem; }
+
+    /* ============================================================
+       QUICKSTART MULTIPLATAFORMA (estilo SMAPI / Ship of Harkinian)
+    ============================================================ */
+    .quickstart-box {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 26px;
+    }
+
+    .os-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
+    .os-tab {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 18px; border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-family: var(--font-display); font-weight: 600; font-size: 0.92rem;
+      cursor: pointer; transition: all 0.15s;
+    }
+    .os-tab.active { background: rgba(225, 29, 72, 0.15); border-color: rgba(225, 29, 72, 0.5); color: #fff; }
+
+    .os-panel { display: none; grid-template-columns: 1.1fr 0.9fr; gap: 24px; }
+    .os-panel.active { display: grid; }
+
+    .step-list { display: flex; flex-direction: column; gap: 12px; }
+    .step-item {
+      display: flex; gap: 14px; align-items: flex-start;
+      padding: 14px; border-radius: 12px;
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--border);
+    }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+      background: rgba(56, 189, 248, 0.14); border: 1px solid rgba(56, 189, 248, 0.35);
+      color: var(--c-blue); font-family: var(--font-mono); font-weight: 700; font-size: 0.82rem;
+      display: grid; place-items: center;
+    }
+    .step-item h4 { font-family: var(--font-display); font-size: 0.98rem; margin-bottom: 3px; }
+    .step-item p { font-size: 0.86rem; color: var(--text-muted); }
+
+    .req-card {
+      background: #06070c;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .req-card h4 { font-family: var(--font-mono); font-size: 0.82rem; color: var(--c-emerald); margin-bottom: 12px; }
+    .req-list { list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 0.86rem; color: var(--text-muted); }
+    .req-list li::before { content: "✓ "; color: var(--c-emerald); font-weight: 700; }
+
+    /* ============================================================
+       SAMPLE STAGE SHOWCASE: ANNA_KILLER_ZGIRLSLOADERPORT
+       (estilo Modrinth + GameBanana)
+    ============================================================ */
+    .mod-showcase-card {
+      background: linear-gradient(180deg, rgba(16, 19, 32, 0.98), rgba(9, 11, 18, 0.98));
+      border: 1px solid rgba(244, 63, 94, 0.35);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+    }
+
+    .mod-header {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 20px; padding: 24px 28px;
+      background: linear-gradient(90deg, rgba(225, 29, 72, 0.14), rgba(168, 85, 247, 0.08), rgba(16, 18, 30, 0.5));
+      border-bottom: 1px solid var(--border);
+    }
+
+    .mod-identity { display: flex; align-items: center; gap: 18px; }
+    .mod-avatar {
+      width: 64px; height: 64px; border-radius: 14px; flex-shrink: 0;
+      background: linear-gradient(135deg, #be123c, #4c1d95);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      display: grid; place-items: center;
+      font-family: var(--font-display); font-weight: 700; font-size: 1.35rem;
+      box-shadow: 0 8px 25px rgba(225, 29, 72, 0.3);
+    }
+
+    .mod-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+    .mod-tag {
+      font-family: var(--font-mono); font-size: 0.71rem;
+      padding: 3px 9px; border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06); border: 1px solid var(--border); color: #e5e7eb;
+    }
+    .mod-tag.green { background: rgba(16, 185, 129, 0.14); border-color: rgba(16, 185, 129, 0.35); color: #6ee7b7; }
+    .mod-tag.blue { background: rgba(56, 189, 248, 0.14); border-color: rgba(56, 189, 248, 0.35); color: #7dd3fc; }
+
+    .mod-body {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 26px;
+      padding: 26px 28px;
+    }
+
+    /* Simulador visual de escenario 2D/3D + luces .lvl */
+    .stage-viewport {
+      position: relative;
+      height: 290px;
+      border-radius: 14px;
+      border: 1px solid var(--border-strong);
+      overflow: hidden;
+      background: #0a0612;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    .stage-sky {
+      position: absolute; inset: 0;
+      background: radial-gradient(circle at 50% 30%, rgba(244, 63, 94, 0.25), rgba(17, 12, 34, 0.95) 70%);
+      transition: filter 0.25s;
+    }
+
+    .stage-parallax-back {
+      position: absolute; bottom: 72px; left: -10%; right: -10%; height: 150px;
+      display: flex; align-items: flex-end; justify-content: center; gap: 18px;
+      transition: transform 0.12s ease-out;
+    }
+
+    .diner-building {
+      width: 280px; height: 122px;
+      background: linear-gradient(180deg, #1f1b38, #120f24);
+      border: 2px solid rgba(251, 113, 133, 0.45);
+      border-radius: 10px 10px 0 0;
+      position: relative;
+      box-shadow: 0 0 30px rgba(225, 29, 72, 0.2);
+    }
+
+    .diner-neon {
+      position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+      background: #140b1c; border: 1.5px solid #fb7185;
+      color: #fda4af; padding: 3px 14px; border-radius: 6px;
+      font-family: var(--font-display); font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em;
+      box-shadow: 0 0 18px rgba(244, 63, 94, 0.65);
+      white-space: nowrap;
+    }
+
+    .diner-windows {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+      padding: 26px 18px 0;
+    }
+    .diner-win {
+      height: 52px; border-radius: 5px;
+      background: linear-gradient(180deg, rgba(251, 191, 36, 0.32), rgba(244, 63, 94, 0.18));
+      border: 1px solid rgba(253, 224, 71, 0.35);
+    }
+
+    .stage-floor {
+      position: relative; height: 74px; z-index: 2;
+      background: repeating-linear-gradient(90deg, #141626 0px, #141626 28px, #1a1d32 28px, #1a1d32 56px);
+      border-top: 2px solid rgba(251, 113, 133, 0.5);
+    }
+
+    .stage-fighters-layer {
+      position: absolute; bottom: 52px; left: 0; right: 0; z-index: 3;
+      display: flex; justify-content: center; gap: 90px;
+      pointer-events: none;
+      transition: transform 0.12s ease-out;
+    }
+
+    .fighter-silhouette {
+      width: 44px; height: 84px; border-radius: 10px 10px 4px 4px;
+      background: linear-gradient(180deg, #334155, #0f172a);
+      position: relative;
+      transition: box-shadow 0.2s, filter 0.2s;
+    }
+    .fighter-silhouette::after {
+      content: ""; position: absolute; bottom: -14px; left: -6px; right: -6px; height: 12px;
+      border-radius: 50%; background: rgba(0, 0, 0, 0.65);
+      opacity: var(--shadow-opacity, 1);
+      transition: opacity 0.2s;
+    }
+
+    .stage-hud-overlay {
+      position: absolute; top: 10px; left: 12px; right: 12px; z-index: 5;
+      display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.7rem; color: #e5e7eb;
+    }
+    .stage-hud-pill { background: rgba(6, 7, 12, 0.78); border: 1px solid var(--border); padding: 4px 9px; border-radius: 6px; }
+
+    .stage-controls {
+      display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center;
+    }
+    .toggle-chip {
+      padding: 6px 11px; border-radius: 7px; font-family: var(--font-mono); font-size: 0.73rem;
+      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border); color: var(--text-muted);
+      cursor: pointer;
+    }
+    .toggle-chip.on { background: rgba(56, 189, 248, 0.16); border-color: var(--c-blue); color: #fff; }
+
+    .mod-sidebar { display: flex; flex-direction: column; gap: 14px; }
+    .mod-meta-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .meta-box {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 11px 13px;
+    }
+    .meta-box span { display: block; font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono); }
+    .meta-box strong { font-size: 0.88rem; color: #fff; }
+
+    /* ============================================================
+       MATRIZ DE COMPATIBILIDAD (estilo Dolphin / OpenMW)
+    ============================================================ */
+    .compat-wrap {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+    .compat-table {
+      width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 14px;
+    }
+    .compat-table th, .compat-table td {
+      text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border);
+    }
+    .compat-table th {
+      font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-dim); text-transform: uppercase;
+    }
+    .status-pill {
+      display: inline-block; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600;
+      padding: 3px 9px; border-radius: 999px;
+    }
+    .st-ready { background: rgba(16, 185, 129, 0.14); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35); }
+    .st-wip { background: rgba(56, 189, 248, 0.14); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.35); }
+    .st-plan { background: rgba(245, 158, 11, 0.14); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.35); }
+
+    /* ============================================================
+       DIAGRAMA DE ARQUITECTURA 25 x 225
+    ============================================================ */
+    .arch-shell {
+      background: linear-gradient(180deg, rgba(14, 17, 29, 0.96), rgba(8, 10, 18, 0.98));
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 18px;
+      padding: 24px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.65);
+    }
+    .arch-banner {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 18px;
+      padding: 16px 20px; border-radius: 12px;
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.1), rgba(168, 85, 247, 0.08), rgba(244, 63, 94, 0.1));
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 16px;
+    }
+    .arch-banner-title { font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; }
+    .arch-banner-sub { font-family: var(--font-mono); font-size: 0.74rem; color: var(--text-muted); }
+    .arch-counter-box {
+      display: flex; align-items: center; gap: 12px;
+      background: rgba(6, 7, 12, 0.7); border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px; padding: 9px 15px;
+    }
+    .arch-counter-num { font-family: var(--font-display); font-size: 1.6rem; font-weight: 700; color: var(--c-blue); line-height: 1; }
+    .arch-counter-meta { font-family: var(--font-mono); font-size: 0.71rem; color: var(--text-muted); line-height: 1.3; }
+
+    .pipeline-flows {
+      display: flex; flex-direction: column; gap: 9px; margin-bottom: 20px; padding: 13px;
+      border-radius: 12px; background: rgba(5, 6, 11, 0.75); border: 1px solid var(--border);
+    }
+    .flow-label { font-family: var(--font-mono); font-size: 0.68rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+    .flow-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 9px; }
+    .flow-node {
+      padding: 8px 10px; border-radius: 8px; font-family: var(--font-mono); font-size: 0.72rem;
+      background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(56, 189, 248, 0.25);
+      color: #e5e7eb; cursor: pointer; transition: all 0.15s;
+    }
+    .flow-node:hover { background: rgba(56, 189, 248, 0.12); border-color: var(--c-blue); transform: translateY(-1px); }
+    .flow-node.amber { border-color: rgba(245, 158, 11, 0.35); }
+    .flow-node.purple { border-color: rgba(168, 85, 247, 0.35); }
+    .flow-node.emerald { border-color: rgba(16, 185, 129, 0.35); }
+    .flow-node.crimson { border-color: rgba(244, 63, 94, 0.35); }
+    .flow-node small { display: block; font-size: 0.63rem; color: var(--text-dim); margin-top: 2px; }
+
+    .arch-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    .filter-pills { display: flex; flex-wrap: wrap; gap: 7px; }
+    .filter-pill {
+      display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px;
+      font-family: var(--font-mono); font-size: 0.73rem;
+      background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border); color: var(--text-muted); cursor: pointer;
+    }
+    .filter-pill.active { background: rgba(255, 255, 255, 0.12); color: #fff; border-color: rgba(255,255,255,0.35); }
+    .pill-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    .arch-search-wrap { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+    .arch-search {
+      background: rgba(5, 6, 11, 0.9); border: 1px solid var(--border); color: #fff;
+      padding: 7px 13px; border-radius: 9px; font-family: var(--font-mono); font-size: 0.78rem; min-width: 250px; outline: none;
+    }
+    .arch-search:focus { border-color: var(--c-blue); }
+    .view-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; }
+    .view-btn { background: rgba(255, 255, 255, 0.03); color: var(--text-muted); border: none; padding: 7px 11px; font-family: var(--font-mono); font-size: 0.73rem; cursor: pointer; }
+    .view-btn.active { background: var(--accent); color: #fff; }
+
+    .blocks-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 13px; }
+    .blocks-grid.compact-mode { gap: 9px; }
+
+    .arch-block {
+      border-radius: 12px; padding: 12px; background: var(--bg-card); border: 1px solid var(--border);
+      cursor: pointer; transition: transform 0.18s, box-shadow 0.18s;
+      display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .arch-block:hover { transform: translateY(-3px); box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45); }
+    .arch-block[data-group="blue"] { background: linear-gradient(180deg, rgba(56, 189, 248, 0.11), rgba(14, 18, 32, 0.96)); border-color: var(--c-blue-bd); }
+    .arch-block[data-group="purple"] { background: linear-gradient(180deg, rgba(168, 85, 247, 0.11), rgba(16, 14, 30, 0.96)); border-color: var(--c-purple-bd); }
+    .arch-block[data-group="amber"] { background: linear-gradient(180deg, rgba(245, 158, 11, 0.11), rgba(22, 16, 14, 0.96)); border-color: var(--c-amber-bd); }
+    .arch-block[data-group="emerald"] { background: linear-gradient(180deg, rgba(16, 185, 129, 0.11), rgba(11, 22, 20, 0.96)); border-color: var(--c-emerald-bd); }
+    .arch-block[data-group="crimson"] { background: linear-gradient(180deg, rgba(244, 63, 94, 0.12), rgba(24, 12, 20, 0.96)); border-color: var(--c-crimson-bd); }
+
+    .block-head { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 8px; }
+    .block-num { font-family: var(--font-mono); font-size: 0.7rem; font-weight: 700; padding: 2px 7px; border-radius: 5px; background: rgba(255, 255, 255, 0.08); }
+    .block-badge { font-family: var(--font-mono); font-size: 0.62rem; padding: 2px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.35); color: var(--text-muted); }
+    .block-title { font-family: var(--font-display); font-size: 0.88rem; font-weight: 700; line-height: 1.25; margin-bottom: 9px; color: #fff; }
+    .subgrid-9 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 9px; }
+    .subcell {
+      background: rgba(6, 7, 12, 0.65); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 4px;
+      padding: 4px 5px; font-family: var(--font-mono); font-size: 0.59rem; line-height: 1.2; color: #d1d5db;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .compact-mode .subcell { font-size: 0.53rem; padding: 3px 4px; }
+    .subcell.match-highlight { border-color: #fde047; background: rgba(250, 204, 21, 0.18); color: #fef08a; }
+    .block-foot { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 0.64rem; color: var(--text-dim); padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); }
+
+    /* Modal Inspector */
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(3, 4, 8, 0.84); backdrop-filter: blur(8px); z-index: 100; display: none; align-items: center; justify-content: center; padding: 20px; }
+    .modal-backdrop.open { display: flex; }
+    .modal-panel { width: 100%; max-width: 860px; max-height: 90vh; overflow-y: auto; background: var(--bg-elevated); border: 1px solid var(--border-strong); border-radius: 18px; padding: 28px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+    .modal-close { background: rgba(255,255,255,0.07); border: 1px solid var(--border); color: #fff; width: 34px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 1.1rem; }
+    .modal-subgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 16px 0; }
+    .modal-subcard { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .modal-subcard h4 { font-family: var(--font-mono); font-size: 0.78rem; color: #fff; margin-bottom: 4px; }
+    .modal-subcard p { font-size: 0.77rem; color: var(--text-muted); line-height: 1.45; }
+    .modal-io { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .io-box { background: #05060b; border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; font-family: var(--font-mono); font-size: 0.76rem; }
+
+    /* Mods & Colour Editor */
+    .interactive-split { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .panel { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+    .tree-item { display: flex; align-items: flex-start; gap: 12px; padding: 9px 12px; border-radius: 8px; cursor: pointer; font-family: var(--font-mono); font-size: 0.82rem; }
+    .tree-item:hover, .tree-item.selected { background: rgba(225, 29, 72, 0.12); }
+    .tree-item.selected { border-left: 3px solid var(--accent); }
+    .tree-info { margin-top: 12px; padding: 13px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); font-size: 0.86rem; color: var(--text-muted); }
+
+    .palette-controls { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+    .slider-row { display: grid; grid-template-columns: 100px 1fr 48px; align-items: center; gap: 12px; font-size: 0.83rem; }
+    input[type="range"] { accent-color: var(--accent); cursor: pointer; }
+    .palette-swatches { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 12px; }
+    .swatch { height: 44px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); }
+    .zgcol-preview { margin-top: 12px; padding: 11px; border-radius: 8px; background: #05060b; border: 1px solid var(--border); font-family: var(--font-mono); font-size: 0.73rem; color: #a7f3d0; }
+
+    /* CLI & Code */
+    .deep-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .deep-tab { background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--text-muted); padding: 8px 15px; border-radius: 9px; font-family: var(--font-mono); font-size: 0.79rem; cursor: pointer; }
+    .deep-tab.active { background: rgba(225,29,72,0.15); border-color: rgba(225,29,72,0.45); color: #fff; }
+    .code-box { position: relative; background: #05060a; border: 1px solid var(--border); border-radius: 12px; padding: 20px; font-family: var(--font-mono); font-size: 0.8rem; overflow-x: auto; color: #e5e7eb; }
+    .copy-btn { position: absolute; top: 12px; right: 12px; background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: #fff; padding: 5px 11px; border-radius: 7px; font-family: var(--font-mono); font-size: 0.72rem; cursor: pointer; }
+
+    /* FAQ Accordion (estilo Fightcade / SMAPI / Dolphin) */
+    .faq-list { display: flex; flex-direction: column; gap: 10px; }
+    .faq-item { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .faq-q {
+      width: 100%; text-align: left; background: none; border: none; color: #fff;
+      padding: 17px 20px; font-family: var(--font-display); font-size: 1rem; font-weight: 600;
+      display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+    }
+    .faq-a { display: none; padding: 0 20px 18px; color: var(--text-muted); font-size: 0.91rem; }
+    .faq-item.open .faq-a { display: block; }
+    .faq-item.open .faq-icon { transform: rotate(45deg); }
+    .faq-icon { font-family: var(--font-mono); font-size: 1.2rem; color: var(--c-blue); transition: transform 0.15s; }
+
+    /* Docs & Legal */
+    .docs-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-top: 24px; }
+    .doc-link-card { display: block; text-decoration: none; color: inherit; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 15px; transition: all 0.18s; }
+    .doc-link-card:hover { border-color: var(--c-blue); background: rgba(56,189,248,0.06); transform: translateY(-2px); }
+    .doc-link-card code { color: var(--c-blue); display: inline-block; margin-bottom: 6px; }
+    .doc-link-card p { font-size: 0.79rem; color: var(--text-muted); }
+
+    .disclaimer-box {
+      background: linear-gradient(135deg, rgba(225, 29, 72, 0.11), rgba(12, 14, 23, 0.96));
+      border: 1px solid rgba(225, 29, 72, 0.35); border-radius: 16px; padding: 28px;
+    }
+    .disclaimer-box h3 { font-family: var(--font-display); color: #fda4af; margin-bottom: 9px; }
+
+    footer { border-top: 1px solid var(--border); padding: 34px 0; margin-top: 28px; color: var(--text-dim); font-size: 0.85rem; }
+    .footer-inner { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 18px; }
+    .footer-links { display: flex; gap: 18px; flex-wrap: wrap; }
+    .footer-links a { color: var(--text-muted); text-decoration: none; }
+    .footer-links a:hover { color: #fff; }
+
+    /* Responsive */
+    @media (max-width: 1180px) {
+      .blocks-grid { grid-template-columns: repeat(3, 1fr); }
+      .flow-row { grid-template-columns: repeat(3, 1fr); }
+      .docs-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 960px) {
+      .hero-grid, .os-panel.active, .mod-body, .interactive-split, .modal-subgrid, .modal-io { grid-template-columns: 1fr; }
+      .blocks-grid { grid-template-columns: repeat(2, 1fr); }
+      .hero-metrics { grid-template-columns: repeat(2, 1fr); }
+      .nav-links {
+        display: none; position: absolute; top: 68px; left: 0; right: 0;
+        background: var(--bg-elevated); flex-direction: column; padding: 20px 24px;
+        border-bottom: 1px solid var(--border); align-items: flex-start;
+      }
+      .nav-links.open { display: flex; }
+      .mobile-toggle { display: block; }
+    }
+    @media (max-width: 620px) {
+      .blocks-grid, .flow-row, .docs-grid, .mod-meta-grid { grid-template-columns: 1fr; }
+      .arch-search { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-grid"></div>
+
+  <!-- Barra de estado superior (estilo Modrinth / SMAPI) -->
+  <div class="top-strip">
+    <span>⚡ <strong>Build 0.0.0.0-Dev</strong> • Core Vault + Lua 5.1 + SparkFx + OpenGL Lighting</span>
+    <span id="liveRepoTelemetry">Repo: bodriodroid/ZGIRLSLOADER • Licencia MIT</span>
+    <a href="#sample-stage">Ver Sample Stage: Anna_Killer_ZGirlsLoaderPort →</a>
+  </div>
+
+  <!-- Navegación -->
+  <header>
+    <div class="container nav-inner">
+      <a href="#" class="brand">
+        <span class="brand-icon">ZG</span>
+        <span>ZGirlsLoader</span>
+      </a>
+
+      <nav class="nav-links" id="navLinks">
+        <a href="#quickstart">Instalación</a>
+        <a href="#sample-stage">Sample Stage</a>
+        <a href="#compatibilidad">Compatibilidad</a>
+        <a href="#arquitectura">Diagrama 25×225</a>
+        <a href="#modding">Mods & Paletas</a>
+        <a href="#herramientas">CLI & SDK</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+
+      <div class="nav-actions">
+        <a href="https://github.com/bodriodroid/ZGIRLSLOADER" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+          GitHub Oficial
+        </a>
+        <button class="mobile-toggle" id="mobileToggle" aria-label="Menú">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ============================================================
+         HERO
+    ============================================================ -->
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="badge-row">
+            <span class="badge badge-dev"><span class="dot"></span> 0.0.0.0-Dev (Camino a 1.0.0.0)</span>
+            <span class="badge badge-mit">MIT Open Source</span>
+            <span class="badge badge-arch">Desktop + Android ARM64</span>
+          </div>
+
+          <h1>
+            <span class="gradient-text">ZGirlsLoader</span><br />
+            Reconstrucción modular, modding limpio y port Android
+          </h1>
+
+          <p class="hero-desc">
+            Proyecto independiente creado por <strong>bodriodroid</strong> (<em>Destroyer And Nitro</em>). Un runtime portable en <strong>C++17 + SDL2 + OpenGL</strong> diseñado bajo la filosofía <em>"Bring Your Own Legal Copy"</em> para cargar tus recursos de <em>Skullgirls 2nd Encore</em>, probar escenarios personalizados como <strong>Anna Killer</strong> y jugar en PC o <strong>ZGirlsMobile</strong>.
+          </p>
+
+          <div class="hero-cta">
+            <a href="#quickstart" class="btn btn-primary">Empezar / Instalar</a>
+            <a href="#sample-stage" class="btn btn-ghost">Sample: Anna Killer Stage</a>
+            <a href="#arquitectura" class="btn btn-ghost">Diagrama 25×225</a>
+          </div>
+
+          <div class="hero-metrics">
+            <div>
+              <div class="metric-val">96.1%</div>
+              <div class="metric-label">Núcleo C++17</div>
+            </div>
+            <div>
+              <div class="metric-val">25 / 225</div>
+              <div class="metric-label">Bloques / Subbloques</div>
+            </div>
+            <div>
+              <div class="metric-val" id="ghStarsMetric">MIT</div>
+              <div class="metric-label" id="ghStarsLabel">Código abierto</div>
+            </div>
+            <div>
+              <div class="metric-val">0 bytes</div>
+              <div class="metric-label">Assets propietarios</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Monitor en vivo del Engine -->
+        <div class="engine-card">
+          <div class="engine-topbar">
+            <div class="window-dots">
+              <span style="background:#ef4444"></span>
+              <span style="background:#f59e0b"></span>
+              <span style="background:#10b981"></span>
+            </div>
+            <span>zdroid_viewer — 640×360 • Core Vault + GL</span>
+          </div>
+
+          <div class="engine-body">
+            <div class="boot-stage done">
+              <span>[1/4] Core Vault cifrado + VFS suffix index</span>
+              <span class="tag-ok">MOUNTED</span>
+            </div>
+            <div class="boot-stage done">
+              <span>[2/4] mods/stages/Anna_Killer + pal + packs</span>
+              <span class="tag-ok">INDEXED</span>
+            </div>
+            <div class="boot-stage active">
+              <span>[3/4] SparkFx (hitspark.foit) + .lvl Rim Light</span>
+              <span class="tag-run">ACTIVE</span>
+            </div>
+            <div class="boot-stage">
+              <span>[4/4] Lua 5.1 Host (Tutorials / Trials / Challenges)</span>
+              <span class="tag-wip">HOST READY</span>
+            </div>
+
+            <div class="hitbox-preview">
+              <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:0.71rem; color:var(--text-muted);">
+                <span>F1 Overlay • SparkFx Slot 168 • Worker Threads</span>
+                <span>60.0 FPS</span>
+              </div>
+              <div class="hitbox-canvas">
+                <div class="box-hurt"></div>
+                <div class="box-push">
+                  <span style="font-size:0.6rem; color:#fde68a;">PUSH</span>
+                  <div class="box-hit"></div>
+                  <div class="spark-fx"></div>
+                </div>
+              </div>
+              <div style="display:flex; gap:14px; margin-top:8px; font-size:0.68rem; color:var(--text-dim);">
+                <span><span style="color:#f43f5e">■</span> Hitbox (f12)</span>
+                <span><span style="color:#38bdf8">■</span> Hurtbox</span>
+                <span><span style="color:#fbbf24">■</span> Pushbox</span>
+                <span><span style="color:#fff">✦</span> hitspark.foit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         1. QUICKSTART MULTIPLATAFORMA (estilo SMAPI / Ship of Harkinian)
+    ============================================================ -->
+    <section id="quickstart">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-eyebrow">// Instalación Rápida (BYOC — Bring Your Own Copy)</span>
+          <h2>Guía de inicio según tu plataforma</h2>
+          <p class="section-sub">
+            Al igual que proyectos de preservación como <em>OpenMW</em> o <em>Ship of Harkinian</em>, ZGirlsLoader es un motor limpio: aportas tus propios archivos legales y el cargador hace el resto.
+          </p>
+        </div>
+
+        <div class="quickstart-box">
+          <div class="os-tabs">
+            <button class="os-tab active" data-os="android">📱 Android (ZGirlsMobile)</button>
+            <button class="os-tab" data-os="linux">🐧 Linux / Steam Deck</button>
+            <button class="os-tab" data-os="windows">🪟 Windows / macOS</button>
+          </div>
+
+          <!-- Android -->
+          <div class="os-panel active" id="os-android">
+            <div class="step-list">
+              <div class="step-item">
+                <div class="step-num">1</div>
+                <div>
+                  <h4>Compila o instala el APK ARM64</h4>
+                  <p>Genera <code>app-debug.apk</code> desde <code>android/</code> con Android NDK 26.1. Cada build sube el <code>versionCode</code> para actualizar encima sin perder tus ajustes.</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">2</div>
+                <div>
+                  <h4>Importa tus datos al Core Vault cifrado</h4>
+                  <p>Sin pedir permisos globales de almacenamiento. Selecciona tus carpetas desempaquetadas o descarga tu copia legal vía Steam DepotDownloader (App <code>245170</code>).</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">3</div>
+                <div>
+                  <h4>Añade escenarios o paletas en <code>mods/</code> y juega</h4>
+                  <p>Usa el D-Pad y los 6 botones táctiles multitáctiles. Ajusta la escala de renderizado (33%–100%) en <em>Developer Options</em> según tu GPU móvil.</p>
+                </div>
+              </div>
+            </div>
+            <div class="req-card">
+              <h4>REQUISITOS ANDROID (ZGIRLSMOBILE)</h4>
+              <ul class="req-list">
+                <li>Dispositivo ARM64-v8a (Android 8.0+ recomendado)</li>
+                <li>Copia legal de Skullgirls 2nd Encore (PC/Steam)</li>
+                <li>Sin acceso Root ni <code>MANAGE_EXTERNAL_STORAGE</code></li>
+                <li>Controles táctiles simultáneos (caminar + atacar)</li>
+                <li>Soporte nativo para <code>favcolours/</code> y <code>mods/stages/</code></li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Linux -->
+          <div class="os-panel" id="os-linux">
+            <div class="step-list">
+              <div class="step-item">
+                <div class="step-num">1</div>
+                <div>
+                  <h4>Clona SDL2 2.30.9 y compila con Ninja</h4>
+                  <p><code>cmake -S . -B build -G Ninja -DZDROID_SDL2_SOURCE_DIR=../SDL && cmake --build build</code></p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">2</div>
+                <div>
+                  <h4>Monta tus carpetas extraídas (VFS insensible a mayúsculas)</h4>
+                  <p>Ejecuta <code>./build/zdroid_viewer /ruta/unpacked</code>. Puedes pasar montajes extra (<code>ui/Win</code>, <code>sprites</code>, <code>stages</code>) como argumentos adicionales.</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">3</div>
+                <div>
+                  <h4>Valida mods y usa las herramientas CLI</h4>
+                  <p>Usa <code>zdroid_probe</code>, <code>zdroid_foit</code> y <code>zdroid_duel</code> para depurar personajes, hitboxes y escenarios sin abrir ventana.</p>
+                </div>
+              </div>
+            </div>
+            <div class="req-card">
+              <h4>REQUISITOS LINUX / STEAM DECK</h4>
+              <ul class="req-list">
+                <li>Compilador C++17 (GCC 10+ / Clang 12+), CMake y Ninja</li>
+                <li>SDL2 2.30.9 (enlace fuente directo)</li>
+                <li>Opcional: Python 3 para <code>tests/real_diff.py</code></li>
+                <li>Opcional: DepotDownloader en PATH para tab Steam</li>
+                <li>Compatible con teclados (WASD + JKL/UIO) y mandos</li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Windows -->
+          <div class="os-panel" id="os-windows">
+            <div class="step-list">
+              <div class="step-item">
+                <div class="step-num">1</div>
+                <div>
+                  <h4>Prepara el entorno C++17 + SDL2</h4>
+                  <p>Compila con MSVC, Clang o MSYS2/MinGW usando el mismo <code>CMakeLists.txt</code> portable del repositorio.</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">2</div>
+                <div>
+                  <h4>Usa Home / Browse o Steam (App 245170)</h4>
+                  <p>Desde la propia UI puedes explorar tus archivos extraídos o invocar DepotDownloader enviando tus credenciales únicamente por <code>stdin</code>.</p>
+                </div>
+              </div>
+              <div class="step-item">
+                <div class="step-num">3</div>
+                <div>
+                  <h4>Edita paletas y depura en vivo</h4>
+                  <p>Mantén pulsado un personaje en Char Select (o pulsa <code>C</code>) para abrir el Colour Editor y pulsa <code>F1</code> en combate para ver hitboxes.</p>
+                </div>
+              </div>
+            </div>
+            <div class="req-card">
+              <h4>REQUISITOS WINDOWS / MACOS</h4>
+              <ul class="req-list">
+                <li>Windows 10/11 (x64) o macOS 12+</li>
+                <li>Soporte OpenGL / SDL2 acelerado por hardware</li>
+                <li>Carpeta <code>zgirls.savini</code> portable (sin modificar registro)</li>
+                <li>Lectura directa de <code>Main.gbs</code> y <code>Charselect.gbs</code></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         2. SAMPLE STAGE SHOWCASE: ANNA_KILLER_ZGIRLSLOADERPORT
+    ============================================================ -->
+    <section id="sample-stage">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-eyebrow">// Ecosistema de Contenido • Stage Sample Oficial</span>
+          <h2>Ejemplo de Escenario Portado: <code>Anna Killer</code></h2>
+          <p class="section-sub">
+            Para que desarrolladores y modders no partan de cero, <strong>Anna_Killer_ZGirlsLoaderPort</strong> sirve como referencia viva de cómo empaquetar, iluminar y cargar un escenario personalizado dentro de <code>mods/stages/</code>.
+          </p>
+        </div>
+
+        <div class="mod-showcase-card">
+          <!-- Cabecera estilo Modrinth / GameBanana -->
+          <div class="mod-header">
+            <div class="mod-identity">
+              <div class="mod-avatar">AK</div>
+              <div>
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                  <h3 style="font-family:var(--font-display); font-size:1.4rem;">Anna_Killer_ZGirlsLoaderPort</h3>
+                  <span class="badge badge-mit">Sample Oficial</span>
+                </div>
+                <p style="font-size:0.88rem; color:var(--text-muted); margin-top:2px;">
+                  Port del clásico escenario comunitario <em>Anna Killer Diner</em> (inspirado en el prototipo 2006) adaptado a la carpeta modular <code>mods/stages/</code> de ZGirlsLoader.
+                </p>
+                <div class="mod-tags">
+                  <span class="mod-tag green">Stage Mod (.lvl + Textures)</span>
+                  <span class="mod-tag blue">Desktop + Android Vault</span>
+                  <span class="mod-tag">2D/3D Parallax</span>
+                  <span class="mod-tag">Light Rig Compatible</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <a href="https://github.com/bodriodroid/Anna_Killer_ZGirlsLoaderPort" target="_blank" rel="noopener" class="btn btn-primary">
+                Descargar / Ver en GitHub
+              </a>
+              <button class="btn btn-ghost" id="copyStageCmdBtn">Copiar git clone</button>
+            </div>
+          </div>
+
+          <!-- Cuerpo interactivo: Simulador de Stage + Metadatos -->
+          <div class="mod-body">
+            <div>
+              <div style="font-family:var(--font-mono); font-size:0.74rem; color:var(--text-muted); margin-bottom:8px;">
+                SIMULADOR CONCEPTUAL DE RENDERIZADO EN STAGE SYSTEM (.LVL + LIGHTING RIG)
+              </div>
+
+              <div class="stage-viewport" id="stageViewport">
+                <div class="stage-sky" id="stageSky"></div>
+                <div class="stage-hud-overlay">
+                  <span class="stage-hud-pill">mods/stages/Anna_Killer_ZGirlsLoaderPort</span>
+                  <span class="stage-hud-pill" id="stageLightReadout">Ambient + Diff + Rim + Shadow</span>
+                </div>
+
+                <div class="stage-parallax-back" id="stageParallaxBack">
+                  <div class="diner-building">
+                    <div class="diner-neon">ANNA KILLER DINER</div>
+                    <div class="diner-windows">
+                      <div class="diner-win"></div>
+                      <div class="diner-win"></div>
+                      <div class="diner-win"></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="stage-fighters-layer" id="stageFighters">
+                  <div class="fighter-silhouette" id="fighterP1"></div>
+                  <div class="fighter-silhouette" id="fighterP2"></div>
+                </div>
+
+                <div class="stage-floor"></div>
+              </div>
+
+              <div class="stage-controls">
+                <button class="toggle-chip on" id="togAmbient">Ambient Light</button>
+                <button class="toggle-chip on" id="togDiffuse">Diffuse Light</button>
+                <button class="toggle-chip on" id="togRim">Rim Lighting</button>
+                <button class="toggle-chip on" id="togShadow">Floor Shadow</button>
+                <div style="display:flex; align-items:center; gap:8px; margin-left:auto; font-family:var(--font-mono); font-size:0.73rem; color:var(--text-muted);">
+                  <span>Cámara:</span>
+                  <input type="range" id="cameraPanSlider" min="-60" max="60" value="0" style="width:110px;" />
+                </div>
+              </div>
+            </div>
+
+            <div class="mod-sidebar">
+              <div class="mod-meta-grid">
+                <div class="meta-box">
+                  <span>AUTOR DEL PORT</span>
+                  <strong>bodriodroid</strong>
+                </div>
+                <div class="meta-box">
+                  <span>RUTA DE DESTINO</span>
+                  <strong>mods/stages/</strong>
+                </div>
+                <div class="meta-box">
+                  <span>CARGADOR REQUERIDO</span>
+                  <strong>ZGirlsLoader Dev+</strong>
+                </div>
+                <div class="meta-box">
+                  <span>USO RECOMENDADO</span>
+                  <strong>Stage Template</strong>
+                </div>
+              </div>
+
+              <div class="code-box" style="padding:14px; font-size:0.76rem;">
+                <pre><code># Instalación directa del Sample en mods/stages/
+cd &lt;tu_carpeta_zgirls&gt;/mods/stages/
+git clone https://github.com/bodriodroid/Anna_Killer_ZGirlsLoaderPort.git
+
+# En ZGirlsLoader:
+# 1. Inicia el visor o app Android (Core Vault)
+# 2. Ve a Play / Training -> Stage Select (Paso 3)
+# 3. Selecciona el escenario portado desde mods/stages/</code></pre>
+              </div>
+
+              <p style="font-size:0.84rem; color:var(--text-muted);">
+                <strong>¿Por qué es útil este Sample?</strong> Muestra en la práctica cómo ZGirlsLoader resuelve escenarios externos fuera del paquete base, aplica las luces <code>.lvl</code> sobre los sprites de los luchadores y los expone en <code>Charselect</code> sin tocar ni un byte del juego original.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         3. MATRIZ DE COMPATIBILIDAD (estilo Dolphin / OpenMW)
+    ============================================================ -->
+    <section id="compatibilidad">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-eyebrow">// Estado Real del Motor (Build 0.0.0.0-Dev)</span>
+          <h2>Matriz de Compatibilidad por Subsistema</h2>
+          <p class="section-sub">
+            Transparencia técnica total sobre qué áreas funcionan hoy al 100%, cuáles están en desarrollo activo y qué falta rumbo a la versión <code>1.0.0.0</code>.
+          </p>
+        </div>
+
+        <div class="compat-wrap">
+          <div class="filter-pills" id="compatFilters">
+            <button class="filter-pill active" data-compat="all">Todos</button>
+            <button class="filter-pill" data-compat="ready">Implementado</button>
+            <button class="filter-pill" data-compat="wip">En progreso</button>
+            <button class="filter-pill" data-compat="plan">Planificado (1.0)</button>
+          </div>
+
+          <table class="compat-table">
+            <thead>
+              <tr>
+                <th>Subsistema / Modo</th>
+                <th>Estado</th>
+                <th>Desktop</th>
+                <th>Android</th>
+                <th>Notas Técnicas</th>
+              </tr>
+            </thead>
+            <tbody id="compatBody">
+              <tr data-status="ready">
+                <td><strong>Splash 4 Etapas + AttractMode.gbs</strong></td>
+                <td><span class="status-pill st-ready">IMPLEMENTADO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>17 planos de montaje + audio en bucle <code>sg_attract_c.wav</code> + aviso inicial.</td>
+              </tr>
+              <tr data-status="ready">
+                <td><strong>Main.gbs + Charselect.gbs (3 pasos)</strong></td>
+                <td><span class="status-pill st-ready">IMPLEMENTADO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>Medallones 1v1/2v2/3v3, parrilla, pedestal, Stage Crossfade y Story lock.</td>
+              </tr>
+              <tr data-status="ready">
+                <td><strong>Core Vault Cifrado + VFS Multi-Mount</strong></td>
+                <td><span class="status-pill st-ready">IMPLEMENTADO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>Funciona en Android sin permisos de almacenamiento global; indexación por sufijos.</td>
+              </tr>
+              <tr data-status="ready">
+                <td><strong>Colour Editor (.zgcol) &amp; Ramp Recovery</strong></td>
+                <td><span class="status-pill st-ready">IMPLEMENTADO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>Mínimos cuadrados con error &le; 1 nivel; guardado aislado en <code>favcolours/</code>.</td>
+              </tr>
+              <tr data-status="ready">
+                <td><strong>Iluminación .lvl + Sombras + Bicubic 2x</strong></td>
+                <td><span class="status-pill st-ready">IMPLEMENTADO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>Ambient + diffuse + rim lighting a través de planos normales; render 33%–100%.</td>
+              </tr>
+              <tr data-status="ready">
+                <td><strong>SparkFx (hitspark.foit) &amp; Super-Moves</strong></td>
+                <td><span class="status-pill st-ready">IMPLEMENTADO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>Despacho por slot 168 + herramientas <code>zdroid_pafx</code> y <code>test_spark_fx</code>.</td>
+              </tr>
+              <tr data-status="wip">
+                <td><strong>Combate (Training, Local VS, Quick Match)</strong></td>
+                <td><span class="status-pill st-wip">EN PROGRESO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>Física FOIT determinista, overlay <code>F1</code> de hit/hurt/push y pausa integrada.</td>
+              </tr>
+              <tr data-status="wip">
+                <td><strong>Host Lua 5.1 (Tutorials / Trials / Challenges)</strong></td>
+                <td><span class="status-pill st-wip">EN PROGRESO</span></td>
+                <td>✓</td><td>✓</td>
+                <td>Motor <code>third_party/lua51</code> integrado para scripting de retos y tutoriales.</td>
+              </tr>
+              <tr data-status="plan">
+                <td><strong>Descomprimidor Nativo .gfs + Mod Manager UI</strong></td>
+                <td><span class="status-pill st-plan">PLANIFICADO</span></td>
+                <td>En ruta</td><td>En ruta</td>
+                <td>Extracción directa dentro de la app tras descarga Steam (App 245170) y gestor visual.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         4. DIAGRAMA DE ARQUITECTURA EXPANDIDA (25 x 225)
+    ============================================================ -->
+    <section id="arquitectura">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-eyebrow">// Mapa Maestro de Ingeniería</span>
+          <h2>Arquitectura Expandida (25 Bloques • 225 Subbloques)</h2>
+          <p class="section-sub">
+            Integración interactiva del diagrama técnico completo de <strong>ZGirlsLoader</strong>. Filtra por capa, busca cualquier módulo o haz clic en un bloque para abrir el inspector de sus 9 subbloques.
+          </p>
+        </div>
+
+        <div class="arch-shell">
+          <div class="arch-banner">
+            <div>
+              <div class="arch-banner-title">ZGIRLSLOADER — ARQUITECTURA EXPANDIDA</div>
+              <div class="arch-banner-sub">25 BLOQUES GRANDES • 225 SUBBLOQUES FUNCIONALES • 5 CAPAS DE DOMINIO</div>
+            </div>
+            <div class="arch-counter-box">
+              <div class="arch-counter-num" id="visibleBlocksCount">25</div>
+              <div class="arch-counter-meta">
+                BLOQUES VISIBLES<br />
+                <span id="visibleSubsCount">225</span> SUBBLOQUES ACTIVOS
+              </div>
+            </div>
+          </div>
+
+          <div class="pipeline-flows">
+            <div class="flow-label">Flujo 1 // Secuencia de Arranque &amp; Runtime Principal (clic para inspeccionar)</div>
+            <div class="flow-row">
+              <div class="flow-node" onclick="openBlockModal(1)">01. Entry &amp; Runtime<small>Android + Desktop</small></div>
+              <div class="flow-node" onclick="openBlockModal(3)">03. Bootstrap 4-Stage<small>Splash + Savini + Notice</small></div>
+              <div class="flow-node amber" onclick="openBlockModal(11)">11. Core Vault + VFS<small>Cifrado + Suffix Index</small></div>
+              <div class="flow-node amber" onclick="openBlockModal(12)">12. Asset Decoders<small>.art / .dds / .msb / .lvl</small></div>
+              <div class="flow-node purple" onclick="openBlockModal(8)">08. GBS Scene Engine<small>Main / Attract / CharSelect</small></div>
+              <div class="flow-node emerald" onclick="openBlockModal(17)">17. Combat Loop<small>Training / VS / QuickMatch</small></div>
+            </div>
+
+            <div class="flow-label" style="margin-top:3px;">Flujo 2 // Toolchain, Render, Modding &amp; Verificación</div>
+            <div class="flow-row">
+              <div class="flow-node" onclick="openBlockModal(2)">02. Build &amp; Toolchain<small>CMake + Ninja + Gradle</small></div>
+              <div class="flow-node purple" onclick="openBlockModal(5)">05. OpenGL Pipeline<small>Scaling + Bicubic + Shadows</small></div>
+              <div class="flow-node emerald" onclick="openBlockModal(15)">15. FOIT VM + Lua 5.1<small>States + Trials Host</small></div>
+              <div class="flow-node emerald" onclick="openBlockModal(19)">19. Palette Lab<small>Least-Squares + .zgcol</small></div>
+              <div class="flow-node crimson" onclick="openBlockModal(21)">21. Mod Loader<small>mods/ + Resource Packs</small></div>
+              <div class="flow-node crimson" onclick="openBlockModal(25)">25. Tests + CI + Tools<small>Oracle + GitHub Actions</small></div>
+            </div>
+          </div>
+
+          <div class="arch-controls">
+            <div class="filter-pills" id="filterPills">
+              <button class="filter-pill active" data-filter="all">Todos (25)</button>
+              <button class="filter-pill" data-filter="blue"><span class="pill-dot" style="background:var(--c-blue)"></span> 01–04 Entry &amp; Boot</button>
+              <button class="filter-pill" data-filter="purple"><span class="pill-dot" style="background:var(--c-purple)"></span> 05–08 GL, Input &amp; GBS</button>
+              <button class="filter-pill" data-filter="amber"><span class="pill-dot" style="background:var(--c-amber)"></span> 09–14 VFS, Vault &amp; FOIT</button>
+              <button class="filter-pill" data-filter="emerald"><span class="pill-dot" style="background:var(--c-emerald)"></span> 15–19 Combate &amp; Paletas</button>
+              <button class="filter-pill" data-filter="crimson"><span class="pill-dot" style="background:var(--c-crimson)"></span> 20–25 VFX, Mods &amp; CI</button>
+            </div>
+
+            <div class="arch-search-wrap">
+              <input type="search" id="archSearch" class="arch-search" placeholder="Buscar en 225 subbloques (ej: Lua, Vault, Rim, GFS)..." />
+              <div class="view-toggle">
+                <button class="view-btn active" id="btnViewFull">Detalle</button>
+                <button class="view-btn" id="btnViewCompact">Póster 5×5</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="blocks-grid" id="blocksGrid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         5. MODS & LAB DE PALETAS (.zgcol)
+    ============================================================ -->
+    <section id="modding">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-eyebrow">// Ecosistema de Modding</span>
+          <h2>Estructura <code>mods/</code> y Laboratorio de Paletas</h2>
+          <p class="section-sub">
+            Organización limpia que nunca sobrescribe los archivos base del juego y aísla tus creaciones en <code>favcolours/</code>.
+          </p>
+        </div>
+
+        <div class="interactive-split">
+          <div class="panel">
+            <h3 style="font-family:var(--font-display); margin-bottom:14px;">Jerarquía automática de carpetas</h3>
+            <div id="modTree">
+              <div class="tree-item selected" data-desc="Paletas personalizadas (.pal) generadas manualmente o con zdroid_palgen. Aparecen automáticamente junto a los colores del personaje.">
+                <span>🎨</span>
+                <div><strong>mods/pal/</strong><br /><span style="color:var(--text-dim); font-size:0.75rem;">Paletas custom .pal</span></div>
+              </div>
+              <div class="tree-item" data-desc="Carpeta principal para mods de personajes, sprites modificados y paquetes personalizados de la comunidad.">
+                <span>🧩</span>
+                <div><strong>mods/modscustom/</strong><br /><span style="color:var(--text-dim); font-size:0.75rem;">Mods de personajes</span></div>
+              </div>
+              <div class="tree-item" data-desc="Escenarios personalizados (.lvl + texturas) como Anna_Killer_ZGirlsLoaderPort, cargados en el paso 3 de Stage Select.">
+                <span>🏛️</span>
+                <div><strong>mods/stages/</strong><br /><span style="color:var(--text-dim); font-size:0.75rem;">Escenarios custom (ej: Anna Killer)</span></div>
+              </div>
+              <div class="tree-item" data-desc="Paquetes completos de reemplazo visual, UI o restauración de recursos elegidos por el usuario.">
+                <span>📦</span>
+                <div><strong>mods/resourcepacks/</strong><br /><span style="color:var(--text-dim); font-size:0.75rem;">Paquetes de recursos</span></div>
+              </div>
+              <div class="tree-item" data-desc="Banco modular de voces en japonés (UISound/JP_chars/...) sin tocar los audios originales.">
+                <span>🔊</span>
+                <div><strong>mods/sdvoice_japanese/</strong><br /><span style="color:var(--text-dim); font-size:0.75rem;">Voces japonesas</span></div>
+              </div>
+              <div class="tree-item" data-desc="Almacén exclusivo del Colour Editor (.zgcol + paleta horneada). Nunca mezcla tus favoritos con mods/.">
+                <span>⭐</span>
+                <div><strong>favcolours/&lt;character&gt;/</strong><br /><span style="color:var(--text-dim); font-size:0.75rem;">Favoritos del usuario (.zgcol)</span></div>
+              </div>
+            </div>
+            <div class="tree-info" id="treeDesc">
+              Paletas personalizadas (.pal) generadas manualmente o con zdroid_palgen. Aparecen automáticamente junto a los colores del personaje.
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3 style="font-family:var(--font-display); margin-bottom:6px;">Simulador Colour Editor (Mínimos Cuadrados)</h3>
+            <p style="font-size:0.85rem; color:var(--text-muted);">
+              Recupera rampas de sombreado con error &le; 1 nivel. Mantén pulsado el luchador en <em>Char Select</em> (o pulsa <code>C</code>) para editar por partes o completo.
+            </p>
+
+            <div class="palette-controls">
+              <div class="slider-row">
+                <span>Matiz (Hue)</span>
+                <input type="range" id="hueSlider" min="-180" max="180" value="0" />
+                <span id="hueVal" style="font-family:var(--font-mono);">0°</span>
+              </div>
+              <div class="slider-row">
+                <span>Saturación</span>
+                <input type="range" id="satSlider" min="20" max="180" value="100" />
+                <span id="satVal" style="font-family:var(--font-mono);">100%</span>
+              </div>
+              <div class="slider-row">
+                <span>Brillo</span>
+                <input type="range" id="litSlider" min="50" max="150" value="100" />
+                <span id="litVal" style="font-family:var(--font-mono);">100%</span>
+              </div>
+            </div>
+
+            <div class="palette-swatches" id="swatchRow">
+              <div class="swatch"></div><div class="swatch"></div><div class="swatch"></div>
+              <div class="swatch"></div><div class="swatch"></div><div class="swatch"></div>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-top:14px; flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-sm" onclick="setPreset(-35, 135, 115)">Vívido</button>
+              <button class="btn btn-ghost btn-sm" onclick="setPreset(45, 70, 122)">Pastel</button>
+              <button class="btn btn-ghost btn-sm" onclick="setPreset(140, 110, 78)">Oscuro</button>
+              <button class="btn btn-ghost btn-sm" onclick="setPreset(0, 100, 100)">Original</button>
+            </div>
+
+            <div class="zgcol-preview" id="zgcolPreview">
+              # favcolours/annie/custom_01.zgcol<br />
+              hue_shift=0 sat=1.00 lit=1.00 ramp_fit=least_squares_ok
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         6. CLI, ORACLE TESTS & DOCUMENTACIÓN
+    ============================================================ -->
+    <section id="herramientas">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-eyebrow">// SDK para Desarrolladores &amp; Modders</span>
+          <h2>Herramientas CLI, Pruebas Oráculo y Documentación</h2>
+          <p class="section-sub">
+            Incluye binarios independientes en <code>src/tools/</code> para inspección binaria, simulación headless de combate y comparación contra oráculo Python.
+          </p>
+        </div>
+
+        <div class="deep-tabs" id="cliTabs">
+          <button class="deep-tab active" data-cli="desktop">Desktop (CMake + Ninja)</button>
+          <button class="deep-tab" data-cli="tools">Suite CLI (src/tools/)</button>
+          <button class="deep-tab" data-cli="tests">CTest &amp; Python Oracle</button>
+          <button class="deep-tab" data-cli="android">Android APK (Gradle)</button>
+        </div>
+
+        <div class="code-box">
+          <button class="copy-btn" id="copyCodeBtn">Copiar</button>
+          <pre id="codeContent"><code># Clonar SDL2 2.30.9 junto al repositorio
+git clone --depth 1 --branch release-2.30.9 https://github.com/libsdl-org/SDL.git ../SDL
+
+# Compilar en Linux / macOS / Windows
+cmake -S . -B build -G Ninja -DZDROID_SDL2_SOURCE_DIR=../SDL
+cmake --build build
+
+# Ejecutar apuntando a tu carpeta extraída y montajes extra
+./build/zdroid_viewer /ruta/a/unpacked /ruta/a/ui_Win /ruta/a/sprites</code></pre>
+        </div>
+
+        <div class="docs-grid">
+          <a class="doc-link-card" href="https://github.com/bodriodroid/ZGIRLSLOADER/blob/main/docs/RE_NOTES.md" target="_blank" rel="noopener">
+            <code>docs/RE_NOTES.md</code>
+            <p>Ingeniería inversa de .gbs, .foit, .lvl y atlas .art/.dds.</p>
+          </a>
+          <a class="doc-link-card" href="https://github.com/bodriodroid/ZGIRLSLOADER/blob/main/docs/MODS.md" target="_blank" rel="noopener">
+            <code>docs/MODS.md</code>
+            <p>Guía de mods/, paletas custom, stages y resourcepacks.</p>
+          </a>
+          <a class="doc-link-card" href="https://github.com/bodriodroid/ZGIRLSLOADER/blob/main/docs/es/PRUEBA_PELEA.md" target="_blank" rel="noopener">
+            <code>PRUEBA_PELEA.md</code>
+            <p>Guía práctica en español para probar el sistema de combate.</p>
+          </a>
+          <a class="doc-link-card" href="https://github.com/bodriodroid/ZGIRLSLOADER/blob/main/docs/es/CAMBIOS_ZGIRLS.md" target="_blank" rel="noopener">
+            <code>CAMBIOS_ZGIRLS.md</code>
+            <p>Historial de cambios, avances de combate y port móvil.</p>
+          </a>
+          <a class="doc-link-card" href="https://github.com/bodriodroid/Anna_Killer_ZGirlsLoaderPort" target="_blank" rel="noopener">
+            <code>Anna_Killer Port</code>
+            <p>Repositorio de ejemplo de escenario para <code>mods/stages/</code>.</p>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         7. FAQ (estilo Fightcade / SMAPI / Dolphin)
+    ============================================================ -->
+    <section id="faq">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-eyebrow">// Preguntas Frecuentes</span>
+          <h2>Dudas comunes de jugadores y modders</h2>
+        </div>
+
+        <div class="faq-list">
+          <div class="faq-item open">
+            <button class="faq-q">
+              <span>¿ZGirlsLoader incluye los archivos o personajes de Skullgirls?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-a">
+              No. El repositorio contiene exactamente <strong>0 bytes</strong> de sprites, voces, música o niveles con copyright. Debes aportar los archivos extraídos de tu propia copia legal del juego (por ejemplo desde Steam App <code>245170</code>).
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              <span>¿ZGirlsMobile pide permiso de acceso a todos los archivos en Android?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-a">
+              No. Gracias al sistema <strong>Core Vault</strong> cifrado dentro del almacenamiento privado de la app, puedes importar tus datos mediante el selector nativo del sistema sin conceder permisos globales invasivos ni necesitar Root.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              <span>¿Cómo pruebo un escenario personalizado sin romper el juego?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-a">
+              Clona o coloca el escenario ejemplo <a href="https://github.com/bodriodroid/Anna_Killer_ZGirlsLoaderPort" target="_blank" rel="noopener" style="color:var(--c-blue);">Anna_Killer_ZGirlsLoaderPort</a> dentro de <code>mods/stages/</code>. El VFS lo montará por encima de la capa base y aparecerá automáticamente en la selección de escenarios.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <button class="faq-q">
+              <span>¿Por qué la versión sigue marcando <code>0.0.0.0-Dev</code>?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-a">
+              Todas las compilaciones preliminares mantienen la etiqueta <code>0.0.0.0-Dev</code> hasta completar los hitos de estabilidad rumbo a <code>1.0.0.0</code> (unpacker nativo <code>.gfs</code>, gestor visual de mods, Tutoriales/Trials en Lua 5.1 y Story/Survival). En Android, <code>versionCode</code> aumenta en cada build para poder actualizar encima sin perder datos.
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Legal -->
+    <section id="legal">
+      <div class="container">
+        <div class="disclaimer-box">
+          <h3>⚠ Aviso Legal, Propiedad Intelectual y Licencia MIT</h3>
+          <p style="color:#e5e7eb; font-size:0.93rem;">
+            <strong>ZGirlsLoader / ZGirlsMobile</strong> es un proyecto independiente de código abierto creado por <strong>bodriodroid</strong> bajo <strong>Licencia MIT</strong>. No está afiliado ni respaldado por Lab Zero Games, Hidden Variable Studios, Autumn Games ni los titulares de la franquicia original.
+          </p>
+          <p style="color:var(--text-muted); font-size:0.88rem; margin-top:8px;">
+            No incluye archivos con copyright ni elude sistemas DRM. Si redistribuyes el cargador, nunca incluyas archivos del juego original junto con él.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+      <div>
+        <strong>ZGirlsLoader &amp; ZGirlsMobile</strong> • Creado por <strong>bodriodroid</strong> (Destroyer And Nitro) • Licencia MIT
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/bodriodroid/ZGIRLSLOADER" target="_blank" rel="noopener">ZGIRLSLOADER</a>
+        <a href="https://github.com/bodriodroid/Anna_Killer_ZGirlsLoaderPort" target="_blank" rel="noopener">Anna Killer Sample</a>
+        <a href="https://github.com/bodriodroid/ZGIRLSLOADER/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+        <a href="https://github.com/bodriodroid/ZGIRLSLOADER/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">Third-Party Notices</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Modal Inspector de Bloque -->
+  <div class="modal-backdrop" id="blockModal" role="dialog" aria-modal="true">
+    <div class="modal-panel">
+      <div class="modal-header">
+        <div>
+          <span class="badge" id="modalGroupBadge" style="margin-bottom:8px;">BLOQUE</span>
+          <h3 id="modalTitle" style="font-family:var(--font-display); font-size:1.45rem;">Título</h3>
+          <p id="modalSummary" style="color:var(--text-muted); font-size:0.91rem; margin-top:4px;"></p>
+        </div>
+        <button class="modal-close" id="modalCloseBtn" aria-label="Cerrar">✕</button>
+      </div>
+
+      <div style="font-family:var(--font-mono); font-size:0.74rem; color:var(--text-dim);">
+        9 SUBBLOQUES FUNCIONALES DEL MÓDULO:
+      </div>
+      <div class="modal-subgrid" id="modalSubgrid"></div>
+
+      <div class="modal-io">
+        <div class="io-box">
+          <div style="color:var(--c-blue); margin-bottom:4px;">// Rutas del Repositorio</div>
+          <div id="modalPaths" style="color:#e5e7eb;"></div>
+        </div>
+        <div class="io-box">
+          <div style="color:var(--c-emerald); margin-bottom:4px;">// Flujo Entrada → Salida</div>
+          <div id="modalFlow" style="color:#e5e7eb;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =====================================================================
+    // 1. ARQUITECTURA EXPANDIDA: 25 BLOQUES x 9 SUBBLOQUES = 225
+    // =====================================================================
+    const ARCHITECTURE_BLOCKS = [
+      {
+        id: 1, group: 'blue', groupName: 'Entry & Runtime', status: 'Implementado',
+        title: 'Android + Desktop Entry / Runtime',
+        summary: 'Punto de entrada unificado multiplataforma (Linux, Windows, macOS y Android ARM64) con ciclo de vida SDL2 y bucle fijo 640×360.',
+        paths: 'android/app/src/... • src/app/zdroid_viewer.cpp',
+        flow: 'OS Main / JNI Activity → Engine Context → Frame Loop (640×360)',
+        subblocks: [
+          ['SDL_main Entry', 'Punto de arranque unificado desktop/móvil.'],
+          ['Android Activity', 'Puente Java/Kotlin SDLActivity ARM64.'],
+          ['CLI Arg Parser', 'Flags --screen, --lang, --dt, --click.'],
+          ['Env Var Overrides', 'Lectura de ZDROID_DEV_* y rutas SDK.'],
+          ['Fixed Timestep', 'Control de delta determinista y --dt N.'],
+          ['Lifecycle Hooks', 'Manejo de pausa, foco y rotación móvil.'],
+          ['Crash & Exit Safe', 'Cierre ordenado de hilos y texturas GL.'],
+          ['Logical 640x360', 'Sistema de coordenadas base independiente.'],
+          ['Multi-Instance Lock', 'Control de estado único de sesión.']
+        ]
+      },
+      {
+        id: 2, group: 'blue', groupName: 'Build & Toolchain', status: 'Implementado',
+        title: 'Build System + Toolchain',
+        summary: 'Sistema reproducible con CMake, Ninja, Gradle, Android NDK 26.1 y GitHub Actions CI.',
+        paths: 'CMakeLists.txt • android/build.gradle • .github/workflows/',
+        flow: 'SDL2 2.30.9 + C++17 + NDK 26.1 → Ninja / Gradle → Binarios + APK',
+        subblocks: [
+          ['CMake C++17 Core', 'Target portable zdroid_core sin deps UI.'],
+          ['Ninja Fast Build', 'Compilación incremental desktop ultrarrápida.'],
+          ['SDL2 2.30.9 Bind', 'Enlace fuente directo via ZDROID_SDL2_SOURCE_DIR.'],
+          ['Android NDK 26.1', 'Toolchain ARM64-v8a con SDK 34.'],
+          ['Gradle APK Pipeline', 'Generación de app-debug.apk instalable.'],
+          ['versionCode Auto', 'Incremento continuo sobre 0.0.0.0-Dev.'],
+          ['Feature Toggles', 'Flags como -DZDROID_FIGHT_MODE=ON/OFF.'],
+          ['Lua 5.1 Vendoring', 'Compilación estática de third_party/lua51.'],
+          ['CI Workflow Recipe', 'Compilación y ctest automatizados en GitHub.']
+        ]
+      },
+      {
+        id: 3, group: 'blue', groupName: 'Bootstrap', status: 'Implementado',
+        title: 'Bootstrap + Startup Pipeline',
+        summary: 'Cargador en 4 etapas con splash propio, aviso legal inicial, fotosensibilidad y montaje de apertura.',
+        paths: 'src/app/menu.cpp • android/branding/boot_logo.png • zgirls.savini',
+        flow: '4-Stage Loader (≥2.6s) → Legal Notice → FrontCredits.gbs → AttractMode.gbs',
+        subblocks: [
+          ['Boot Logo Splash', 'Logo propio de ZGirlsLoader sin marcas publisher.'],
+          ['Stage 1: Data Open', 'Apertura inicial de carpeta o Core Vault.'],
+          ['Stage 2: Mods & Packs', 'Descubrimiento de mods/ y resourcepacks.'],
+          ['Stage 3: VFS Index', 'Construcción del índice insensible a case.'],
+          ['Stage 4: UI & Audio', 'Preparación de fuentes, menú y Mixer.'],
+          ['First-Run Notice', 'Aviso rojo persistido en [loader] notice=1.'],
+          ['Photosensitivity', 'Lectura y muestreo de FrontCredits.gbs.'],
+          ['Attract Montage', '17 planos de AttractMode.gbs + audio loop.'],
+          ['Smoke Jump Flags', 'Saltos --skip-title y --smoke-loading.']
+        ]
+      },
+      {
+        id: 4, group: 'blue', groupName: 'Native UI', status: 'Implementado',
+        title: 'SDL Shell + Native UI',
+        summary: 'Interfaz inmediata portable para Home/Browse/Steam, menús fallback y selector nativo Android SAF.',
+        paths: 'src/app/ui.{h,cpp} • src/app/menu.{h,cpp}',
+        flow: 'SDL Events → Immediate-Mode UI Widgets → Native File Picker / Menus',
+        subblocks: [
+          ['Immediate UI Core', 'Sistema ligero de paneles, listas y botones.'],
+          ['font8x8 Renderer', 'Fuente embebida de dominio público para debug.'],
+          ['Home & Browse UI', 'Explorador visual de carpetas y montajes.'],
+          ['Fallback Mini-Menu', 'Menú integrado si no hay datos montados.'],
+          ['Pause & Settings UI', 'Diálogos de configuración y pausa en pelea.'],
+          ['Android SAF Bridge', 'Selector nativo de archivos sin permiso total.'],
+          ['Toast & Status Bar', 'Notificaciones de carga, guardado y errores.'],
+          ['Localization Map', 'Carga de textos multi-idioma (--lang es).'],
+          ['DPad Overlay Shell', 'Contenedor visual de controles en pantalla.']
+        ]
+      },
+      {
+        id: 5, group: 'purple', groupName: 'Render Pipeline', status: 'Implementado',
+        title: 'OpenGL Pipeline + Renderers',
+        summary: 'Renderizado hardware con resolución escalable (33%–100%), upscaling bicúbico 2x y sombras en el piso.',
+        paths: 'src/app/game_ui.cpp • src/core/dev_options.cpp',
+        flow: 'Decoded Surfaces → Texture Cache → Render Target (33–100%) → Screen',
+        subblocks: [
+          ['SDL/GL Context', 'Inicialización de contexto acelerado VSync.'],
+          ['Render Scale 33-100%', 'Resolución interna dinámica para móviles.'],
+          ['Sprite Quality Lvls', 'Submuestreo desde Quarter hasta Full Pixel.'],
+          ['Bicubic 2x Upscale', 'Escalado bicúbico + sharpening para fondos.'],
+          ['Texture LRU Cache', 'Gestión y límite de memoria de texturas.'],
+          ['Floor Shadow Pass', 'Silueta aplanada de sombras en 5 calidades.'],
+          ['Linear Smoothing', 'Filtro suavizado configurable en tiempo real.'],
+          ['Stage Info Overlay', 'HUD de memoria VRAM, tamaño y nivel sprite.'],
+          ['Smoke Capture Out', 'Exportación PNG escalada (--smoke-scale N).']
+        ]
+      },
+      {
+        id: 6, group: 'purple', groupName: 'Char Select', status: 'Implementado',
+        title: 'Char Select + Fighter Preview',
+        summary: 'Flujo completo de 3 pasos desde Charselect.gbs: tamaño de equipo, parrilla de luchadores y Stage Crossfade.',
+        paths: 'src/app/charselect.{h,cpp} • core/music.ini',
+        flow: 'Step 1 (1/2/3 Medallions) → Step 2 (Grid + Pedestal) → Step 3 (Stage Crossfade)',
+        subblocks: [
+          ['Select Size Step', 'Medallones 1v1, 2v2 o 3v3 para P1 y P2.'],
+          ['Fighter Grid Icons', 'Parrilla con iconos, retratos y barra de datos.'],
+          ['Pedestal Standing', 'Personaje de pie (character_select_<name>).'],
+          ['Name Plate & LAGG', 'Animaciones de placas y transiciones LAGG.'],
+          ['Story Mode Bypass', 'Omite pasos 1 y 3 y bloquea Double/Valentine.'],
+          ['Stage Crossfade', 'Miniaturas y nombres localizados con flechas.'],
+          ['CharConfirm Snd', 'Animación CharSelectSnd_<name>_1 + voz.'],
+          ['Touch Double-Tap', 'Tocar selecciona, volver a tocar confirma.'],
+          ['Quick Color Step', 'Tap corto cambia color; hold abre Colour Editor.']
+        ]
+      },
+      {
+        id: 7, group: 'purple', groupName: 'Input System', status: 'Implementado',
+        title: 'Input + Touch Layout',
+        summary: 'Entrada multitáctil en cristal para Android, teclado WASD+JKL/UIO en PC y remapeo configurable.',
+        paths: 'src/app/play.cpp • android/ • menu_settings.txt',
+        flow: 'Touch / Keyboard / Pad → Input Buffer → 6-Button + Motion Interpreter',
+        subblocks: [
+          ['Multi-Touch Glass', 'Caminar y atacar simultáneamente en pantalla.'],
+          ['Virtual D-Pad', 'Cruceta táctil responsiva con zonas diagonales.'],
+          ['6-Button Arcade', 'Botones LP, MP, HP, LK, MK, HK en cristal.'],
+          ['Desktop Keymap', 'WASD + JKL / UIO + F1 hitboxes + Enter.'],
+          ['Double-Tap Dash', 'Detección de dashes y macros de dirección.'],
+          ['Menu Pointer Nav', 'Hover de mouse y tap-to-confirm en escenas.'],
+          ['Android Back Hook', 'Salida limpia de combate con botón Back.'],
+          ['Controls Remap UI', 'Pantalla dedicada de remapeo de botones.'],
+          ['Input Playback', 'Inyección determinista (--click / zdroid_duel).']
+        ]
+      },
+      {
+        id: 8, group: 'purple', groupName: 'GBS Scenes', status: 'Implementado',
+        title: 'GBS Parser + Scene Engine',
+        summary: 'Intérprete binario de escenas .gbs del motor original: film bands, fuentes del juego y animaciones LAGG.',
+        paths: 'src/core/gbs.{h,cpp} • src/core/gbs_scene.{h,cpp} • src/app/menu_scene.cpp',
+        flow: 'Main.gbs / Charselect.gbs → Scene Tree → Film Band + MenuItem0..10',
+        subblocks: [
+          ['GBS Binary Reader', 'Lectura exacta de nodos, capas y keyframes.'],
+          ['Main.gbs Driver', 'Menú principal fiel a la edición de PC.'],
+          ['Film Band Header', 'Imagen principal animada de la entrada activa.'],
+          ['MenuItem0..10 Strip', 'Tira vertical de etiquetas y descripciones.'],
+          ['Game Font Atlas', 'Renderizado usando ui/Win/Fonts/** del usuario.'],
+          ['Dimmed Online Items', 'DLC, Achievements y Leaderboards atenuados.'],
+          ['LAGG Timeline', 'Interpolación de curvas y opacidad de escena.'],
+          ['Loading Bomb Screen', 'Pantalla loading_<lang> con bomba animada.'],
+          ['Attract 17 Shots', 'Reproductor de montaje de apertura saltable.']
+        ]
+      },
+      {
+        id: 9, group: 'amber', groupName: 'Archive & GFS', status: 'En Progreso',
+        title: 'Endianness + GFS Extraction',
+        summary: 'Lectores binarios endian-safe y soporte en camino para descompresión nativa de archivos .gfs.',
+        paths: 'src/core/ • tools/reference/sg_extract.py',
+        flow: 'Packed .gfs / Binary Stream → Endian-Safe Reader → Unpacked Tree',
+        subblocks: [
+          ['Little/Big Endian', 'Lectura segura de enteros y floats binarios.'],
+          ['GFS Header Spec', 'Mapeo de tablas de archivos y offsets .gfs.'],
+          ['sg_extract.py Ref', 'Extractor de referencia para validación cruzada.'],
+          ['Native Unpacker WIP', 'Descomprimidor C++ nativo rumbo a 1.0.0.0.'],
+          ['Zlib / Stream Def', 'Descompresión en flujo con bajo uso de RAM.'],
+          ['Hash & CRC Check', 'Verificación de integridad tras extracción.'],
+          ['SkullMod Compat', 'Lectura directa de carpetas extraídas previas.'],
+          ['Nested Path Support', 'Soporta dumps en core/core o sg_dump/unpacked.'],
+          ['Zero-Copy Slices', 'Vistas de memoria para parseo rápido.']
+        ]
+      },
+      {
+        id: 10, group: 'amber', groupName: 'Virtual FS', status: 'Implementado',
+        title: 'Virtual File System + Mount Graph',
+        summary: 'VFS insensible a mayúsculas con indexación por sufijos, montajes múltiples y prioridad de capas.',
+        paths: 'src/core/vfs.{h,cpp}',
+        flow: 'Data Root + Extra Mounts + mods/ → Suffix Hash Map → Virtual Stream',
+        subblocks: [
+          ['Case-Insensitive', 'Normalización de rutas entre Linux y Windows.'],
+          ['Suffix Indexing', 'Resolución por cualquier sufijo de subruta.'],
+          ['Multi-Mount Stack', 'Montaje simultáneo de core, ui/Win y sprites.'],
+          ['Smart Skip Rules', 'Omite extract, build, analysis y SKGSTEAM.'],
+          ['Layer Precedence', 'Prioridad: favcolours > mods > extra > base.'],
+          ['Virtual Directory', 'Listado unificado para stages y personajes.'],
+          ['Memory & File IO', 'Abstracción unificada para lectura síncrona.'],
+          ['Android Asset Hook', 'Lectura híbrida desde APK y almacenamiento.'],
+          ['VFS Diagnostics', 'Reporte de archivos faltantes o duplicados.']
+        ]
+      },
+      {
+        id: 11, group: 'amber', groupName: 'Core Vault', status: 'Implementado',
+        title: 'Core Vault + Import Security',
+        summary: 'Almacén cifrado privado para Android sin solicitar permisos invasivos de almacenamiento total.',
+        paths: 'src/core/ • android/',
+        flow: 'User Picked Files → Encrypted Vault Container → Sandbox VFS Mount',
+        subblocks: [
+          ['Encrypted Container', 'Almacenamiento privado cifrado en sandbox.'],
+          ['No Storage Perm', 'Funciona en Android 11–15 sin All-Files Access.'],
+          ['Streamed Import', 'Copia progresiva al Vault desde selector SAF.'],
+          ['Vault Key Derivation', 'Gestión segura de claves locales del dispositivo.'],
+          ['Integrity Manifest', 'Control de archivos importados y tamaños.'],
+          ['Zero Game Bundling', 'Garantiza repositorio 100% libre de assets.'],
+          ['Safe Cache Eviction', 'Limpieza temporal sin corromper datos base.'],
+          ['Multi-Pack Merge', 'Fusión de paquetes ui/Win, core y sprites.'],
+          ['User Reset Option', 'Opción para purgar o reimportar el Vault.']
+        ]
+      },
+      {
+        id: 12, group: 'amber', groupName: 'Decoders', status: 'Implementado',
+        title: 'Asset Decoders + Format Readers',
+        summary: 'Decodificadores C++17 para texturas .art/.dds/.spr.msb, niveles .lvl, fuentes y tablas .ini.',
+        paths: 'src/core/art.* • src/core/level.* • src/tools/zdroid_dds.cpp • zdroid_msb.cpp',
+        flow: '.art / .art-pt / .dds / .spr.msb / .lvl → Decoders → Raw RGBA / Scene Data',
+        subblocks: [
+          ['.art & .art-pt', 'Decodificación de atlas y tablas de partes.'],
+          ['DDS / DXTn Reader', 'Descompresión de texturas DXT1/DXT3/DXT5.'],
+          ['.spr.msb Parser', 'Lectura de sprites MSB de UI y efectos.'],
+          ['.lvl Level Reader', 'Geometría de escenarios, cámaras y luces.'],
+          ['Text Format Parser', 'Lectores de .ini, music.ini y localización.'],
+          ['zdroid_dds Tool', 'Utilidad CLI de inspección y dump DDS.'],
+          ['zdroid_msb Tool', 'Inspector independiente de archivos .spr.msb.'],
+          ['Worker Thread Pool', 'Decodificación paralela sin congelar UI.'],
+          ['Oracle Verified', 'Validado bit a bit contra extractor Python.']
+        ]
+      },
+      {
+        id: 13, group: 'amber', groupName: 'Character Art', status: 'Implementado',
+        title: 'Character Art + Sprite Assembly',
+        summary: 'Ensamblaje de sprites de personajes, planos normales para iluminación .lvl y niveles de calidad.',
+        paths: 'src/core/art.* • src/core/gamedata.*',
+        flow: '<char>_1p.dds + .art + .pal → Frame Assembly → Normal Plane + Lit Mask',
+        subblocks: [
+          ['Sprite Sheet Map', 'Mapeo exacto de regiones y recortes de atlas.'],
+          ['Pivot & Hot Spot', 'Alineación precisa de origen por frame.'],
+          ['Normal Plane Split', 'Extracción de normales para iluminación .lvl.'],
+          ['Palette Index Apply', 'Aplicación de paletas indexadas de 256 colores.'],
+          ['Quarter-to-Full Mip', 'Generación de niveles de calidad de sprite.'],
+          ['Frame Preloading', 'Pre-decodificación opcional antes del combate.'],
+          ['Standing Portraits', 'Carga de character_select_<name>.dds.'],
+          ['Half-Compose Scale', 'Composición a mitad de escala para SparkFx.'],
+          ['VRAM Budget Track', 'Medición exacta de memoria por personaje.']
+        ]
+      },
+      {
+        id: 14, group: 'amber', groupName: 'FOIT Schema', status: 'Implementado',
+        title: 'FOIT Parser + Character Schema',
+        summary: 'Lectura binaria de archivos .foit: estados, timeline, hit/hurt/push boxes y registros de combate.',
+        paths: 'src/core/foit.* • src/tools/zdroid_foit.cpp • zdroid_probe.cpp',
+        flow: '<fighter>.foit → Binary Schema AST → States, Frames, Hit/Hurt/Push Boxes',
+        subblocks: [
+          ['FOIT Header & TOC', 'Tabla de estados, scripts y registros.'],
+          ['Frame Timeline', 'Duración, sprite ID, escalas y rotaciones.'],
+          ['Hitbox Records', 'Cajas rojas de ataque, daño y campo f12.'],
+          ['Hurtbox Records', 'Cajas azules vulnerables por extremidad.'],
+          ['Pushbox Geometry', 'Caja amarilla de colisión física entre cuerpos.'],
+          ['zdroid_foit CLI', 'Exporta PNGs con pivotes y cajas dibujadas.'],
+          ['zdroid_probe CLI', 'Inventario completo y volcado --records.'],
+          ['tests/real_diff.py', 'Comparación automática contra oráculo Python.'],
+          ['Oracle Gen Script', 'Generación de referencias en tests/oracle/.']
+        ]
+      },
+      {
+        id: 15, group: 'emerald', groupName: 'FOIT VM & Lua', status: 'En Progreso',
+        title: 'FOIT VM + State Interpreter',
+        summary: 'Intérprete de estados de combate integrado con Host Lua 5.1 para Tutoriales, Pruebas y Desafíos.',
+        paths: 'src/core/foit_rt.* • third_party/lua51/',
+        flow: 'State Script + Lua 5.1 Host → Opcodes / Cancels → Next Fighter State',
+        subblocks: [
+          ['State Machine Exec', 'Transiciones Idle, Walk, Jump, Attack, Hitstun.'],
+          ['Cancel Windows', 'Encadenamiento de normales a especiales/supers.'],
+          ['Lua 5.1 Runtime', 'Motor de scripting embebido sin deps externas.'],
+          ['Tutorial Host API', 'Bindings Lua para detectar inputs y objetivos.'],
+          ['Trial & Challenge', 'Soporte para secuencias de combo y retos.'],
+          ['Hitstop & Freeze', 'Pausa de impacto y super-flash determinista.'],
+          ['Velocity & Gravity', 'Física de saltos, dashes y knockback.'],
+          ['Slot 168 Dispatch', 'Despacho de estados de efectos en SparkFx.'],
+          ['FX32FRAME Stepper', 'Avance frame-a-frame de objetos temporales.']
+        ]
+      },
+      {
+        id: 16, group: 'emerald', groupName: 'Actor World', status: 'Implementado',
+        title: 'FOIT Runtime + Actor World',
+        summary: 'Simulación física 2D determinista de actores, colisiones hit/hurt/push y pruebas headless CLI.',
+        paths: 'src/core/foit_rt.* • src/tools/zdroid_duel.cpp',
+        flow: 'P1 & P2 Actors → Box Overlap Solver → Hit/Block Event + Camera Bounds',
+        subblocks: [
+          ['Actor World State', 'Posición, orientación, vida y barra de súper.'],
+          ['Pushbox Separation', 'Empuje mutuo y límites de bordes de pantalla.'],
+          ['Hit vs Hurt Solver', 'Detección exacta de intersección de rectángulos.'],
+          ['Contact Point Calc', 'Cálculo del punto exacto de contacto para sparks.'],
+          ['Facing & Flip', 'Volteo automático cuando P1 y P2 cruzan lado.'],
+          ['Projectile Actors', 'Entidades independientes y hitspark.foit.'],
+          ['zdroid_duel Headless', 'Simulador tick-a-tick por CLI (--p1 "30:R,1:LP").'],
+          ['Trace Diagnostics', 'Log determinista de cada frame y estado.'],
+          ['F1 Box Visualizer', 'Dibujo en vivo de hit/hurt/push sobre el juego.']
+        ]
+      },
+      {
+        id: 17, group: 'emerald', groupName: 'Combat Loop', status: 'En Progreso',
+        title: 'Combat Orchestrator + Match Loop',
+        summary: 'Carga escalonada, intros de ronda, Training Room, Local Versus, Quick Match CPU y menú de pausa.',
+        paths: 'src/app/play.{h,cpp} • src/tools/zdroid_fight.cpp',
+        flow: 'Stage Load → Fighter Load → Round Intro → Match Loop → Pause / Rematch',
+        subblocks: [
+          ['Staged Async Load', 'Escenario → Luchadores → Sprites en workers.'],
+          ['Training Room', 'Modo práctica libre con reinicio rápido.'],
+          ['Local Versus', 'Combate 2 jugadores en el mismo dispositivo.'],
+          ['Arcade / Quick CPU', 'Partida rápida con lógica de oponente CPU.'],
+          ['Round Intro & KO', 'Entradas de luchadores, timer y rondas.'],
+          ['Match Pause Dialog', 'Menú de pausa con Developer Options integrado.'],
+          ['Health & Meter HUD', 'Barras de vida, combo y súper en pantalla.'],
+          ['zdroid_fight Tool', 'Banco de pruebas directo de lógica de combate.'],
+         ['Feature Flag Guard', 'Ocultable vía -DZDROID_FIGHT_MODE=OFF.']
+        ]
+      },
+      {
+        id: 18, group: 'emerald', groupName: 'Stage System', status: 'Implementado',
+        title: 'Stage System 2D + 3D',
+        summary: 'Escenarios .lvl con capas 2D/3D parallax, cámara dinámica e iluminación ambient + diffuse + rim.',
+        paths: 'src/core/level.* • src/app/play.cpp',
+        flow: '.lvl Stage File → Parallax 2D/3D Layers + Light Rig → Lit Stage & Fighters',
+        subblocks: [
+          ['2D/3D Layer Graph', 'Composición multicapa con profundidad parallax.'],
+          ['Camera Tracking', 'Zoom y desplazamiento siguiendo a ambos actores.'],
+          ['Ambient Light Rig', 'Iluminación base ambiental por escenario.'],
+          ['Diffuse Directional', 'Luz direccional proyectada sobre normales.'],
+          ['Rim Lighting Pass', 'Contorno luminoso dinámico según paleta.'],
+          ['Backdrop Modes', 'Auto, Portrait o Generated si falta fondo.'],
+          ['Stage Thumbnails', 'Miniaturas y nombres para Selección de Escenario.'],
+          ['Custom Stage Mount', 'Carga automática desde mods/stages/ (Anna Killer).'],
+          ['Floor Plane Align', 'Alineación del plano de sombra y suelo.']
+        ]
+      },
+      {
+        id: 19, group: 'emerald', groupName: 'Palette Lab', status: 'Implementado',
+        title: 'Palette Lab + Color System',
+        summary: 'Editor en vivo por mínimos cuadrados, edición por partes, presets instantáneos y guardado .zgcol.',
+        paths: 'src/app/colour_editor.* • src/core/colour_edit.* • fav_colours.* • zdroid_palgen',
+        flow: 'Base Palette → Least-Squares Ramp Fit → HSL Edit → .zgcol + Baked .pal',
+        subblocks: [
+          ['Least-Squares Fit', 'Recupera colores clave con error ≤ 1 nivel.'],
+          ['Part-by-Part Tap', 'Toca una parte del sprite para editar su rampa.'],
+          ['HSL Ramp Preserve', 'Ajusta matiz, saturación y brillo sin perder sombra.'],
+          ['One-Tap Presets', 'Pastel, Vivid, Dark, Light, Random y Original.'],
+          ['.zgcol Persistence', 'Guarda receta y paleta en favcolours/<char>/.'],
+          ['Non-Destructive', 'Nunca escribe en mods/ ni en archivos base.'],
+         ['CharSelect Hold UI', 'Mantén pulsado (o tecla C) para abrir editor.'],
+         ['zdroid_palgen CLI', 'Generador temático de paletas .pal por lotes.'],
+         ['124 Colour Tests', 'Suite zdroid_colour_tests verificada al 100%.']
+        ]
+      },
+      {
+        id: 20, group: 'crimson', groupName: 'VFX & Shaders', status: 'Implementado',
+        title: 'PAFX + Shader Effects',
+        summary: 'Chispas de impacto/bloqueo desde hitspark.foit y efectos visuales de Super-Moves.',
+        paths: 'src/app/spark_fx.* • src/tools/zdroid_pafx.cpp • tests/test_spark_fx.cpp',
+        flow: 'Combat Hit/Super Event → SparkFx World (hitspark.foit) → Front Draw Pass',
+        subblocks: [
+          ['hitspark.foit World', 'Mundo independiente para efectos transitorios.'],
+          ['Hit & Block Sparks', 'Chispas dibujadas delante según campo f12.'],
+          ['Super-Move Effects', 'Trazos, destellos y fondos de movimientos súper.'],
+          ['State->Pic Resolver', 'Mapeo por nombre y conteo hacia .spr.msb+.dds.'],
+          ['Half-Scale Compose', 'Recorte, offset hot-spot y escalado lineal.'],
+          ['Text/Mark Filter', 'Filtra marcas PBGC_*, puntos y corazones.'],
+          ['zdroid_pafx CLI', 'Herramienta dedicada para inspeccionar PAFX.'],
+         ['FX Debug EnvVars', 'ZDROID_FX_LOG=1 y ZDROID_FX_LOGDRAW=1.'],
+          ['SparkFx Unit Tests', 'Validado en tests/test_spark_fx.cpp.']
+        ]
+      },
+      {
+        id: 21, group: 'crimson', groupName: 'Mod Loader', status: 'Implementado',
+        title: 'Mod Loader + Resource Packs',
+        summary: 'Carga modular de mods/pal, modscustom, stages, sdvoice_japanese y resourcepacks sin tocar base.',
+        paths: 'src/tools/zdroid_mods.cpp • docs/MODS.md • mods/',
+        flow: 'mods/{pal,modscustom,stages,sdvoice_japanese,resourcepacks} → VFS Override',
+        subblocks: [
+         ['Auto Folder Setup', 'Crea la estructura mods/ al iniciar si no existe.'],
+          ['mods/pal/', 'Inyección de paletas .pal externas en el roster.'],
+         ['mods/modscustom/', 'Mods personalizados de luchadores y contenido.'],
+         ['mods/stages/', 'Escenarios custom integrados en Stage Select.'],
+         ['mods/resourcepacks/', 'Reemplazos globales de UI, sprites y efectos.'],
+         ['sdvoice_japanese', 'Paquete dedicado de voces en japonés.'],
+         ['Zero Base Mutation', 'Los archivos originales nunca se modifican.'],
+         ['zdroid_mods CLI', 'Auditoría y verificación de paquetes de mods.'],
+         ['1.0 Mod Manager Plan', 'Futuro selector visual de prioridad en menú.']
+        ]
+      },
+      {
+        id: 22, group: 'crimson', groupName: 'Audio Module', status: 'Implementado',
+        title: 'Audio Module + Voice Routing',
+        summary: 'Música de escenarios/menús desde music.ini, pistas en bucle, anunciador y voces JP/EN.',
+        paths: 'core/music.ini • ui/Win/UISound/ • music/',
+        flow: 'music.ini + UISound/*.wav → SDL_mixer → BGM Loop + Announcer Voice',
+        subblocks: [
+         ['music.ini Parser', 'Mapeo de pistas de menú, selección y escenarios.'],
+          ['Attract Loop Audio', 'sg_attract_c.wav + sg_attract_c_loop.wav.'],
+         ['UISound Effects', 'Sonidos de cursor, confirmación y medallones.'],
+         ['CharConfirm Voice', 'Anunciador UISound/charconfirm.<name>.p1.wav.'],
+         ['JP_chars Routing', 'Conmutación hacia UISound/JP_chars/ según mod.'],
+          ['Silent Graceful Mode', 'Ejecución limpia sin fallos si falta música.'],
+         ['Volume Controls', 'Niveles independientes guardados en settings.'],
+          ['Combat SFX Hooks', 'Disparadores de golpes, bloqueos y KO.'],
+         ['Android Audio Focus', 'Pausa de audio automática al minimizar app.']
+        ]
+      },
+      {
+        id: 23, group: 'crimson', groupName: 'Save & Story', status: 'Implementado',
+        title: 'Save Data + Story + Settings',
+        summary: 'Persistencia portable en zgirls.savini, menu_settings.txt, desbloqueos de historia y favcolours/.',
+        paths: 'zgirls.savini • menu_settings.txt • favcolours/',
+        flow: 'User Settings / DevOpts / Story Flags → .savini & .txt → Persistent State',
+        subblocks: [
+          ['zgirls.savini Core', 'Configuración central del cargador y opciones.'],
+         ['menu_settings.txt', 'Idioma, dificultad, rondas y límite de tiempo.'],
+          ['[options] ZD_DEV_*', 'Persistencia de todas las opciones developer.'],
+         ['Notice Ack Flag', 'Estado [loader] notice=1 tras primer arranque.'],
+         ['Story Lock Logic', 'Bloqueo de Double/Valentine hasta desbloqueo.'],
+         ['favcolours Storage', 'Aislamiento de paletas favoritas .zgcol.'],
+          ['Steam Prefs Token', 'Token de login en carpeta privada de prefs.'],
+          ['Desktop Env Merge', 'Sobrescritura temporal vía entorno desktop.'],
+         ['Portable Profiles', 'Sin dependencia de registro del sistema.']
+        ]
+      },
+      {
+        id: 24, group: 'crimson', groupName: 'Steam Path', status: 'Implementado',
+        title: 'Steam Download + Import Path',
+        summary: 'Integración con DepotDownloader (App 245170) usando credenciales vía stdin sin almacenar contraseñas.',
+        paths: 'src/core/steam_* • src/app/zdroid_viewer.cpp • SKGSTEAM/',
+        flow: 'User Steam Login (stdin) → DepotDownloader (245170) → SKGSTEAM (.gfs)',
+        subblocks: [
+          ['App 245170 Target', 'Descarga oficial verificando propiedad en Steam.'],
+         ['Zero Anonymous Mode', 'Sin manifiestos filtrados ni cuentas compartidas.'],
+          ['stdin-Only Secrets', 'Password y Steam Guard nunca en argv ni logs.'],
+         ['Log Redaction', 'Censura automática de credenciales en consola.'],
+         ['Binary Discovery', 'Busca ZDROID_DEPOT_DOWNLOADER o PATH.'],
+          ['SKGSTEAM Isolation', 'Descarga en SKGSTEAM/ ignorado por el VFS.'],
+         ['2FA Prompt Modal', 'Entrada interactiva para código Steam Guard.'],
+          ['Token Reuse Opt', 'Recuerda sesión de forma segura si se solicita.'],
+         ['Unpack Bridge', 'Prepara archivos .gfs para extracción posterior.']
+        ]
+      },
+      {
+        id: 25, group: 'crimson', groupName: 'Tools & CI', status: 'Implementado',
+        title: 'Tools + Tests + CI + Diagnostics',
+        summary: '9 herramientas CLI, suite CTest, oráculo Python, overlays de depuración y CI en GitHub Actions.',
+        paths: 'src/tools/ • tests/ • .github/workflows/',
+        flow: 'Source + Assets → CLI Tools / CTest / real_diff.py → Verified Build',
+        subblocks: [
+         ['zdroid_probe', 'Inventario y registros completos de personajes.'],
+          ['zdroid_foit & duel', 'Exportador de frames y simulador de combate CLI.'],
+          ['zdroid_dds & msb', 'Inspectores binarios independientes de texturas.'],
+          ['zdroid_pafx & mods', 'Diagnóstico de efectos super/FX y mods/.'],
+          ['zdroid_colour_tests', '124 aserciones sobre ajuste de rampas y .zgcol.'],
+          ['tests/real_diff.py', 'Diff real contra datos de referencia Python.'],
+          ['F1 & Stage Overlays', 'Hitboxes en vivo, FPS y consumo de VRAM.'],
+         ['Smoke Test Suite', 'Pruebas de pantalla automatizadas con --dt N.'],
+         ['GitHub Actions CI', 'Compilación y tests continuos en cada push.']
+        ]
+      }
+    ];
+
+    // =====================================================================
+    // 2. RENDER DIAGRAMA 25x225 + MODAL
+    // =====================================================================
+    const blocksGrid = document.getElementById('blocksGrid');
+    const filterPills = document.getElementById('filterPills');
+    const archSearch = document.getElementById('archSearch');
+    const visibleBlocksCount = document.getElementById('visibleBlocksCount');
+    const visibleSubsCount = document.getElementById('visibleSubsCount');
+    const btnViewFull = document.getElementById('btnViewFull');
+    const btnViewCompact = document.getElementById('btnViewCompact');
+
+    let currentFilter = 'all';
+    let currentQuery = '';
+
+    function renderArchitecture() {
+      const q = currentQuery.trim().toLowerCase();
+      blocksGrid.innerHTML = '';
+
+      const filtered = ARCHITECTURE_BLOCKS.filter(block => {
+        if (currentFilter !== 'all' && block.group !== currentFilter) return false;
+        if (!q) return true;
+        const inTitle = block.title.toLowerCase().includes(q) || block.summary.toLowerCase().includes(q) || block.paths.toLowerCase().includes(q);
+        const inSubs = block.subblocks.some(([n, d]) => n.toLowerCase().includes(q) || d.toLowerCase().includes(q));
+        return inTitle || inSubs;
+      });
+
+      let activeSubCount = 0;
+      filtered.forEach(block => {
+        activeSubCount += block.subblocks.length;
+        const card = document.createElement('article');
+        card.className = 'arch-block';
+        card.setAttribute('data-group', block.group);
+        card.setAttribute('tabindex', '0');
+
+        const numStr = String(block.id).padStart(2, '0');
+        const head = document.createElement('div');
+        head.className = 'block-head';
+        head.innerHTML = `<span class="block-num">${numStr}</span><span class="block-badge">${block.groupName}</span>`;
+
+        const title = document.createElement('div');
+        title.className = 'block-title';
+        title.textContent = block.title;
+
+        const subgrid = document.createElement('div');
+        subgrid.className = 'subgrid-9';
+        block.subblocks.forEach(([subName, subDesc]) => {
+          const cell = document.createElement('div');
+          cell.className = 'subcell';
+          cell.textContent = subName;
+          cell.title = `${subName}: ${subDesc}`;
+          if (q && (subName.toLowerCase().includes(q) || subDesc.toLowerCase().includes(q))) {
+            cell.classList.add('match-highlight');
+          }
+          subgrid.appendChild(cell);
+        });
+
+        const foot = document.createElement('div');
+        foot.className = 'block-foot';
+        foot.innerHTML = `<span>9 subbloques</span><span>Inspeccionar →</span>`;
+
+        card.append(head, title, subgrid, foot);
+        card.addEventListener('click', () => openBlockModal(block.id));
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBlockModal(block.id); }
+        });
+        blocksGrid.appendChild(card);
+      });
+
+      visibleBlocksCount.textContent = filtered.length;
+      visibleSubsCount.textContent = activeSubCount;
+    }
+
+    filterPills.addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-pill');
+      if (!btn) return;
+      document.querySelectorAll('#filterPills .filter-pill').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      renderArchitecture();
+    });
+
+    archSearch.addEventListener('input', (e) => { currentQuery = e.target.value; renderArchitecture(); });
+
+    btnViewFull.addEventListener('click', () => {
+      btnViewFull.classList.add('active'); btnViewCompact.classList.remove('active');
+      blocksGrid.classList.remove('compact-mode');
+    });
+    btnViewCompact.addEventListener('click', () => {
+      btnViewCompact.classList.add('active'); btnViewFull.classList.remove('active');
+      blocksGrid.classList.add('compact-mode');
+    });
+
+    const blockModal = document.getElementById('blockModal');
+    function openBlockModal(id) {
+      const block = ARCHITECTURE_BLOCKS.find(b => b.id === id);
+      if (!block) return;
+      const numStr = String(block.id).padStart(2, '0');
+      document.getElementById('modalGroupBadge').textContent = `BLOQUE ${numStr} • ${block.groupName.toUpperCase()} • ${block.status.toUpperCase()}`;
+      document.getElementById('modalTitle').textContent = block.title;
+      document.getElementById('modalSummary').textContent = block.summary;
+      document.getElementById('modalPaths').textContent = block.paths;
+      document.getElementById('modalFlow').textContent = block.flow;
+
+      const subgrid = document.getElementById('modalSubgrid');
+      subgrid.innerHTML = '';
+      block.subblocks.forEach(([subName, subDesc], idx) => {
+        const div = document.createElement('div');
+        div.className = 'modal-subcard';
+        const h4 = document.createElement('h4'); h4.textContent = `${numStr}.${idx + 1} ${subName}`;
+        const p = document.createElement('p'); p.textContent = subDesc;
+        div.append(h4, p);
+        subgrid.appendChild(div);
+      });
+      blockModal.classList.add('open');
+    }
+    document.getElementById('modalCloseBtn').addEventListener('click', () => blockModal.classList.remove('open'));
+    blockModal.addEventListener('click', (e) => { if (e.target === blockModal) blockModal.classList.remove('open'); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') blockModal.classList.remove('open'); });
+    renderArchitecture();
+
+    // =====================================================================
+    // 3. QUICKSTART OS TABS
+    // =====================================================================
+    document.querySelectorAll('.os-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.os-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.os-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('os-' + tab.dataset.os).classList.add('active');
+      });
+    });
+
+    // =====================================================================
+    // 4. SIMULADOR SAMPLE STAGE (ANNA KILLER)
+    // =====================================================================
+    const stageState = { ambient: true, diffuse: true, rim: true, shadow: true };
+    const stageSky = document.getElementById('stageSky');
+    const fighterP1 = document.getElementById('fighterP1');
+    const fighterP2 = document.getElementById('fighterP2');
+    const stageLightReadout = document.getElementById('stageLightReadout');
+    const cameraPanSlider = document.getElementById('cameraPanSlider');
+    const stageParallaxBack = document.getElementById('stageParallaxBack');
+    const stageFighters = document.getElementById('stageFighters');
+
+    function updateStageVisuals() {
+      stageSky.style.filter = stageState.ambient ? 'brightness(1)' : 'brightness(0.45)';
+      const bg1 = stageState.diffuse
+        ? 'linear-gradient(135deg, #475569 0%, #1e293b 60%, #0f172a 100%)'
+        : 'linear-gradient(180deg, #1e293b, #0f172a)';
+      const rimGlow = stageState.rim ? '0 0 0 1.5px rgba(251, 113, 133, 0.75), -4px 0 16px rgba(244, 63, 94, 0.45)' : 'none';
+      const shOpacity = stageState.shadow ? '1' : '0';
+
+      [fighterP1, fighterP2].forEach(f => {
+        f.style.background = bg1;
+        f.style.boxShadow = rimGlow;
+        f.style.setProperty('--shadow-opacity', shOpacity);
+      });
+
+      const activeLabels = [];
+      if (stageState.ambient) activeLabels.push('Ambient');
+      if (stageState.diffuse) activeLabels.push('Diff');
+      if (stageState.rim) activeLabels.push('Rim');
+      if (stageState.shadow) activeLabels.push('Shadow');
+      stageLightReadout.textContent = activeLabels.length ? activeLabels.join(' + ') : 'Unlit Base';
+    }
+
+    function bindStageToggle(id, key) {
+      const btn = document.getElementById(id);
+      btn.addEventListener('click', () => {
+        stageState[key] = !stageState[key];
+        btn.classList.toggle('on', stageState[key]);
+        updateStageVisuals();
+      });
+    }
+    bindStageToggle('togAmbient', 'ambient');
+    bindStageToggle('togDiffuse', 'diffuse');
+    bindStageToggle('togRim', 'rim');
+    bindStageToggle('togShadow', 'shadow');
+
+    cameraPanSlider.addEventListener('input', (e) => {
+      const pan = parseInt(e.target.value, 10);
+      stageParallaxBack.style.transform = `translateX(${pan * 0.45}px)`;
+      stageFighters.style.transform = `translateX(${pan}px)`;
+    });
+    updateStageVisuals();
+
+    document.getElementById('copyStageCmdBtn').addEventListener('click', async (e) => {
+      try {
+        await navigator.clipboard.writeText('git clone https://github.com/bodriodroid/Anna_Killer_ZGirlsLoaderPort.git');
+        e.target.textContent = '¡Comando copiado!';
+        setTimeout(() => { e.target.textContent = 'Copiar git clone'; }, 1800);
+      } catch {}
+    });
+
+    // =====================================================================
+    // 5. FILTRO DE COMPATIBILIDAD
+    // =====================================================================
+    document.getElementById('compatFilters').addEventListener('click', (e) => {
+      const btn = e.target.closest('.filter-pill');
+      if (!btn) return;
+      document.querySelectorAll('#compatFilters .filter-pill').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.dataset.compat;
+      document.querySelectorAll('#compatBody tr').forEach(row => {
+        row.style.display = (target === 'all' || row.dataset.status === target) ? '' : 'none';
+      });
+    });
+
+    // =====================================================================
+    // 6. MODS, PALETAS (.zgcol), CLI, FAQ Y TELEMETRÍA GITHUB EN VIVO
+    // =====================================================================
+    document.getElementById('mobileToggle').addEventListener('click', () => {
+      document.getElementById('navLinks').classList.toggle('open');
+    });
+
+    const treeItems = document.querySelectorAll('.tree-item');
+    const treeDesc = document.getElementById('treeDesc');
+    treeItems.forEach(item => {
+      item.addEventListener('click', () => {
+        treeItems.forEach(el => el.classList.remove('selected'));
+        item.classList.add('selected');
+        treeDesc.textContent = item.getAttribute('data-desc');
+      });
+    });
+
+    const hueSlider = document.getElementById('hueSlider');
+    const satSlider = document.getElementById('satSlider');
+    const litSlider = document.getElementById('litSlider');
+    const swatches = document.querySelectorAll('#swatchRow .swatch');
+    const zgcolPreview = document.getElementById('zgcolPreview');
+    const baseRamp = [[345,78,24],[348,82,42],[352,85,58],[215,45,22],[210,52,48],[42,85,65]];
+
+    function updatePalette() {
+      const hShift = parseInt(hueSlider.value, 10);
+      const sScale = parseInt(satSlider.value, 10) / 100;
+      const lScale = parseInt(litSlider.value, 10) / 100;
+      document.getElementById('hueVal').textContent = `${hShift}°`;
+      document.getElementById('satVal').textContent = `${Math.round(sScale * 100)}%`;
+      document.getElementById('litVal').textContent = `${Math.round(lScale * 100)}%`;
+
+      swatches.forEach((swatch, i) => {
+        const [bh, bs, bl] = baseRamp[i];
+        const h = (bh + hShift + 360) % 360;
+        const s = Math.min(100, Math.max(0, Math.round(bs * sScale)));
+        const l = Math.min(92, Math.max(8, Math.round(bl * lScale)));
+        swatch.style.backgroundColor = `hsl(${h}, ${s}%, ${l}%)`;
+      });
+      zgcolPreview.innerHTML = `# favcolours/annie/custom_01.zgcol<br/>hue_shift=${hShift} sat=${sScale.toFixed(2)} lit=${lScale.toFixed(2)} ramp_fit=least_squares_ok`;
+    }
+    window.setPreset = function(h, s, l) { hueSlider.value = h; satSlider.value = s; litSlider.value = l; updatePalette(); };
+    [hueSlider, satSlider, litSlider].forEach(el => el.addEventListener('input', updatePalette));
+    updatePalette();
+
+    const cliSnippets = {
+      desktop: `# Clonar SDL2 2.30.9 junto al repositorio
+git clone --depth 1 --branch release-2.30.9 https://github.com/libsdl-org/SDL.git ../SDL
+
+# Compilar en Linux / macOS / Windows
+cmake -S . -B build -G Ninja -DZDROID_SDL2_SOURCE_DIR=../SDL
+cmake --build build
+
+# Ejecutar apuntando a tu carpeta extraída y montajes extra
+./build/zdroid_viewer /ruta/a/unpacked /ruta/a/ui_Win /ruta/a/sprites`,
+
+      tools: `# Inspeccionar personaje y registros .foit
+./build/zdroid_probe /ruta/datos --char annie --png out/ --records
+
+# Exportar frames con pivotes y cajas hit/hurt/push
+./build/zdroid_foit annie.foit --frames 1,137 --state WalkFwd --out out/
+
+# Simulador de combate headless tick-a-tick
+./build/zdroid_duel annie.foit --p1 "30:R,1:LP" --gap 180 --trace
+
+# Otros inspectores y generador de paletas
+./build/zdroid_dds <archivo.dds>
+./build/zdroid_msb <archivo.spr.msb>
+./build/zdroid_pafx <archivo>
+./build/zdroid_mods /ruta/datos
+./build/zdroid_palgen /ruta/datos --char annie --theme neon`,
+
+      tests: `# Suite C++ (incluye 124 aserciones del Colour Editor y SparkFx)
+ctest --test-dir build --output-on-failure
+
+# Generar oráculo Python y verificar coincidencia binaria
+python3 tests/oracle/gen_oracle.py /ruta/a/unpacked
+python3 tests/real_diff.py /ruta/a/unpacked
+
+# Smoke-test determinista de pantallas
+./build/zdroid_viewer /ruta/datos --screen attract --attract-shot 4 --dt 16 --smoke-scale 2`,
+
+      android: `# Requisitos: Android SDK 34 + NDK 26.1.10909125
+git clone --depth 1 --branch release-2.30.9 https://github.com/libsdl-org/SDL.git ../SDL
+
+# Compilar APK ARM64-v8a
+cd android
+./gradlew -PsdlDir=../SDL assembleDebug
+
+# Instalar encima conservando configuración y favcolours
+adb install -r app/build/outputs/apk/debug/app-debug.apk`
+    };
+
+    const codeContent = document.getElementById('codeContent');
+    document.querySelectorAll('[data-cli]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-cli]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        codeContent.querySelector('code').textContent = cliSnippets[btn.dataset.cli];
+      });
+    });
+
+    document.getElementById('copyCodeBtn').addEventListener('click', async (e) => {
+      try {
+        await navigator.clipboard.writeText(codeContent.textContent);
+        e.target.textContent = '¡Copiado!';
+        setTimeout(() => { e.target.textContent = 'Copiar'; }, 1800);
+      } catch {}
+    });
+
+    // FAQ Accordion
+    document.querySelectorAll('.faq-q').forEach(btn => {
+      btn.addEventListener('click', () => {
+        btn.closest('.faq-item').classList.toggle('open');
+      });
+    });
+
+    // Hidratación opcional en vivo desde GitHub API (con fallback silencioso)
+    (async function hydrateGitHubStats() {
+      try {
+        const res = await fetch('https://api.github.com/repos/bodriodroid/ZGIRLSLOADER');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (typeof data.stargazers_count === 'number') {
+          document.getElementById('ghStarsMetric').textContent = `${data.stargazers_count} ★`;
+          document.getElementById('ghStarsLabel').textContent = 'Estrellas GitHub';
+        }
+        if (data.pushed_at) {
+          const d = new Date(data.pushed_at).toLocaleDateString('es-ES', { year: 'numeric', month: 'short', day: 'numeric' });
+          document.getElementById('liveRepoTelemetry').textContent = `Repo: bodriodroid/ZGIRLSLOADER • Último push: ${d} • MIT`;
+        }
+      } catch {}
+    })();
+  </script>
+</body>
+</html>
