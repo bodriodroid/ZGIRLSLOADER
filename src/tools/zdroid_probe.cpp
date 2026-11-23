@@ -80,6 +80,12 @@ int main(int argc, char** argv) {
                     mr.layoutOk ? "ok" : "cannot be created (read-only?)", mr.packs, mr.mods, mr.stages, mr.pal.entries.size());
         for (const std::string& l : mr.log) std::printf("  %s\n", l.c_str());
         for (const std::string& w : mr.warnings) std::printf("  warning: %s\n", w.c_str());
+        for (size_t i = 0; i < mr.conflicts.size() && i < 20; ++i) {   // the same file in two mods: who wins
+            std::string lost;
+            for (const std::string& o : mr.conflicts[i].overridden) lost += (lost.empty() ? "" : ", ") + o;
+            std::printf("  conflict: %s  -> %s wins over %s\n", mr.conflicts[i].path.c_str(), mr.conflicts[i].winner.c_str(), lost.c_str());
+        }
+        if (mr.conflicts.size() > 20) std::printf("  (+%zu more conflicts)\n", mr.conflicts.size() - 20);
     }
     Inventory inv = gd.scan();
     std::printf("\n== inventory (%zu files)\n", inv.files);
