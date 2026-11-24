@@ -93,6 +93,7 @@ void PlayScreen::hudReset() {
         trail_[i] = static_cast<float>(std::clamp(st_.p[i].health, 0, 1000));
         trailHold_[i] = 0;
         hudLastHp_[i] = st_.p[i].health;
+        hudHurt_[i] = false;
         hudCombo_[i] = false;
         hudComboHits_[i] = 0;
         hudStocks_[i] = std::clamp(st_.p[i].meter, 0, 5000) / 1000;
@@ -158,6 +159,7 @@ void PlayScreen::hudTick() {
             trailHold_[i] = 34;  // hit: the old value stays as the red trail for a moment
         }
         hudLastHp_[i] = hp;
+        if (hp < 1000) hudHurt_[i] = true;
         if (trail_[i] < h) trail_[i] = h;
         if (trailHold_[i] > 0) {
             --trailHold_[i];
@@ -317,6 +319,7 @@ bool PlayScreen::drawHudScene(SDL_Renderer* r) {
     }
     if (hudDemo_) {  // ZDROID_PLAY_HUDDEMO: show a mid-fight HUD (health, trail, meter, combo, round pips) for screenshots
         hp[0] = 0.72f; tr[0] = 0.72f; hp[1] = 0.38f; tr[1] = 0.62f;
+        hudHurt_[0] = false; hudHurt_[1] = true;  // one side still on the green bar, the other already yellow
     }
     float bx[2] = {-5, 723}, by[2] = {0, 0};
     if (const GbsNode* b = v->find("P1_Bar")) { bx[0] = b->x; by[0] = b->y; }
@@ -396,7 +399,17 @@ bool PlayScreen::drawHudScene(SDL_Renderer* r) {
             return;
         }
         if (suf == "Black_Background") { st.fallback = Col{5, 5, 8, 255}; return; }
-        if (suf == "F1_energybar") { cropBar(st, p, 0.0f, hp[p]); st.fallback = Col{64, 184, 72, 255}; return; }
+        if (suf == "F1_energybar") {
+            // The exe keeps a per-side flag that starts every round true and is cleared the first time that side's fighter drops below full
+            // health; the HUD handler then swaps the bar art by suffix: 02 (green) while the flag is set, 01 (yellow to red) once it is cleared.
+            // (03 is the same art for a team's non-last fighters, which this 1v1 build never shows.)
+            const bool hurt = hudHurt_[p];
+            const std::string tn = std::string("Textures/HUD/Energy_Bar_Main_Character0") + (hurt ? "1" : "2") + ".png";
+            if (hud_.texture(tn)) st.texName = tn;
+            cropBar(st, p, 0.0f, hp[p]);
+            st.fallback = hurt ? Col{236, 190, 40, 255} : Col{64, 184, 72, 255};
+            return;
+        }
         if (suf == "F1_bloodbar") { cropBar(st, p, hp[p], tr[p]); st.fallback = Col{210, 60, 40, 255}; return; }
         if (suf == "F1_blackbar") { cropBar(st, p, tr[p], 1.0f); st.fallback = Col{6, 6, 9, 255}; return; }
         if (suf == "PortraitBg") {

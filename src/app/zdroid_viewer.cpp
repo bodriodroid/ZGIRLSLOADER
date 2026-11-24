@@ -1200,7 +1200,8 @@ bool phaseMatches(const std::string& want, SteamPhase p) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    App app;
+    auto appOwner = std::make_unique<App>();   // destroyed before the renderer: its screens still own textures
+    App& app = *appOwner;
     app.opt = parseArgs(argc, argv);
     const Options& opt = app.opt;
     const bool smoke = !opt.smokePng.empty();
@@ -1763,6 +1764,7 @@ int main(int argc, char** argv) {
         SDL_DestroyTexture(app.tex);
         app.tex = nullptr;
     }
+    appOwner.reset();   // every screen frees its textures while the renderer is still alive
     SDL_DestroyTexture(ui.font);
     bars.release();
     SDL_DestroyRenderer(ren);
