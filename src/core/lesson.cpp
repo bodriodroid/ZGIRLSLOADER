@@ -2,6 +2,7 @@
 #include "lesson.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "palfx.h"
 
@@ -44,6 +45,8 @@ void Lesson::end() {
         duel_->setPreStep(nullptr);
         duel_->setRules(0, {}, false);
         duel_->setRules(1, {}, false);
+        duel_->setDamageGate(0, {});
+        duel_->setDamageGate(1, {});
     }
     duel_ = nullptr;
     rules_ = Rules();
@@ -61,6 +64,19 @@ void Lesson::setRules(const Rules& r) {
             const uint32_t h = palfx::nameHash(w);
             if (std::find(locked_[s].begin(), locked_[s].end(), h) == locked_[s].end()) locked_[s].push_back(h);
         }
+        foit::rt::World::DamageGate g;
+        g.hNormal = palfx::nameHash("Normal");
+        g.hSpecial = palfx::nameHash("Special");
+        g.hSuper = palfx::nameHash("Super");
+        for (const std::string& w : r.allowDamage[s]) {
+            if (w.empty() || w == "All") { g.active = false; break; }
+            g.active = true;
+            if (w == "Normal") g.normal = true;
+            else if (w == "Special") g.special = true;
+            else if (w == "Super") g.super = true;
+            else if (w.rfind("ComboOver", 0) == 0) g.comboOver = std::atoi(w.c_str() + 9);
+        }
+        duel_->setDamageGate(s, g);
         duel_->setStart(s, r.lifePct[s] == 100 ? 0 : r.lifePct[s], r.meterBars[s]);
         foit::rt::Object& o = duel_->bodyMut(s);
         lifeHold_[s] = o.life();

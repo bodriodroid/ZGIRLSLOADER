@@ -550,6 +550,29 @@ void enterState(Object& o, World& w, int s) {
 // ======================================================================================================================
 static void refreshSlots(Object& o, World& w);
 
+// A challenge's AllowDamage (World::gate): may this hit take life?  `a` is the object that hit (the character, or a projectile / helper of it).
+// The move's kind is read from the tags of the state that is running: the object's own and, for a child, its character's.  A move that carries
+// none of Normal / Special / Super counts as Special when it is a projectile and as Normal otherwise (throws, assist calls).
+static bool damageAllowed(const World& w, const Object& a, const Object& attackerChar) {
+    const int side = attackerChar.slots[25] >= 2.0f ? 1 : 0;
+    const World::DamageGate& g = w.gate[side];
+    if (!g.active) return true;
+    if (g.comboOver >= 0 && attackerChar.slots[11] >= static_cast<float>(g.comboOver)) return true;   // slot 11: hits landed in the running combo
+    auto carries = [](const Object& o, uint32_t h) {
+        if (!o.def || o.state < 0 || o.state >= static_cast<int>(o.def->states.size())) return false;
+        const std::vector<uint32_t>& hs = o.def->states[static_cast<size_t>(o.state)].hashes;
+        return std::find(hs.begin(), hs.end(), h) != hs.end();
+    };
+    bool normal = carries(a, g.hNormal), special = carries(a, g.hSpecial), super = carries(a, g.hSuper);
+    if (&a != &attackerChar) {
+        normal = normal || carries(attackerChar, g.hNormal);
+        special = special || carries(attackerChar, g.hSpecial);
+        super = super || carries(attackerChar, g.hSuper);
+    }
+    if (!normal && !special && !super) (&a != &attackerChar ? special : normal) = true;
+    return (normal && g.normal) || (special && g.special) || (super && g.super);
+}
+
 // True when the state a transition leads to carries one of the tags a lesson forbids.
 static bool refused(const Object& o, uint16_t target, const std::vector<uint32_t>& forbidden) {
     if (!o.def || target >= o.def->states.size()) return false;
@@ -1425,6 +1448,7 @@ void resolveHits(World& w) {
         Object* victim = characterOf(d);
         float scale = attackerChar->slots[68];
         if (d->slots[27] == 0) scale *= d->slots[69];
+        if (!damageAllowed(w, *a, *attackerChar)) scale = 0.0f;   // a challenge's AllowDamage: the hit lands without taking life
         // the engine clears the hints the hit's own chain (run next) fills in: AIRHINT 91, ANIMHINT 93, PUSHBACK* 95..98; WASHITBYASSIST 94 says
         // whether the attacking character is not the point character (an assist)
         d->slots[70] = d->slots[132];  // WASCH: the defender was in a counter-hit window (its own COUNTERHIT) when it was hit

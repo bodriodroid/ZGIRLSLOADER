@@ -280,6 +280,14 @@ struct World {
     // carries one of them is refused.  `noBlock`: the character never blocks (every hit lands).
     std::vector<uint32_t> forbidden[2];
     bool noBlock[2] = {false, false};
+    // A challenge's "AllowDamage" for each side's attacks (see script::Rules): a hit whose move is not one of the allowed kinds lands with
+    // its stun and pushback but takes no life.  Configuration, like `forbidden`.  The hashes are the tag names the states carry.
+    struct DamageGate {
+        bool active = false;
+        bool normal = false, special = false, super = false;
+        int comboOver = -1;                                   // >= 0: anything damages once the combo has this many hits
+        uint32_t hNormal = 0, hSpecial = 0, hSuper = 0;
+    } gate[2];
     World() {
         for (float& g : globals) g = 0;
     }

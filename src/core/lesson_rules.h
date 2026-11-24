@@ -9,6 +9,9 @@ namespace script {
 // What a challenge asks of the fight besides its script (lesson_data.h Challenge, one fighter per side here).
 struct Rules {
     std::vector<std::string> locked[2];    // move kinds the side cannot use: the names of the tags the states carry (Normal Throw Special Super Jump ...)
+    // What the side's attacks may damage with: "All" / empty = anything; otherwise any of Normal, Special, Super, or "ComboOverN" (any attack once
+    // the combo has N hits).  The names are an OR: "Normal, Special, ComboOver2" damages with normals, specials, and with anything from the 3rd hit.
+    std::vector<std::string> allowDamage[2];
     int lifePct[2] = {100, 100};           // full life as a percentage of the usual
     int meterBars[2] = {-1, -1};           // super meter at the start, in bars (-1 = as it comes)
     float lifeStart[2] = {-1, -1};         // life at the start as a fraction of the full life above (-1 = full): a challenge carries the player's life over

@@ -84,6 +84,7 @@ public:
     // player's pad is cut while an explanation is up).  `setRules` is what the script asked for: tags a side may not use, blocking off.
     using PreStep = std::function<void(uint16_t& in0, uint16_t& in1)>;
     void setPreStep(PreStep f) { preStep_ = std::move(f); }
+    void setDamageGate(int side, const rt::World::DamageGate& g) { rules_[side & 1].gate = g; }
     void setRules(int side, const std::vector<uint32_t>& forbidden, bool noBlock) {
         rules_[side & 1].forbidden = forbidden;
         rules_[side & 1].noBlock = noBlock;
@@ -153,6 +154,7 @@ private:
     PreStep preStep_;
     struct LessonRules {
         std::vector<uint32_t> forbidden;
+        rt::World::DamageGate gate;
         bool noBlock = false;
     } rules_[2];
     std::vector<rt::Event> events_;

@@ -153,6 +153,8 @@ play::PlayScreen::LessonRun LessonsScreen::challengeRun(const Challenge& c, cons
     script::Rules& ru = r.rules;
     ru.locked[0] = c.playerLocked;
     ru.locked[1] = c.enemyLocked;
+    ru.allowDamage[0] = c.playerAllowDamage;
+    ru.allowDamage[1] = c.enemyAllowDamage;
     ru.lifePct[0] = c.health.playerPct;
     ru.lifePct[1] = c.health.enemyPct;
     ru.lifeMod[0] = script::Rules::modOf(c.health.playerMod);
@@ -591,7 +593,7 @@ void LessonsScreen::drawChallengesGbs(Ui& ui, Out& out) {
     }
     if (ui.button(5003, Rect{8, 326, 96, 26}, "BACK")) out.kind = Out::Kind::Back;
     if (c.freePick()) {
-        ui.text(118, 334, "FIGHTER", kDim);
+        ui.text(112, 334, "FIGHTER", kDim);   // ends at 168: eight pixels of air before the "<" button (it used to touch it)
         if (ui.button(5001, Rect{176, 326, 22, 26}, "<") && !fighters_.empty()) pick_ = (pick_ + static_cast<int>(fighters_.size()) - 1) % static_cast<int>(fighters_.size());
         ui.text(204, 334, Ui::fit(upperStr(player), 110), kText);
         if (ui.button(5002, Rect{322, 326, 22, 26}, ">") && !fighters_.empty()) pick_ = (pick_ + 1) % static_cast<int>(fighters_.size());

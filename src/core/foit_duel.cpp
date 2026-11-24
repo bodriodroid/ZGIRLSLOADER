@@ -160,6 +160,7 @@ void FoitDuel::step(uint16_t in0, uint16_t in1) {
     for (int i = 0; i < 2; ++i) {   // the lesson's rules (a load of the world gives the defaults back, so they are set again every tick)
         w_.forbidden[i] = rules_[i].forbidden;
         w_.noBlock[i] = rules_[i].noBlock;
+        w_.gate[i] = rules_[i].gate;
     }
     rt::tickAll(w_, s, 2);
     events_.swap(w_.events);

@@ -10,7 +10,7 @@
 //
 // Challenges are team fights in the game (up to three fighters a side, assists); the duel engine is one against one, so a challenge here is
 // a row of single fights against the enemy team in order: the player's life carries over from one fight to the next, the challenge is won
-// when the last enemy falls.  Assists, "AllowDamage" limits and the Drama gauge are not applied.
+// when the last enemy falls.  Assists and the Drama gauge are not applied ("AllowDamage" is).
 #pragma once
 #include <SDL.h>
 
