@@ -1,4 +1,10 @@
 # ZGirls Loader (Android: ZGirlsMobile) - Skullgirls 2nd Encore: asset loader + viewer and modloader/port for Android
+> thank you...
+
+> and i hate you Skullgirls RPG Mobile 
+
+
+
 
 > Cambios de esta versión: ver `docs/es/CAMBIOS_ZGIRLS.md`.
 
