@@ -1811,6 +1811,16 @@ bool PlayScreen::buildFoit(const LevelInfo* lv) {
     auto fd = std::make_unique<fight::FoitDuel>();
     if (!fd->init(c)) return false;
     foit_ = std::move(fd);
+    heldFrame_[0] = heldFrame_[1] = -1;
+    for (int i = 0; i < 2; ++i) {   // a roster entry without its .art-pt cannot draw about half of its frames: say so instead of failing silently
+        if (skin_[i].hasArt() && !skin_[i].hasArtPt()) {
+            std::printf("[play] %s has no .art-pt: the frames that live in it (about half of the animations) cannot be drawn\n", skin_[i].name.c_str());
+            if (!artPtWarned_) {
+                artPtWarned_ = true;
+                showToast(tr("MissingArtPt", "A character is missing its .art-pt file: some animations will look frozen"));
+            }
+        }
+    }
     lesson_.reset();
     if (lessonMode_) beginLessonScript();
     sparks_.reset();
@@ -2715,8 +2725,23 @@ void PlayScreen::drawFoitView(Ui& ui, SDL_Renderer* r, const fight::FoitView& v,
     Skin& sk = skin_[v.side];
     applySuperToSkin(sk, v);
     applyPalFxToSkin(sk, v);
-    if (sk.drawFrame(r, static_cast<uint16_t>(v.frame), fx, fy, s, v.faceRight, v.xscale, v.yscale, v.alpha) > 0) return;
-    if (v.body) drawDummy(ui, st_.p[v.side], animFor(st_.p[v.side]), static_cast<int>(fx), static_cast<int>(fy), 330.0 * s, v.side);   // frame with no picture
+    if (sk.drawFrame(r, static_cast<uint16_t>(v.frame), fx, fy, s, v.faceRight, v.xscale, v.yscale, v.alpha) > 0) {
+        if (v.body) heldFrame_[v.side] = v.frame;
+        return;
+    }
+    if (!v.body) return;
+    // The body has nothing to show on this frame.  Two cases, neither of which may draw a stand-in box (the box popped in and out
+    // through the entrances and looked like the fighter teleporting):
+    //  * the frame is empty on purpose (every image slot is a placeholder): the game draws nothing, so neither do we;
+    //  * its art lives in a bank that is not loaded (a character without its .art-pt: about half of every roster's frames): keep the last
+    //    pose that could be drawn, so the fighter stays where it is instead of flickering between a pose and a box.
+    const foit::Frame* fr = sk.moves().frame(static_cast<uint16_t>(v.frame));
+    bool anyImage = false;
+    if (fr)
+        for (int k = 0; k < foit::kSlots && !anyImage; ++k) anyImage = !fr->img[k].placeholder();
+    if (!anyImage) return;
+    if (heldFrame_[v.side] >= 0 && heldFrame_[v.side] != v.frame)
+        sk.drawFrame(r, static_cast<uint16_t>(heldFrame_[v.side]), fx, fy, s, v.faceRight, v.xscale, v.yscale, v.alpha);
 }
 
 void PlayScreen::drawFighter(Ui& ui, SDL_Renderer* r, int player, double feetX, double feetY, double scale) {

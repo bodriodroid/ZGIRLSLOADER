@@ -555,6 +555,8 @@ private:
     float trail_[2] = {1000, 1000};   // the red "recent damage" part of the health bar, in health units
     int trailHold_[2] = {0, 0};       // ticks the trail waits before it drains
     int hudLastHp_[2] = {1000, 1000};
+    int heldFrame_[2] = {-1, -1};   // the last body frame of each side that could be drawn (see drawFoitView)
+    bool artPtWarned_ = false;      // the missing-.art-pt toast was shown this session
     bool hudHurt_[2] = {false, false};  // the side has lost health since the round began: the game's bar goes from green to yellow for good
     // the HUD view's own animations, played the way the game's HUD handler does: OnActivate sets every node's starting pose, the combo panel
     // comes in with P?_Combo_ShowAnim and leaves with P?_Combo_HideAnim (which first holds the last count for a second), a completed super
