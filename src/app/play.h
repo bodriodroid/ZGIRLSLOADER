@@ -562,6 +562,9 @@ private:
     // comes in with P?_Combo_ShowAnim and leaves with P?_Combo_HideAnim (which first holds the last count for a second), a completed super
     // stock plays P?_SuperBar_Complete and a full meter loops P?_SuperMeter_FullGlow
     GbsAnimPlayer hudAnim_;
+    GbsAnimPlayer lessonAnim_;                        // InGame.gbs' ObjectiveList view (the lesson's own HUD)
+    const GbsSceneView* lessonView_ = nullptr;
+    void drawLessonScene(Ui& ui, const GbsSceneView& v);
     const GbsSceneView* hudAnimView_ = nullptr;
     bool hudCombo_[2] = {false, false};   // the combo panel is out (shown or holding its last count)
     int hudComboHits_[2] = {0, 0};        // the count the panel shows (kept while it holds after the combo ends)

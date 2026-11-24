@@ -52,6 +52,20 @@ public:
     // Draws over a 640x360 picture.  `below` = first y free of the match HUD (the life bars above it).
     void draw(Ui& ui, int below);
 
+    // ---- what the scene-based draw needs (PlayScreen::drawLessonScene paints InGame.gbs' ObjectiveList view with these)
+    struct RowText {
+        std::string text;   // translated, placeholders filled, "(p/m)" appended when the text has no {1}
+        bool done = false;
+    };
+    std::vector<RowText> visibleRows() const;
+    bool detailsShown() const { return detailsOn_ && !detailsKey_.empty() && !explActive_; }
+    std::string detailsText() const { return text(detailsKey_); }
+    bool explanationShown() const { return explActive_ && !explKey_.empty(); }
+    std::string explanationText() const { return text(explKey_); }
+    bool promptVisible() const { return (clock_ / 24) % 2 == 0 || explAge_ < 18; }
+    std::string promptText() const;
+    float fadeAmount() const { return fade_; }
+
     // text of a key as the screen shows it (translated, placeholders filled); exposed for tests
     std::string text(const std::string& key, int progress = 0, int maxProgress = 0) const;
 

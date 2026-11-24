@@ -146,6 +146,24 @@ std::string LessonHud::text(const std::string& key, int progress, int maxProgres
     return lessons::formatText(t, progress, maxProgress);
 }
 
+std::vector<LessonHud::RowText> LessonHud::visibleRows() const {
+    std::vector<RowText> out;
+    const int firstRow = std::clamp(first_, 0, std::max(0, static_cast<int>(rows_.size()) - maxRows_));
+    for (int i = firstRow; i < static_cast<int>(rows_.size()) && i < firstRow + maxRows_; ++i) {
+        const Row& r = rows_[static_cast<size_t>(i)];
+        std::string t = text(r.key, r.progress, r.max);
+        const std::string tk = tr_ ? tr_(r.key) : std::string();
+        if (r.max > 1 && tk.find("{1}") == std::string::npos) t += " (" + std::to_string(r.progress) + "/" + std::to_string(r.max) + ")";
+        out.push_back(RowText{t, r.done});
+    }
+    return out;
+}
+
+std::string LessonHud::promptText() const {
+    const std::string t = tr_ ? tr_("* PRESS ANY BUTTON *") : std::string();
+    return t.empty() ? std::string("Press any button") : t;
+}
+
 void LessonHud::draw(Ui& ui, int below) {
     if (fade_ > 0.001f) ui.fill(Rect{0, 0, 640, 360}, Col{0, 0, 0, static_cast<uint8_t>(std::lround(255.0f * fade_))});
 
