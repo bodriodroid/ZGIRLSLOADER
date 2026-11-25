@@ -1,0 +1,1 @@
+EXAMPLE placeholder (a file that replaces core/example/EXAMPLE_hello.txt)

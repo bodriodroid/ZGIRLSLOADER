@@ -1,0 +1,3 @@
+# archive|path inside the game        (one file per line; the file is kept at <archive>.gfs/<path>)
+core|core/example/EXAMPLE_hello.txt
+ui|ui/example/EXAMPLE_hint.txt

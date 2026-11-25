@@ -121,10 +121,6 @@ struct Impl {
             warn("refused game path: " + gameRaw);
             return;
         }
-        if (isModFile(game)) {
-            warn(game + ": .foit / .art / .art-pt are not taken from a resource pack (that is a mod: modscustom)");
-            return;
-        }
         const std::string key = lowerOf(game);
         for (auto it = res->rules.begin(); it != res->rules.end(); ++it)
             if (lowerOf(it->game) == key) {
@@ -311,6 +307,24 @@ int fRead(lua_State* L) {
         }
     }
     return top - 1;
+}
+// f:lines(...) -> an iterator that reads with the same formats as f:read(...) (default: a line)
+int linesIter(lua_State* L) {
+    const int nf = static_cast<int>(lua_tointeger(L, lua_upvalueindex(1)));
+    lua_settop(L, 0);
+    lua_pushvalue(L, lua_upvalueindex(2));   // the file
+    for (int i = 0; i < nf; ++i) lua_pushvalue(L, lua_upvalueindex(3 + i));
+    return fRead(L);
+}
+int fLines(lua_State* L) {
+    toFile(L, 1);
+    const int nf = lua_gettop(L) - 1;
+    if (nf > 200) luaL_error(L, "too many formats");
+    lua_pushinteger(L, nf);
+    lua_pushvalue(L, 1);
+    for (int i = 0; i < nf; ++i) lua_pushvalue(L, 2 + i);
+    lua_pushcclosure(L, linesIter, 2 + nf);
+    return 1;
 }
 int fClose(lua_State* L) {
     LFile* lf = toFile(L, 1);
@@ -513,7 +527,7 @@ Result run(const std::string& changesFile, const Context& ctx) {
     {   // io: only open (our own file object); os: only time / date / clock / remove (scratch folder)
         luaL_newmetatable(L, "zg.file");
         lua_newtable(L);
-        const luaL_Reg methods[] = {{"write", fWrite}, {"read", fRead}, {"close", fClose}, {"flush", fFlush}, {"seek", fSeek}, {nullptr, nullptr}};
+        const luaL_Reg methods[] = {{"write", fWrite}, {"read", fRead}, {"close", fClose}, {"flush", fFlush}, {"seek", fSeek}, {"lines", fLines}, {nullptr, nullptr}};
         for (const luaL_Reg* m = methods; m->name; ++m) {
             lua_pushcfunction(L, m->func);
             lua_setfield(L, -2, m->name);

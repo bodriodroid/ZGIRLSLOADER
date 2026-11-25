@@ -408,7 +408,13 @@ Config parseConfig(const std::string& iniText, std::vector<std::string>* warning
         const std::string val = stripComment(line.substr(eq + 1));
         if (section != "merge") {
             const std::string k = lower(key);
-            if (k == "requires") for (const std::string& s : splitList(val)) c.requires_.push_back(s);
+            if (k == "match") {
+                const std::string v = lower(val);
+                if (v == "path") c.matchPath = true;
+                else if (v != "name" && warnings) warnings->push_back("match: unknown value '" + val + "' (name or path)");
+            } else if (k == "ignore") {
+                for (const std::string& pat : splitList(val)) c.ignore.push_back(normalizeKey(pat));
+            } else if (k == "requires") for (const std::string& s : splitList(val)) c.requires_.push_back(s);
             else if (k == "conflicts") for (const std::string& s : splitList(val)) c.conflicts.push_back(s);
             continue;
         }
@@ -439,6 +445,19 @@ Config parseConfig(const std::string& iniText, std::vector<std::string>* warning
         c.rules.push_back(std::move(r));
     }
     return c;
+}
+
+bool ignored(const Config& cfg, const std::string& packRel) {
+    const std::string path = normalizeKey(packRel);
+    for (const std::string& pat : cfg.ignore) {
+        if (pat.size() > 1 && pat.back() == '*') {   // "notes/*": a folder, or any prefix
+            const std::string pre = pat.substr(0, pat.size() - 1);
+            if (path.compare(0, pre.size(), pre) == 0) return true;
+        } else if (matches(pat, path)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 Rule ruleFor(const Config& cfg, const std::string& pathIn) {

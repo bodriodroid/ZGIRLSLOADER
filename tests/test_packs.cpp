@@ -115,7 +115,7 @@ int main() {
             "function Mod.install()\n"
             "  CCLib.gfsAddFile('data01', 'ui/hit.txt', CCLib.work_dir .. '\\\\mods\\\\resourcepacks\\\\AOTC\\\\files\\\\hit_new.txt')\n"
             "  CCLib.gfsAddFiles('data01', 'newdir', 'files/folder')\n"
-            "  CCLib.gfsAddFile('data01', 'chars/filia.foit', 'files/x.foit')\n"       // refused: a mod file
+            "  CCLib.gfsAddFile('data01', 'chars/filia.foit', 'files/x.foit')\n"       // a character file named by a rule: accepted
             "  CCLib.gfsAddFile('data01', '../escape.txt', 'files/hit_new.txt')\n"      // refused: leaves the game
             "  if CCLib.hasMod('NotInstalled') then error('should not be there') end\n"
             "  CCLib.gbsMerge('x', 'y')\n"                                              // refused + warning
@@ -128,9 +128,11 @@ int main() {
         CHECK(via(v, "ui/hit.txt") == "RULE hit");
         CHECK(via(v, "newdir/a.txt") == "A" && via(v, "newdir/b.txt") == "B");
         CHECK(via(v, "characters/filia_1p.txt") == "ORIGINAL filia");   // not named by a rule: not changed, even if the pack has a file by that name
-        CHECK(via(v, "chars/filia.foit") == "ORIGINAL foit");
+        CHECK(via(v, "chars/filia.foit") == "never");
         CHECK(via(v, "escape.txt") == "<missing>");
-        CHECK(hasWarn(rep, ".foit"));
+        bool charLog = false;
+        for (const std::string& l : rep.log) charLog = charLog || l.find("character file(s)") != std::string::npos;
+        CHECK(charLog);
         CHECK(hasWarn(rep, "refused game path"));
         CHECK(hasWarn(rep, "gbsMerge") || hasWarn(rep, "refused"));
         bool found = false;
@@ -256,6 +258,107 @@ int main() {
         CHECK(get(game / "data" / "ui" / "hit.txt") == "ORIGINAL hit");
     }
 
+
+    // ---- changes.lua in the restoration-pack shape: a filelist.txt of "archive|entry" lines read with io.open + f:lines()
+    {
+        fs::remove_all(game / "mods", ec);
+        const fs::path pack = game / "mods" / "resourcepacks" / "Restore";
+        put(pack / "filelist.txt", "chars|chars/filia.foit\r\nchars|chars/filia.art\r\n\r\nui|ui/hit.txt\r\n");
+        put(pack / "chars.gfs" / "chars" / "filia.foit", "RESTORED foit");
+        put(pack / "chars.gfs" / "chars" / "filia.art", "RESTORED art");
+        put(pack / "ui.gfs" / "ui" / "hit.txt", "RESTORED hit");
+        put(pack / "changes.lua",
+            "ModInfo = { ModName = 'Restore', Version = 1 }\n"
+            "Mod = { install = function()\n"
+            "  local base = CCLib.work_dir .. '\\\\mods\\\\Restore\\\\'\n"
+            "  local list = io.open(base .. 'filelist.txt', 'rb')\n"
+            "  if not list then return false, 'no filelist' end\n"
+            "  local n = 0\n"
+            "  for line in list:lines() do\n"
+            "    line = (line:gsub('\\r', ''))\n"
+            "    if line ~= '' then\n"
+            "      local archive, entry = line:match('^([^|]+)|(.+)$')\n"
+            "      local path = base .. archive .. '.gfs\\\\' .. (entry:gsub('/', '\\\\'))\n"
+            "      local probe = io.open(path, 'rb')\n"
+            "      if not probe then return false, 'missing ' .. path end\n"
+            "      probe:close()\n"
+            "      if not CCLib.gfsAddFile(archive, entry, path) then return false, 'rejected ' .. entry end\n"
+            "      n = n + 1\n"
+            "    end\n"
+            "  end\n"
+            "  list:close()\n"
+            "  if not CCLib.gfsCommitChanges() then return false, 'commit' end\n"
+            "  return n == 3\n"
+            "end }\n");
+        Vfs v;
+        v.mount((game / "data").string());
+        const modsdir::Report rep = modsdir::mountAll(v, game.string(), false);
+        CHECK(rep.packs == 1);
+        CHECK(via(v, "chars/filia.foit") == "RESTORED foit" && via(v, "chars/filia.art") == "RESTORED art" && via(v, "ui/hit.txt") == "RESTORED hit");
+        CHECK(!hasWarn(rep, "NOT loaded") && !hasWarn(rep, "failed"));
+    }
+
+    // ---- match = path: the same file name in two game folders is not mixed up
+    {
+        fs::remove_all(game / "mods", ec);
+        put(game / "data" / "stages" / "a" / "dx1.txt", "GAME a");
+        put(game / "data" / "stages" / "b" / "dx1.txt", "GAME b");
+        const fs::path packs = game / "mods" / "resourcepacks";
+        put(packs / "ByName" / "dx1.txt", "NAME");                                     // default: both folders
+        Vfs v0;
+        v0.mount((game / "data").string());
+        modsdir::mountAll(v0, game.string(), false);
+        CHECK(via(v0, "stages/a/dx1.txt") == "NAME" && via(v0, "stages/b/dx1.txt") == "NAME");
+        fs::remove_all(packs, ec);
+        put(packs / "Exact" / "pack.ini", "name = Exact\nmatch = path\nignore = notes/*, *.psd\n");
+        put(packs / "Exact" / "stages" / "b" / "dx1.txt", "PATH b");
+        put(packs / "Exact" / "dx1.txt", "BARE");                                      // two game files: skipped, not guessed
+        put(packs / "Exact" / "notes" / "todo.txt", "ignored");
+        put(packs / "Exact" / "art.psd", "ignored");
+        put(packs / "Exact" / "chars" / "filia.foit", "PATH foit");                    // named by its path: taken
+        put(packs / "Exact" / "brandnew" / "x.txt", "NEW");                            // nothing below it: simply new
+        Vfs v;
+        v.mount((game / "data").string());
+        const modsdir::Report rep = modsdir::mountAll(v, game.string(), false);
+        CHECK(via(v, "stages/a/dx1.txt") == "GAME a");
+        CHECK(via(v, "stages/b/dx1.txt") == "PATH b");
+        CHECK(via(v, "notes/todo.txt") == "<missing>" && via(v, "art.psd") == "<missing>");
+        CHECK(via(v, "chars/filia.foit") == "PATH foit");
+        CHECK(via(v, "brandnew/x.txt") == "NEW");
+        CHECK(hasWarn(rep, "more than one game file"));
+        bool pathMode = false;
+        for (const auto& it : rep.items) pathMode = pathMode || (it.id == "Exact" && it.mode == "path");
+        CHECK(pathMode);
+        CHECK(packmerge::parseConfig("match = path\nignore = a/*, *.tmp").matchPath);
+        CHECK(packmerge::ignored(packmerge::parseConfig("ignore = a/*, *.tmp"), "A/b/c.txt") && packmerge::ignored(packmerge::parseConfig("ignore = *.tmp"), "x/y.TMP"));
+        CHECK(!packmerge::ignored(packmerge::parseConfig("ignore = a/*"), "b/a/c.txt"));
+    }
+
+#ifdef ZG_EXAMPLES_DIR
+    // ---- the examples/ folder loads as documented (so it cannot rot)
+    {
+        fs::remove_all(game / "mods", ec);
+        fs::remove_all(game / "data" / "core", ec);
+        put(game / "data" / "core" / "localization" / "es_loc.json", "{\n \"Play\": \"Jugar\"\n}\n");
+        put(game / "data" / "ui" / "config" / "MainMenu" / "challenges.ini", "ChalName: C1\nTime: 99\n");
+        fs::create_directories(game / "mods" / "resourcepacks", ec);
+        fs::copy(fs::path(ZG_EXAMPLES_DIR) / "resourcepacks", game / "mods" / "resourcepacks", fs::copy_options::recursive, ec);
+        CHECK(!ec);
+        Vfs v;
+        v.mount((game / "data").string());
+        const modsdir::Report rep = modsdir::mountAll(v, game.string(), false);
+        CHECK(rep.packs == 2);
+        CHECK(!hasWarn(rep, "NOT loaded") && !hasWarn(rep, "failed") && !hasWarn(rep, "skipped"));
+        const std::string loc = via(v, "core/localization/es_loc.json");
+        CHECK(loc.find("\"Play\": \"Jugar\"") != std::string::npos && loc.find("EXAMPLE_PACK_HELLO") != std::string::npos);
+        const std::string chal = via(v, "ui/config/MainMenu/challenges.ini");
+        CHECK(chal.find("Time: 99") != std::string::npos && chal.find("EXAMPLE_CHALLENGE") != std::string::npos);
+        CHECK(via(v, "core/example/EXAMPLE_hello.txt").find("EXAMPLE placeholder") != std::string::npos);
+        CHECK(via(v, "ui/example/EXAMPLE_hint.txt").find("EXAMPLE placeholder") != std::string::npos);
+        CHECK(via(v, "readme.txt") == "<missing>");   // ignore = readme.txt
+        fs::remove_all(game / "mods", ec);
+    }
+#endif
 
     // ---- mixing: pack_merge on its own
     {

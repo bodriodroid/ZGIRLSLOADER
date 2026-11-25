@@ -76,8 +76,10 @@ In both modes:
 
 * The game's files are **never written to**.  A rule or a name only changes what a lookup resolves to, in memory; delete the folder and
   everything is back.  Anything a script writes goes to `mods/.cache/changes/<pack>/` and nowhere else.
-* **`.foit`, `.art` and `.art-pt` are not part of a resource pack** (that is a mod: put it in `modscustom/`).  Automatic mode leaves them
-  out (the Mods screen warns with the first names), a rule that targets one is refused, and they cannot block the pack.
+* **`.foit`, `.art` and `.art-pt` change how a character plays**, so automatic (by name) mode leaves them out (the Mods screen warns with
+  the first names; put them in `modscustom/`).  A `changes.lua` rule that **names** one is accepted: that is how a restoration pack such as
+  Ahead of the Curve carries them (checked with the real AOTC 0.18.0: its 171 files are staged and the character files replaced; the
+  game files it expects are byte-identical to the 3.7.20 build).  `modscustom/` mods still sit above packs, so a custom character wins.
 * The pack is checked before it is loaded like any other folder (damaged files → error 4, native code → error 5).
 * The Mods screen / `zdroid_probe` show the mode of each pack.
 
@@ -90,6 +92,8 @@ pack made of it — packs stack in priority order, each one on top of the result
 ```ini
 name = My pack
 priority = 20                       ; higher loads later (default 100)
+match = path                        ; files replace only the game path their folder mirrors (default: by name)
+ignore = notes/*, *.psd             ; pack files that are not taken at all
 requires  = aotc, other             ; not loaded unless these pack ids are on (and a warning if they load after this one)
 conflicts = bigtranslation          ; not loaded while these are on
 
@@ -111,8 +115,11 @@ A pattern is `*suffix`, or a path / path tail (`challenges.ini`, `MainMenu/chall
 `*_loc.json` and `*.ini`.  A path pattern beats a word; among paths the first in the file wins.  No rule: `replace`, except `*_loc.json`
 which is `keys`.
 
-* **Automatic (by name) packs** mix into **every** game file with that name (as they replace by name).  To be exact, use `changes.lua`,
-  whose rules name the game path: only that path is mixed.
+* **Automatic (by name) packs** replace — and mix into — **every** game file with that name, whatever its folder.  So a `dx1.dds` in two
+  stage folders would both become the pack's.  To avoid that, put `match = path` in `pack.ini` (mode **path**): the pack's folders then
+  count, `stages/b/dx1.dds` only touches the game's `.../stages/b/dx1.dds`.  A path that stands for two different game files (a bare
+  `dx1.dds` that exists twice) is skipped with a warning, never guessed.  In path mode `.foit` / `.art` / `.art-pt` are taken too (the path
+  names them).  `changes.lua` is the other exact way: its rules name the game path.
 * The combined file is written to `mods/.cache/changes/<pack>/merge/`; the game's files are never written to.  If a pack file is not
   valid for its rule (not JSON for `keys`, ...) it is **not** mixed: it replaces whole, and the Mods screen / `zdroid_probe` log says so.
 * `zdroid_probe` shows `mixed into` instead of `wins over` for a file two packs share that was mixed.
@@ -123,7 +130,7 @@ which is `keys`.
 ### changes.lua (rules mode)
 
 A Lua 5.1 script run once at start in a sandbox (no `require`, no `os.execute`, no `io.popen`; `io.open` / `os.remove` only reach the
-pack's scratch folder; a script that runs too long is stopped).  If it fails, **nothing** of that pack is applied (all or nothing) and
+pack's own folder and its scratch folder (files have `read`, `lines`, `write`, `seek`, `close`); a script that runs too long is stopped).  If it fails, **nothing** of that pack is applied (all or nothing) and
 the error is shown.  Two styles, both accepted:
 
 1. The community loader's style (SkullLoader "CCLib"): `ModInfo`, `Mod.install()` (or a global `install()` / `init()`), calling
@@ -209,9 +216,11 @@ work the same.  Details:
 * The folder is `<game folder>/mods/`.  On Android the game folder is the one chosen at setup, or the app's own folder
   `Android/data/org.bodriodroid.zgirlsmobile/files/` (the Mods screen shows the exact path).
 
-**AOTC (Skullgirls: Ahead of the Curve)** is a resource pack: put it in `resourcepacks/` (folder or `.zip`).  With a `changes.lua` it loads in
-rules mode, without one by name (see above).  Not tested against a real copy yet; anything that needs the original loader's native code
-is refused by design.
+**AOTC (Skullgirls: Ahead of the Curve)** is a restoration pack: put it in `resourcepacks/` (folder or `.zip`) as `AOTC/` with its
+`AOTC.lua` renamed to `changes.lua`, its `filelist.txt` and the `<archive>.gfs/` folders beside it.  Checked against the real 0.18.0: its script
+runs unmodified in this sandbox (it reads `filelist.txt` with `io.open` + `f:lines()`), all 171 rules apply (156 textures / sounds / scenes / text
+and 15 `.foit` / `.art` / `.art-pt`), and every game file it expects is byte-identical to the 3.7.20 data this loader reads.  Its own `.exe` /
+`.dll` installer is not used and is refused by design.  Layout examples: `examples/` in the repository.
 
 ---
 
@@ -223,5 +232,7 @@ selector). Orden: juego < resourcepacks < modscustom < stages < voces japonesas.
 
 **Resource packs (AOTC es uno):** dos modos. Con `changes.lua` → solo cambia lo que dicen sus reglas (cada regla nombra un archivo del juego y
 el archivo del pack que lo reemplaza; todo en memoria, el juego original no se toca). Sin `changes.lua` → automático: cada archivo del pack
-reemplaza a los del juego con el mismo **nombre**. En ambos modos `.foit`, `.art` y `.art-pt` no se incluyen en un pack (eso son mods,
-van a `modscustom/`). Si `changes.lua` falla, no se aplica nada de ese pack.
+reemplaza a los del juego con el mismo **nombre**. En modo automático `.foit`, `.art` y `.art-pt` no se incluyen (cambian cómo juega un personaje: van a `modscustom/`),
+pero una regla de `changes.lua` que los **nombra** sí se acepta (así los lleva AOTC). `match = path` en `pack.ini` evita las
+mezclas por nombre: cada archivo solo toca la ruta que replica su carpeta. `[merge]` mezcla textos (`_loc.json` clave por clave por defecto,
+`.ini` por registros). Ejemplos de carpetas: `examples/`. Si `changes.lua` falla, no se aplica nada de ese pack.

@@ -113,7 +113,8 @@ const char* kPacksReadme =
     "Two modes:\n"
     "  * with a changes.lua  -> only what its rules say changes (each rule names a game file and the pack file that replaces it).\n"
     "  * without changes.lua -> every file of the pack replaces the game's files with the same NAME, in any folder.\n"
-    ".foit / .art / .art-pt are not part of a resource pack (those are mods: put them in ../modscustom).\n"
+    ".foit / .art / .art-pt are left out of the automatic mode (those change how a character plays: put them in ../modscustom, or name them in a\n"
+    "changes.lua, which is how a restoration pack carries them).\n"
     "Mixing: a *_loc.json of a pack is MIXED into the language file below it (key by key) instead of replacing it, so a pack can carry\n"
     "three translated lines and several packs can share one file.  pack.ini can ask for the same for other files ([merge]) and say\n"
     "requires = / conflicts = other packs.  Details: docs/MODS.md.\n\n"
@@ -254,7 +255,7 @@ std::string baseOf(const std::string& path) {
 }
 
 // The files mountByName() would take from a pack folder: {path relative to the pack, real path}.
-std::vector<std::pair<std::string, std::string>> packFiles(const std::string& dir) {
+std::vector<std::pair<std::string, std::string>> packFiles(const std::string& dir, bool withCharacterFiles = false) {
     static const std::set<std::string> skipDirs = {"extract", "build", "analysis", "analysis_v2", "skgsteam", "mods"};
     static const std::vector<std::string> skipExt = {".foit", ".art", ".art-pt"};
     static const std::set<std::string> skipNames = {"pack.ini", "mod.ini", "readme.txt", "readme.md", "changes.lua"};
@@ -273,7 +274,7 @@ std::vector<std::pair<std::string, std::string>> packFiles(const std::string& di
         const std::string low = lower(rel);
         bool skip = skipNames.count(baseOf(low)) > 0;
         for (const std::string& e : skipExt)
-            if (low.size() >= e.size() && low.compare(low.size() - e.size(), e.size(), e) == 0) skip = true;
+            if (!withCharacterFiles && low.size() >= e.size() && low.compare(low.size() - e.size(), e.size(), e) == 0) skip = true;
         if (!skip) r.emplace_back(rel, it->path().string());
     }
     std::sort(r.begin(), r.end());
@@ -368,7 +369,10 @@ size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, Pack
         }
         std::vector<Vfs::Override> rules;
         for (const packchanges::Rule& x : r.rules) rules.push_back({x.game, x.real});
-        size_t merged = 0;
+        size_t merged = 0, chars = 0;
+        for (const packchanges::Rule& x : r.rules)
+            if (packchanges::isModFile(lower(x.game))) ++chars;
+        if (chars) rep.log.push_back("pack " + m.id + ": " + std::to_string(chars) + " character file(s) (.foit / .art / .art-pt) replaced by name in changes.lua");
         for (const packchanges::Rule& x : r.rules) merged += planMerge(vfs, cfg, x.game, x.real, false, mixDir, rep, m.id, mixed, mixedRel);
         const size_t n = vfs.mountOverrides(rules);
         if (n) rep.log.push_back("pack " + m.id + " (changes.lua): " + std::to_string(n) + " rule(s)");
@@ -376,6 +380,39 @@ size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, Pack
         if (item) item->merged = merged;
         if (merged) env.mixed["pack:" + m.id] = mixedRel;
         return n;
+    }
+    if (cfg.matchPath) {   // match = path: every file goes to the one game path its folder mirrors
+        if (item) item->mode = "path";
+        std::vector<Vfs::Override> plain;
+        size_t files = 0, merged = 0, skippedN = 0;
+        std::string first;
+        for (const auto& [rel, real] : packFiles(m.dir, true)) {
+            if (packmerge::ignored(cfg, rel)) continue;
+            std::set<std::string> reals;   // the game paths this one stands for may all show the same file already (an earlier pack's)
+            for (const std::string& t : vfs.logicalPaths(rel)) {
+                std::string r;
+                if (vfs.resolve(t, &r)) reals.insert(r);
+            }
+            if (reals.size() > 1) {
+                if (skippedN++ < 3) first += (first.empty() ? "" : ", ") + rel;
+                continue;
+            }
+            plain.push_back({rel, real});
+            ++files;
+            merged += planMerge(vfs, cfg, rel, real, false, mixDir, rep, m.id, mixed, mixedRel);
+        }
+        if (skippedN)
+            rep.warnings.push_back("pack " + m.id + ": " + std::to_string(skippedN) + " file(s) skipped (" + first + (skippedN > 3 ? ", ..." : "") +
+                                   "): the path matches more than one game file, give more of the folder (match = path)");
+        vfs.mountOverrides(plain);
+        vfs.mountOverrides(mixed);   // after the plain files, so what was mixed is what answers
+        if (item) item->merged = merged;
+        if (merged) env.mixed["pack:" + m.id] = mixedRel;
+        if (files) {
+            layers.push_back({"pack:" + m.id, m.dir});
+            rep.log.push_back("pack " + m.id + " (by path): " + std::to_string(files) + " file(s)" + (merged ? ", " + std::to_string(merged) + " mixed" : ""));
+        }
+        return files;
     }
     if (item) item->mode = "name";
     size_t merged = 0;
@@ -391,7 +428,7 @@ size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, Pack
     }
     if (mods)
         rep.warnings.push_back("pack " + m.id + ": " + std::to_string(mods) + " mod file(s) left out (" + ignored + (mods > 3 ? ", ..." : "") +
-                               "): .foit / .art / .art-pt are mods, put them in mods/modscustom");
+                               "): .foit / .art / .art-pt are only taken when changes.lua names them, or from mods/modscustom");
     vfs.mountOverrides(mixed);   // after the pack's files, so what was mixed is what answers
     if (item) item->merged = merged;
     if (merged) env.mixed["pack:" + m.id] = mixedRel;

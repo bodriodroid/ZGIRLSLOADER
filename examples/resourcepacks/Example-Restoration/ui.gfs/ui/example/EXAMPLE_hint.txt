@@ -1,0 +1,1 @@
+EXAMPLE placeholder (a file that replaces ui/example/EXAMPLE_hint.txt)

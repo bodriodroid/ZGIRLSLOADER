@@ -193,6 +193,7 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
 
   add_executable(zdroid_pack_tests tests/test_packs.cpp)
   target_link_libraries(zdroid_pack_tests PRIVATE zengine_core)
+  target_compile_definitions(zdroid_pack_tests PRIVATE ZG_EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples")
   add_test(NAME zdroid_pack_tests COMMAND zdroid_pack_tests)
 
   add_executable(zdroid_gfs_tests tests/test_gfs.cpp)

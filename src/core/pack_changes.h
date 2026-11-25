@@ -3,7 +3,8 @@
 // A resource pack (mods/resourcepacks/<pack>/) works in one of two ways:
 //   * with a changes.lua: only what the rules say changes ("rules" mode).  The pack's other files do nothing by themselves.
 //   * without one: every file of the pack replaces the game files that have the same NAME, whatever their folder ("name" mode).
-//     .foit / .art / .art-pt are never taken from a pack (that is a mod: mods/modscustom).
+//     .foit / .art / .art-pt are left out of this automatic mode (they change how a character plays: mods/modscustom, or name them in a
+//     changes.lua, which is how restoration packs such as Ahead of the Curve carry them).
 // In both modes the game's own files are never written to: the rules only change what a lookup resolves to (Vfs::mountOverrides).
 //
 // changes.lua is a Lua 5.1 script run once in a sandbox (no io/os/require; only what is below).  Two styles, both accepted:
@@ -23,7 +24,7 @@
 //   addNewPermission(name)                                          accepted, nothing to do here (there is no permission file)
 //   hasMod(name) / getModVersion(name) / getWorkingDirectory() / constants work_dir, data01_dir, data02_dir, CC_version
 //   gbsMerge, read/writeAddress*, getGameBaseAddress               refused (false / nil) with a warning: they would change the runtime
-// io.open and os.remove exist but only reach the pack's scratch folder; print() goes to the log; a script that runs too long is stopped.
+// io.open (files: read / lines / write / seek / close) and os.remove only reach the pack's own folder and its scratch folder; print() goes to the log; a script that runs too long is stopped.
 #pragma once
 #include <functional>
 #include <string>
