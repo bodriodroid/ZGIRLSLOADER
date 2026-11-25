@@ -35,9 +35,13 @@ stretches the n keys of a region over the 16 tones of its palette-texture row (t
 truncated) — checked against Filia's own `filia_1p.dds`: 98.7 % of the channels identical, the rest off by 1.  A `.pal` is baked
 into `mods/.cache/pal/<char>__<file>.dds`, a normal palette texture, so every screen that reads `<name>_Np.dds` uses it unchanged.
 
-A `.pal` whose number of colours does not match the table (made for another game version) is skipped with a warning
-(`zdroid_probe <game folder>` prints them).  Known gap: the table is the one of build 3.7.14, which differs from the user's data by one
-region for Squigly and Marie; palettes for those two need a table update.  The two super-outline colours (`shadow1` / `shadow2`) are used
+A `.pal` whose number of colours does not match the table is skipped with a warning (`zdroid_probe <game folder>` prints them).
+The community's `.pal` files follow build 3.7.14; the game data this loader reads has one region more for Squigly (a 4-key one at region 14)
+and one fewer for Marie (one of the five-key regions 65..70).  `palmod::regionCounts` is the table of the data (measured on the shipped
+`<name>_1p.dds`: every row of both fits it), `palmod::legacyRegionCounts` the 3.7.14 one.  A `.pal` made for the data bakes row for row; one
+made for 3.7.14 is laid out with its own table and then moved onto the data's regions, so no colour slips a row (the region Squigly gained
+copies the one before it; for Marie the dropped region cannot be told from the counts, so the five-key regions 65..70 may shift by one).
+The two super-outline colours (`shadow1` / `shadow2`) are used
 by the super move picture (see `docs/PAFX.md`); the hue-shift bytes are read and kept, not played yet.
 
 ### Making palettes from your own colours: `zdroid_palgen`

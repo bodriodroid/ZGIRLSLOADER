@@ -352,6 +352,46 @@ int main() {
         CHECK(!off.save(s, baked, "", c, &err));
         fs::remove_all(dir);
     }
+    // ---- a .pal made for build 3.7.14 on this game data: Squigly has one region more here (a 4-key one at 14), Marie one fewer
+    {
+        auto makePal = [](const char* character, const std::vector<int>& counts, int skipRegion) {
+            palmod::PalFile pf;
+            pf.character = character;
+            for (size_t r = 0; r < counts.size(); ++r) {
+                if (static_cast<int>(r) + 1 == skipRegion) continue;
+                for (int k = 0; k < counts[r]; ++k)   // every key of every region has a colour of its own: (region, key) readable in R and G
+                    pf.colors.push_back(0xFF000000u | (static_cast<uint32_t>(r + 1) << 16) | (static_cast<uint32_t>(10 + 12 * (counts[r] - 1 - k)) << 8) | 0x40u);
+            }
+            pf.numColors = static_cast<uint32_t>(pf.colors.size()) + 1;
+            return pf;
+        };
+        auto regionOfRow = [](const Palette& p, int row) { return static_cast<int>(p.at(row, 15)[0]); };   // R of the lightest tone = the .pal region number
+        const std::vector<int>* sq = palmod::regionCounts("squigly");
+        const std::vector<int>* sqOld = palmod::legacyRegionCounts("squigly");
+        CHECK(sq && sqOld && sq->size() == sqOld->size() + 1 && (*sq)[13] == 4);
+        Palette out;
+        std::string e;
+        // a .pal that already follows this data bakes row for row
+        CHECK(palmod::toPalette(makePal("Squigly", *sq, 0), out, &e) && out.bands == static_cast<int>(sq->size()) + 1);
+        for (int r = 1; r < out.bands; ++r) CHECK(regionOfRow(out, r) == r);
+        // the 3.7.14 .pal (no region 14 in its numbering) lands on the right regions: rows 1..13 as they are, 14 copies 13, then each one lower
+        CHECK(palmod::toPalette(makePal("Squigly", *sqOld, 0), out, &e) && out.bands == static_cast<int>(sq->size()) + 1);
+        for (int r = 1; r <= 13; ++r) CHECK(regionOfRow(out, r) == r);
+        CHECK(regionOfRow(out, 14) == 13);
+        for (int r = 15; r < out.bands; ++r) CHECK(regionOfRow(out, r) == r - 1);
+        // Marie: 3.7.14 has 85 regions, this data 84; the rows after the dropped one (70) come from the next legacy row
+        const std::vector<int>* mr = palmod::regionCounts("marie");
+        const std::vector<int>* mrOld = palmod::legacyRegionCounts("marie");
+        CHECK(mr && mrOld && mr->size() + 1 == mrOld->size());
+        CHECK(palmod::toPalette(makePal("Marie", *mrOld, 0), out, &e) && out.bands == static_cast<int>(mr->size()) + 1);
+        for (int r = 1; r < 70; ++r) CHECK(regionOfRow(out, r) == r);
+        for (int r = 70; r < out.bands; ++r) CHECK(regionOfRow(out, r) == r + 1);
+        // a colour count that fits neither table is still refused, and the message names both
+        palmod::PalFile bad = makePal("Squigly", *sq, 0);
+        bad.colors.pop_back();
+        bad.numColors = static_cast<uint32_t>(bad.colors.size()) + 1;
+        CHECK(!palmod::toPalette(bad, out, &e) && e.find("3.7.14") != std::string::npos);
+    }
     // ---- real palettes (ZDROID_TEST_PALS = a folder with <name>_1p.dds): every region fits its row
     if (const char* dir = std::getenv("ZDROID_TEST_PALS")) {
         const char* names[] = {"annie", "beowulf", "bigband", "blackdahlia", "cerebella", "double", "eliza", "filia", "fukua",

@@ -44,7 +44,11 @@ std::vector<uint8_t> serialize(const PalFile& pal);
 
 // Region table of the game build the palettes were made for: key colours per region, by normalised character name
 // ("filia", "msfortune" ...).  nullptr when the character is not in the table.
+// This is the table of the game DATA the loader reads (what `<name>_Np.dds` has).  The community's .pal files follow build 3.7.14, which
+// has one region fewer for Squigly and one more for Marie: legacyRegionCounts() is that table and a .pal made for it is moved onto the
+// data's regions when it is baked (no colour slips a row).
 const std::vector<int>* regionCounts(const std::string& normalisedName);
+const std::vector<int>* legacyRegionCounts(const std::string& normalisedName);
 
 // Lowercase, letters and digits only ("Ms. Fortune" -> "msfortune").
 std::string normaliseName(const std::string& s);

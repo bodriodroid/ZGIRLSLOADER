@@ -35,6 +35,46 @@ const std::map<std::string, std::vector<int>>& table() {
     return t;
 }
 
+// The community's .pal files (and pal_regions.inc) follow build 3.7.14.  The game data this loader reads has one region more for Squigly and
+// one fewer for Marie (measured on the shipped <name>_1p.dds: every other row of both fits the table once that one row is added / dropped).
+// `userRow[r]` says, for row r (1-based) of the user's palette, which row (1-based) of a 3.7.14 .pal feeds it; 0 would be "none".
+struct Adjust {
+    const char* name;
+    int at;          // 1-based region of the user's build that is new (insert) or missing (erase)
+    int keys;        // key colours of an inserted region
+    bool insert;
+};
+constexpr Adjust kAdjust[] = {
+    {"squigly", 14, 4, true},    // a 4-key region appears at 14; every later one moves down by one
+    {"marie", 70, 0, false},     // one of the five-key regions 65..70 is gone (they all have 5 keys: which one cannot be told from the counts)
+};
+
+const std::map<std::string, std::vector<int>>& userTable() {
+    static const std::map<std::string, std::vector<int>> t = [] {
+        std::map<std::string, std::vector<int>> m = table();
+        for (const Adjust& a : kAdjust) {
+            auto it = m.find(a.name);
+            if (it == m.end()) continue;
+            std::vector<int>& c = it->second;
+            const size_t i = static_cast<size_t>(a.at - 1);
+            if (a.insert && i <= c.size()) c.insert(c.begin() + static_cast<long>(i), a.keys);
+            else if (!a.insert && i < c.size()) c.erase(c.begin() + static_cast<long>(i));
+        }
+        return m;
+    }();
+    return t;
+}
+
+// 3.7.14 row feeding row `r` (1-based) of the user's build; -1 = the user's row has no source (a new region: it copies its neighbour).
+int legacyRowFor(const std::string& norm, int r) {
+    for (const Adjust& a : kAdjust) {
+        if (norm != a.name) continue;
+        if (a.insert) return r < a.at ? r : r == a.at ? -1 : r - 1;
+        return r < a.at ? r : r + 1;
+    }
+    return r;
+}
+
 std::string lowerExt(const fs::path& p) {
     std::string e = p.extension().string();
     for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
@@ -92,6 +132,11 @@ std::vector<uint8_t> serialize(const PalFile& p) {
 }
 
 const std::vector<int>* regionCounts(const std::string& n) {
+    const auto it = userTable().find(normaliseName(n));
+    return it == userTable().end() ? nullptr : &it->second;
+}
+
+const std::vector<int>* legacyRegionCounts(const std::string& n) {
     const auto it = table().find(normaliseName(n));
     return it == table().end() ? nullptr : &it->second;
 }
@@ -99,27 +144,15 @@ const std::vector<int>* regionCounts(const std::string& n) {
 namespace {
 
 // ARGB rows: row 0 = outline layer, then one row of 16 tones per region.
-bool bake(const PalFile& pal, std::vector<uint32_t>& argb, int& rows, std::string* err) {
-    const std::vector<int>* counts = regionCounts(pal.character);
-    if (!counts) {
-        if (err) *err = "unknown character '" + pal.character + "'";
-        return false;
-    }
-    size_t total = 0;
-    for (int c : *counts) total += static_cast<size_t>(c);
-    if (total != pal.colors.size()) {
-        if (err)
-            *err = "'" + pal.character + "' has " + std::to_string(pal.colors.size()) + " colours but this game build's table expects " +
-                   std::to_string(total) + " (palette made for another version)";
-        return false;
-    }
-    rows = static_cast<int>(counts->size()) + 1;
+// Bakes the key colours of `pal` into rows, given the key count of each region.
+void bakeRows(const PalFile& pal, const std::vector<int>& counts, std::vector<uint32_t>& argb, int& rows) {
+    rows = static_cast<int>(counts.size()) + 1;
     argb.assign(static_cast<size_t>(rows) * kTones, 0u);
     if ((pal.line >> 24) != 0)
         for (int t = 0; t < kTones; ++t) argb[static_cast<size_t>(t)] = pal.line;
     size_t at = 0;
-    for (size_t r = 0; r < counts->size(); ++r) {
-        const int n = (*counts)[r];
+    for (size_t r = 0; r < counts.size(); ++r) {
+        const int n = counts[r];
         const uint32_t* key = &pal.colors[at];  // key[0] = lightest ... key[n-1] = darkest
         at += static_cast<size_t>(n);
         for (int t = 0; t < kTones; ++t) {
@@ -140,7 +173,47 @@ bool bake(const PalFile& pal, std::vector<uint32_t>& argb, int& rows, std::strin
             argb[(r + 1) * kTones + static_cast<size_t>(t)] = px;
         }
     }
-    return true;
+}
+
+// ARGB rows: row 0 = outline layer, then one row of 16 tones per region.  A .pal whose colour count fits this game data's table is baked
+// as it is; one made for build 3.7.14 (the community's) is laid out with that table first and then moved onto this data's regions, so the
+// colours of the regions after the one that differs do not slip by a row.
+bool bake(const PalFile& pal, std::vector<uint32_t>& argb, int& rows, std::string* err) {
+    const std::vector<int>* counts = regionCounts(pal.character);
+    if (!counts) {
+        if (err) *err = "unknown character '" + pal.character + "'";
+        return false;
+    }
+    size_t total = 0;
+    for (int c : *counts) total += static_cast<size_t>(c);
+    if (total == pal.colors.size()) {
+        bakeRows(pal, *counts, argb, rows);
+        return true;
+    }
+    const std::vector<int>* legacy = legacyRegionCounts(pal.character);
+    size_t legacyTotal = 0;
+    if (legacy) for (int c : *legacy) legacyTotal += static_cast<size_t>(c);
+    if (legacy && legacyTotal == pal.colors.size() && legacy != counts && *legacy != *counts) {
+        std::vector<uint32_t> old;
+        int oldRows = 0;
+        bakeRows(pal, *legacy, old, oldRows);
+        const std::string norm = normaliseName(pal.character);
+        rows = static_cast<int>(counts->size()) + 1;
+        argb.assign(static_cast<size_t>(rows) * kTones, 0u);
+        std::copy(old.begin(), old.begin() + kTones, argb.begin());   // the outline row
+        for (int r = 1; r < rows; ++r) {
+            int src = legacyRowFor(norm, r);
+            if (src < 0) src = r - 1;                                   // a region this .pal predates: it copies the one before it
+            src = std::clamp(src, 1, oldRows - 1);
+            std::copy(old.begin() + src * kTones, old.begin() + (src + 1) * kTones, argb.begin() + r * kTones);
+        }
+        return true;
+    }
+    if (err)
+        *err = "'" + pal.character + "' has " + std::to_string(pal.colors.size()) + " colours but this game data expects " +
+               std::to_string(total) + (legacy && legacyTotal != total ? " (or " + std::to_string(legacyTotal) + " from build 3.7.14)" : std::string()) +
+               " (palette made for another version)";
+    return false;
 }
 
 }  // namespace
