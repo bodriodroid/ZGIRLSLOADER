@@ -60,6 +60,7 @@ struct Item {
     bool mounted = false;      // really mounted this run (enabled, not blocked by mods.ini enabled = 0, has files)
     bool blocked = false;      // checked and refused: damaged files (error code 4) or native code / links out (error code 5)
     std::string problem;       // the first thing that was wrong
+    size_t merged = 0;         // packs: files MIXED into what was there (pack_merge.h) instead of replacing it
     std::string mode;          // packs: "rules" (it has a changes.lua) | "name" (no changes.lua: its files replace the game's by name); "" otherwise
 };
 

@@ -98,6 +98,10 @@ size_t Vfs::mount(const std::string& dir) {
 void Vfs::addFile(const std::string& real, const std::string& rel, int order) {
     files_.push_back(real);
     const std::string key = normalizeKey(rel);
+    {
+        std::vector<std::string>& full = fullByName_[baseName(key)];
+        if (std::find(full.begin(), full.end(), key) == full.end()) full.push_back(key);
+    }
     // index under every path suffix: "a/b/c.txt", "b/c.txt", "c.txt"
     size_t parts = static_cast<size_t>(std::count(key.begin(), key.end(), '/')) + 1;
     size_t pos = 0;
@@ -210,6 +214,19 @@ size_t Vfs::mountVault(std::shared_ptr<const vault::Vault> v) {
     std::sort(names.begin(), names.end());
     for (const std::string& n : names) addFile(vault::virtualPath(id, n), n, order);
     return names.size();
+}
+
+std::vector<std::string> Vfs::logicalPaths(std::string_view path) const {
+    std::vector<std::string> r;
+    const std::string key = normalizeKey(path);
+    const auto it = fullByName_.find(baseName(key));
+    if (it == fullByName_.end()) return r;
+    for (const std::string& full : it->second) {
+        const bool ends = full == key || (full.size() > key.size() && full.compare(full.size() - key.size(), key.size(), key) == 0 && full[full.size() - key.size() - 1] == '/');
+        if (ends) r.push_back(full);
+    }
+    std::sort(r.begin(), r.end());
+    return r;
 }
 
 bool Vfs::resolve(std::string_view path, std::string* realPath) const {

@@ -65,6 +65,7 @@ struct Conflict {
     std::string path;                    // the most specific path among the files involved (relative to its mod)
     std::string winner;                  // id of the layer whose file the game uses
     std::vector<std::string> overridden; // ids of the layers that lose, in load order
+    bool mixed = false;                  // the winner's file was MIXED into the others' (pack.ini [merge]), not put in their place
 };
 // `layers` in load order (the last one wins).  Two files collide when one relative path is the other's suffix on a folder
 // boundary ("data/characters/x.dds" and "x.dds"), the same rule the Vfs resolves by.

@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
         for (size_t i = 0; i < mr.conflicts.size() && i < 20; ++i) {   // the same file in two mods: who wins
             std::string lost;
             for (const std::string& o : mr.conflicts[i].overridden) lost += (lost.empty() ? "" : ", ") + o;
-            std::printf("  conflict: %s  -> %s wins over %s\n", mr.conflicts[i].path.c_str(), mr.conflicts[i].winner.c_str(), lost.c_str());
+            std::printf("  conflict: %s  -> %s %s %s\n", mr.conflicts[i].path.c_str(), mr.conflicts[i].winner.c_str(), mr.conflicts[i].mixed ? "mixed into" : "wins over", lost.c_str());
         }
         if (mr.conflicts.size() > 20) std::printf("  (+%zu more conflicts)\n", mr.conflicts.size() - 20);
     }

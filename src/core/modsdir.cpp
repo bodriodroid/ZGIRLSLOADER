@@ -5,9 +5,11 @@
 #include <cstdlib>
 #include <filesystem>
 #include <map>
+#include <set>
 
 #include "modloader.h"
 #include "pack_changes.h"
+#include "pack_merge.h"
 #include "zipread.h"
 
 namespace fs = std::filesystem;
@@ -112,7 +114,9 @@ const char* kPacksReadme =
     "  * with a changes.lua  -> only what its rules say changes (each rule names a game file and the pack file that replaces it).\n"
     "  * without changes.lua -> every file of the pack replaces the game's files with the same NAME, in any folder.\n"
     ".foit / .art / .art-pt are not part of a resource pack (those are mods: put them in ../modscustom).\n"
-    "Details: docs/MODS.md.\n\n"
+    "Mixing: a *_loc.json of a pack is MIXED into the language file below it (key by key) instead of replacing it, so a pack can carry\n"
+    "three translated lines and several packs can share one file.  pack.ini can ask for the same for other files ([merge]) and say\n"
+    "requires = / conflicts = other packs.  Details: docs/MODS.md.\n\n"
     "Una carpeta (o .zip) por pack. Con changes.lua: solo cambia lo que dicen sus reglas. Sin changes.lua: cada archivo reemplaza\n"
     "por NOMBRE al del juego. Los .foit / .art / .art-pt no van en un pack (son mods). Nunca se tocan los archivos originales:\n"
     "borra la carpeta y vuelve todo.\n";
@@ -211,6 +215,7 @@ struct PackEnv {
     std::string gameDir;
     std::string cacheRoot;                           // <mods>/.cache/changes
     std::map<std::string, double> versions;          // lowercase id / name of every mod, pack and stage -> version (1 when it has none)
+    std::map<std::string, std::set<std::string>> mixed;   // layer id ("pack:<id>") -> normalised game paths its files were MIXED into (not replaced)
 };
 
 std::string safeName(std::string s) {
@@ -219,14 +224,117 @@ std::string safeName(std::string s) {
     return s.empty() ? std::string("pack") : s;
 }
 
+// The text of a pack's pack.ini (or mod.ini), also when it sits in the only folder inside a wrapper folder.
+std::string packIniText(const std::string& dir) {
+    for (const char* n : {"pack.ini", "mod.ini"}) {
+        const std::string t = readText(fs::path(dir) / n);
+        if (!t.empty()) return t;
+    }
+    std::error_code ec;
+    std::string only;
+    int folders = 0;
+    for (const auto& de : fs::directory_iterator(dir, ec)) {
+        const std::string n = de.path().filename().string();
+        if (de.is_directory(ec) && !n.empty() && n[0] != '.') {
+            only = de.path().string();
+            ++folders;
+        }
+    }
+    if (folders != 1) return std::string();
+    for (const char* n : {"pack.ini", "mod.ini"}) {
+        const std::string t = readText(fs::path(only) / n);
+        if (!t.empty()) return t;
+    }
+    return std::string();
+}
+
+std::string baseOf(const std::string& path) {
+    const size_t p = path.find_last_of("/\\");
+    return p == std::string::npos ? path : path.substr(p + 1);
+}
+
+// The files mountByName() would take from a pack folder: {path relative to the pack, real path}.
+std::vector<std::pair<std::string, std::string>> packFiles(const std::string& dir) {
+    static const std::set<std::string> skipDirs = {"extract", "build", "analysis", "analysis_v2", "skgsteam", "mods"};
+    static const std::vector<std::string> skipExt = {".foit", ".art", ".art-pt"};
+    static const std::set<std::string> skipNames = {"pack.ini", "mod.ini", "readme.txt", "readme.md", "changes.lua"};
+    std::vector<std::pair<std::string, std::string>> r;
+    std::error_code ec;
+    fs::recursive_directory_iterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+    for (; !ec && it != end; it.increment(ec)) {
+        std::error_code ec2;
+        if (it->is_directory(ec2)) {
+            if (skipDirs.count(lower(it->path().filename().string()))) it.disable_recursion_pending();
+            continue;
+        }
+        if (!it->is_regular_file(ec2)) continue;
+        const std::string rel = fs::relative(it->path(), dir, ec2).generic_string();
+        if (ec2 || rel.empty()) continue;
+        const std::string low = lower(rel);
+        bool skip = skipNames.count(baseOf(low)) > 0;
+        for (const std::string& e : skipExt)
+            if (low.size() >= e.size() && low.compare(low.size() - e.size(), e.size(), e) == 0) skip = true;
+        if (!skip) r.emplace_back(rel, it->path().string());
+    }
+    std::sort(r.begin(), r.end());
+    return r;
+}
+
+// One pack file `over` that answers for the game path `rel` (by name: for every game file of that name).  When the pack's rules say to MIX
+// it (pack_merge.h) and a game file is there to mix into, the combined text is written under `work` and one override per game path
+// is added to `out`.  The text under it is read now, so call this BEFORE the pack's own files are mounted.  Returns the files mixed.
+size_t planMerge(const Vfs& vfs, const packmerge::Config& cfg, const std::string& rel, const std::string& over, bool byName,
+                 const fs::path& work, Report& rep, const std::string& packId, std::vector<Vfs::Override>& out, std::set<std::string>& mixedRel) {
+    const packmerge::Rule rule = packmerge::ruleFor(cfg, rel);
+    if (rule.how == packmerge::How::Replace) return 0;
+    const std::vector<std::string> targets = vfs.logicalPaths(byName ? baseOf(rel) : rel);
+    if (targets.empty()) return 0;   // nothing below it: the pack's file is simply new
+    std::map<std::string, std::vector<std::string>> byReal;   // what is below -> the game paths that show it
+    for (const std::string& t : targets) {
+        std::string real;
+        if (vfs.resolve(t, &real)) byReal[real].push_back(t);
+    }
+    const std::string overText = readText(over);
+    size_t n = 0;
+    for (const auto& [real, games] : byReal) {
+        std::string base, merged, err;
+        std::vector<uint8_t> raw;
+        if (!readFile(real, raw)) continue;
+        base.assign(raw.begin(), raw.end());
+        if (!packmerge::merge(rel, rule, base, overText, merged, &err)) {
+            rep.warnings.push_back("pack " + packId + ": " + rel + " not mixed (" + err + "): its file replaces the other whole");
+            continue;
+        }
+        std::error_code ec;
+        fs::create_directories(work, ec);
+        const fs::path file = work / (std::to_string(out.size()) + "_" + safeName(baseOf(rel)));
+        std::FILE* f = std::fopen(file.string().c_str(), "wb");
+        if (!f) continue;
+        const bool ok = std::fwrite(merged.data(), 1, merged.size(), f) == merged.size();
+        std::fclose(f);
+        if (!ok) continue;
+        for (const std::string& g : games) {
+            out.push_back({g, file.string()});
+            mixedRel.insert(g);
+        }
+        ++n;
+    }
+    if (n) rep.log.push_back("pack " + packId + ": " + rel + " mixed (" + packmerge::howName(rule.how) + ") into " + std::to_string(n) + " file(s)");
+    return n;
+}
+
 // A resource pack, mounted one of two ways (the game's own files are never written to, either way):
 //   changes.lua  -> "rules": only what its rules say changes (packchanges::run), as overrides in the Vfs
 //   no changes.lua -> "name": every file replaces the game's files of the same name; .foit / .art / .art-pt (mods) and the pack's own
 //                     metadata are left out
 // Returns the files / rules that took effect (0 = nothing mounted).
-size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, const PackEnv& env, std::vector<modcheck::Layer>& layers) {
+size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, PackEnv& env, const packmerge::Config& cfg, std::vector<modcheck::Layer>& layers) {
     const fs::path changes = fs::path(m.dir) / "changes.lua";
     std::error_code ec;
+    const fs::path mixDir = fs::path(env.cacheRoot) / safeName(fs::path(m.dir).filename().string()) / "merge";
+    fs::remove_all(mixDir, ec);
+    std::vector<Vfs::Override> mixed;
+    std::set<std::string> mixedRel;
     if (fs::is_regular_file(changes, ec)) {
         if (item) item->mode = "rules";
         const fs::path work = fs::path(env.cacheRoot) / safeName(fs::path(m.dir).filename().string());
@@ -260,11 +368,18 @@ size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, cons
         }
         std::vector<Vfs::Override> rules;
         for (const packchanges::Rule& x : r.rules) rules.push_back({x.game, x.real});
+        size_t merged = 0;
+        for (const packchanges::Rule& x : r.rules) merged += planMerge(vfs, cfg, x.game, x.real, false, mixDir, rep, m.id, mixed, mixedRel);
         const size_t n = vfs.mountOverrides(rules);
         if (n) rep.log.push_back("pack " + m.id + " (changes.lua): " + std::to_string(n) + " rule(s)");
+        vfs.mountOverrides(mixed);   // after the rules, so what was mixed is what answers
+        if (item) item->merged = merged;
+        if (merged) env.mixed["pack:" + m.id] = mixedRel;
         return n;
     }
     if (item) item->mode = "name";
+    size_t merged = 0;
+    for (const auto& [rel, real] : packFiles(m.dir)) merged += planMerge(vfs, cfg, rel, real, true, mixDir, rep, m.id, mixed, mixedRel);   // reads what is below first
     std::vector<std::string> skipped;
     const size_t files = vfs.mountByName(m.dir, {".foit", ".art", ".art-pt", "pack.ini", "mod.ini", "readme.txt", "readme.md", "changes.lua"}, &skipped);
     std::string ignored;
@@ -277,16 +392,19 @@ size_t mountPack(Vfs& vfs, const mods::ModInfo& m, Item* item, Report& rep, cons
     if (mods)
         rep.warnings.push_back("pack " + m.id + ": " + std::to_string(mods) + " mod file(s) left out (" + ignored + (mods > 3 ? ", ..." : "") +
                                "): .foit / .art / .art-pt are mods, put them in mods/modscustom");
+    vfs.mountOverrides(mixed);   // after the pack's files, so what was mixed is what answers
+    if (item) item->merged = merged;
+    if (merged) env.mixed["pack:" + m.id] = mixedRel;
     if (files) {
         layers.push_back({"pack:" + m.id, m.dir});
-        rep.log.push_back("pack " + m.id + " (by name): " + std::to_string(files) + " file(s)");
+        rep.log.push_back("pack " + m.id + " (by name): " + std::to_string(files) + " file(s)" + (merged ? ", " + std::to_string(merged) + " mixed" : ""));
     }
     return files;
 }
 
 // Lists every folder of `set` for the Mods screen and, when `mount`, mounts the enabled ones (priority order).
 size_t mountSet(Vfs& vfs, const mods::ModSet& set, const char* kind, Report& rep, bool mount, std::vector<modcheck::Layer>& layers,
-                std::vector<StageMod>* stageOut = nullptr, const PackEnv* env = nullptr) {
+                std::vector<StageMod>* stageOut = nullptr, PackEnv* env = nullptr) {
     const size_t first = rep.items.size();
     for (const mods::ModInfo& m : set.mods) {
         Item it;
@@ -304,7 +422,10 @@ size_t mountSet(Vfs& vfs, const mods::ModSet& set, const char* kind, Report& rep
     }
     if (!mount) return 0;
     size_t n = 0;
-    for (mods::ModInfo m : mods::loadOrder(set)) {
+    const std::vector<mods::ModInfo> order = mods::loadOrder(set);
+    std::map<std::string, int> on;   // lowercase id of every pack that is switched on -> its priority
+    for (const mods::ModInfo& m : order) on[lower(m.id)] = m.priority;
+    for (mods::ModInfo m : order) {
         static const std::vector<std::string> kModExt = {".foit", ".art", ".art-pt"};   // not used by a resource pack, so they cannot block it
         if (!mods::vet(m, kind, &rep.log, std::string(kind) == "pack" ? kModExt : std::vector<std::string>())) {   // damaged / altering folders are never mounted
             for (size_t i = first; i < rep.items.size(); ++i)
@@ -320,7 +441,24 @@ size_t mountSet(Vfs& vfs, const mods::ModSet& set, const char* kind, Report& rep
             Item* self = nullptr;
             for (size_t i = first; i < rep.items.size(); ++i)
                 if (rep.items[i].dir == m.dir) self = &rep.items[i];
-            files = mountPack(vfs, m, self, rep, *env, layers);
+            std::vector<std::string> cfgWarn;
+            const packmerge::Config cfg = packmerge::parseConfig(packIniText(m.dir), &cfgWarn);
+            for (const std::string& w : cfgWarn) rep.warnings.push_back("pack " + m.id + ": pack.ini " + w);
+            std::string why;
+            for (const std::string& r : cfg.requires_) {
+                const auto f = on.find(r);
+                if (f == on.end()) why += (why.empty() ? "needs pack " : ", ") + r + " (not installed or switched off)";
+                else if (f->second > m.priority)
+                    rep.warnings.push_back("pack " + m.id + ": needs " + r + " but loads before it (priority " + std::to_string(m.priority) + " < " + std::to_string(f->second) + "): raise its priority");
+            }
+            for (const std::string& c : cfg.conflicts)
+                if (c != lower(m.id) && on.count(c)) why += (why.empty() ? "cannot be used together with " : ", ") + c;
+            if (!why.empty()) {
+                if (self) self->problem = why;
+                rep.warnings.push_back("pack " + m.id + " NOT loaded: " + why);
+                continue;
+            }
+            files = mountPack(vfs, m, self, rep, *env, cfg, layers);
             if (files == 0) continue;
             ++n;
             if (self) self->mounted = true;
@@ -482,6 +620,14 @@ Report mountAll(Vfs& vfs, const std::string& gameDir, bool japaneseVoices) {
     rep.stages = mountSet(vfs, stages, "stage", rep, enabled, layers, &rep.stageMods);
     if (!enabled) return rep;
     if (layers.size() > 1) rep.conflicts = modcheck::conflicts(layers);
+    for (modcheck::Conflict& c : rep.conflicts) {
+        const auto f = env.mixed.find(c.winner);
+        if (f == env.mixed.end()) continue;
+        const std::string p = normalizeKey(c.path);
+        for (const std::string& g : f->second)
+            if (g == p || (g.size() > p.size() && g.compare(g.size() - p.size(), p.size(), p) == 0 && g[g.size() - p.size() - 1] == '/') ||
+                (p.size() > g.size() && p.compare(p.size() - g.size(), g.size(), g) == 0 && p[p.size() - g.size() - 1] == '/')) c.mixed = true;
+    }
     if (japaneseVoices) {
         Vfs probe;  // README.txt does not count (and is not mounted when it is the only thing there)
         probe.mount(l.jpVoice);

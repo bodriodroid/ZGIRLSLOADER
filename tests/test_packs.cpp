@@ -9,6 +9,7 @@
 
 #include "modsdir.h"
 #include "pack_changes.h"
+#include "pack_merge.h"
 #include "vfs.h"
 
 using namespace zengine;
@@ -253,6 +254,114 @@ int main() {
             }
         CHECK(found);
         CHECK(get(game / "data" / "ui" / "hit.txt") == "ORIGINAL hit");
+    }
+
+
+    // ---- mixing: pack_merge on its own
+    {
+        using namespace packmerge;
+        std::string out, err;
+        const Rule keys{"loc", How::Keys, ""};
+        CHECK(merge("es_loc.json", keys, "{\n \"a\": \"uno\",\n \"b\": null,\n \"c\": \"tres\"\n}\n",
+                    "{\"b\": \"dos\", \"c\": null, \"d\": \"cu\\u00e1tro \\\"x\\\"\\n\"}", out, &err));
+        CHECK(out == "{\n \"a\": \"uno\",\n \"b\": \"dos\",\n \"c\": \"tres\",\n \"d\": \"cu\xC3\xA1tro \\\"x\\\"\\n\"\n}\n");   // null never blanks a key
+        CHECK(!merge("es_loc.json", keys, "{\"a\": \"x\"}", "{\"a\": ", out, &err) && err.find("pack's file") != std::string::npos);
+        CHECK(!merge("es_loc.json", keys, "{\"a\": [1]}", "{}", out, &err));
+
+        // "Key: value" files: a repeated key is replaced as a group, in the place of its first line
+        const std::string base = "# comment\nName: A\nChoice: One\nChoice: Two\nTime: 5\n";
+        CHECK(merge("x.ini", keys, base, "Choice: Only\nExtra: 1\ntime = 9\n", out));
+        CHECK(out == "# comment\nName: A\nChoice: Only\ntime = 9\nExtra: 1\n");
+        CHECK(merge("x.ini", keys, "a=1\r\nb=2\r\n", "b=3\r\n", out) && out == "a=1\r\nb=3\r\n");   // the line ending of what is below stays
+
+        // records
+        const std::string chal = "#### one\nChalName: C1\nTime: 99\n\n\n#### two\nChalName: C2\nTime: 80\n";
+        const Rule rec{"challenges.ini", How::Records, "chalname"};
+        CHECK(merge("challenges.ini", rec, chal, "ChalName: C2\nTime: 10\n\nChalName: C3\nTime: 7\n", out));
+        CHECK(out == "#### one\nChalName: C1\nTime: 99\n\n\nChalName: C2\nTime: 10\n\nChalName: C3\nTime: 7\n");
+        CHECK(merge("challenges.ini", rec, chal, "chalname: c1 # again\nTime: 1\n", out) && out.find("Time: 1\n\n\n#### two") != std::string::npos);
+        CHECK(!merge("a_loc.json", rec, "{}", "{}", out));
+        CHECK(merge("n.txt", Rule{"*.txt", How::Append, ""}, "a\nb", "c\n", out) && out == "a\nb\nc\n");
+
+        // pack.ini: sections, shortcuts, specificity, bad lines
+        std::vector<std::string> warn;
+        const Config c = parseConfig(
+            "name = X\nrequires = Aotc, b\nconflicts = Z\n[merge]\nini = keys\nui/config/MainMenu/challenges.ini = records ChalName\n"
+            "*.txt = append\nloc = replace\nbogus = nope\nx.ini = records\n",
+            &warn);
+        CHECK(c.requires_.size() == 2 && c.requires_[0] == "aotc" && c.conflicts.size() == 1 && c.conflicts[0] == "z");
+        CHECK(warn.size() == 2);
+        CHECK(ruleFor(c, "UI\\config\\MainMenu\\Challenges.ini").how == How::Records);   // a path beats the word `ini`
+        CHECK(ruleFor(c, "ui/config/MainMenu/challenges.ini").idKey == "chalname");
+        CHECK(ruleFor(c, "ui/other.ini").how == How::Keys);
+        CHECK(ruleFor(c, "notes.txt").how == How::Append);
+        CHECK(ruleFor(c, "core/localization/es_loc.json").how == How::Replace);          // asked for explicitly
+        CHECK(ruleFor(Config(), "core/localization/es_loc.json").how == How::Keys);      // the default
+        CHECK(ruleFor(Config(), "ui/a.ini").how == How::Replace);
+    }
+
+    // ---- mixing: two packs on the same game files, requires / conflicts
+    {
+        fs::remove_all(game / "mods", ec);
+        put(game / "data" / "core" / "localization" / "es_loc.json", "{\n \"Play\": \"Jugar\",\n \"Quit\": \"Salir\"\n}\n");
+        put(game / "data" / "ui" / "config" / "MainMenu" / "challenges.ini", "ChalName: C1\nTime: 99\n\nChalName: C2\nTime: 80\n");
+        put(game / "data" / "ui" / "config" / "Other" / "challenges.ini", "ChalName: O1\n");
+        const fs::path packs = game / "mods" / "resourcepacks";
+        // A (priority 10): by name, only retranslates one line and changes one challenge
+        put(packs / "A" / "pack.ini", "name = A\npriority = 10\n[merge]\nchallenges.ini = records ChalName\n");
+        put(packs / "A" / "localization" / "es_loc.json", "{\"Play\": \"A jugar\"}");
+        put(packs / "A" / "challenges.ini", "ChalName: C2\nTime: 55\n");
+        // B (priority 20): rules mode on top of A; adds its own line and challenge, needs A
+        put(packs / "B" / "pack.ini", "name = B\npriority = 20\nrequires = A\n[merge]\nui/config/MainMenu/challenges.ini = records ChalName\n");
+        put(packs / "B" / "loc.json", "{\"Extra\": \"Algo\"}");
+        put(packs / "B" / "chal.ini", "ChalName: C3\nTime: 7\n");
+        put(packs / "B" / "changes.lua",
+            "return {\n  ['core/localization/es_loc.json'] = 'loc.json',\n  ['ui/config/MainMenu/challenges.ini'] = 'chal.ini',\n}\n");
+        // C: needs a pack that is not there, D: cannot share a game with A
+        put(packs / "E" / "pack.ini", "name = E\npriority = 15\n");   // by name too, no rules: loc files are mixed by default
+        put(packs / "E" / "localization" / "es_loc.json", "{\"FromE\": \"E\"}");
+        put(packs / "C" / "pack.ini", "name = C\nrequires = missing\n");
+        put(packs / "C" / "any.txt", "C");
+        put(packs / "D" / "pack.ini", "name = D\nconflicts = A\n");
+        put(packs / "D" / "any2.txt", "D");
+        Vfs v;
+        v.mount((game / "data").string());
+        const modsdir::Report rep = modsdir::mountAll(v, game.string(), false);
+        const std::string loc = via(v, "core/localization/es_loc.json");
+        CHECK(loc.find("\"Play\": \"A jugar\"") != std::string::npos);   // A's line
+        CHECK(loc.find("\"Quit\": \"Salir\"") != std::string::npos);     // the game's other lines are still there
+        CHECK(loc.find("\"Extra\": \"Algo\"") != std::string::npos);     // B on top of A's result, not on the game's file
+        const std::string chal = via(v, "ui/config/MainMenu/challenges.ini");
+        CHECK(chal.find("Time: 99") != std::string::npos && chal.find("Time: 55") != std::string::npos && chal.find("Time: 80") == std::string::npos);
+        CHECK(chal.find("ChalName: C3") != std::string::npos);
+        const std::string other = via(v, "ui/config/Other/challenges.ini");
+        CHECK(other.find("ChalName: O1") != std::string::npos && other.find("Time: 55") != std::string::npos);   // by name (A): mixed into every challenges.ini
+        CHECK(other.find("ChalName: C3") == std::string::npos);                                                   // by path (B): only the one it names
+        CHECK(via(v, "es_loc.json") == loc);
+        CHECK(get(game / "data" / "core" / "localization" / "es_loc.json").find("A jugar") == std::string::npos);   // the game's file is never written
+        CHECK(via(v, "any.txt") == "<missing>" && via(v, "any2.txt") == "<missing>");
+        CHECK(hasWarn(rep, "needs pack missing") && hasWarn(rep, "cannot be used together with a"));
+        CHECK(loc.find("\"FromE\": \"E\"") != std::string::npos);
+        CHECK(rep.packs == 3);
+        size_t mergedA = 0, mergedB = 0;
+        for (const auto& it : rep.items) {
+            if (it.id == "A") mergedA = it.merged;
+            if (it.id == "B") mergedB = it.merged;
+        }
+        CHECK(mergedA >= 2 && mergedB == 2);
+        bool mixedConflict = false;
+        for (const auto& c : rep.conflicts)
+            if (c.path.find("es_loc.json") != std::string::npos && c.mixed && c.winner == "pack:E") mixedConflict = true;
+        CHECK(mixedConflict);
+
+        // a pack file that is not valid for its rule is not mixed: it replaces whole, with a warning
+        fs::remove_all(packs, ec);
+        put(packs / "Bad" / "es_loc.json", "this is not json");
+        Vfs v2;
+        v2.mount((game / "data").string());
+        const modsdir::Report rep2 = modsdir::mountAll(v2, game.string(), false);
+        CHECK(via(v2, "core/localization/es_loc.json") == "this is not json");
+        CHECK(hasWarn(rep2, "not mixed"));
     }
 
     fs::remove_all(root, ec);

@@ -47,6 +47,7 @@ add_library(zengine_core STATIC
   src/core/gfs.cpp
   src/core/zipread.cpp
   src/core/pack_changes.cpp
+  src/core/pack_merge.cpp
   src/core/chord_assist.cpp
   src/core/palfx.cpp
   src/core/screen_layout.cpp

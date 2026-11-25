@@ -51,6 +51,10 @@ public:
     };
     size_t mountOverrides(const std::vector<Override>& rules);
 
+    // The full paths (as the mounts gave them, normalised) of every indexed file that is `path` or ends with "/" + `path` -- the distinct
+    // game files a partial path stands for.  A pack that mixes its file into the game's (pack_merge.h) works out its targets with this.
+    std::vector<std::string> logicalPaths(std::string_view path) const;
+
     bool resolve(std::string_view path, std::string* realPath = nullptr) const;
     bool exists(std::string_view path) const { return resolve(path, nullptr); }
     bool read(std::string_view path, std::vector<uint8_t>& out) const;
@@ -76,6 +80,7 @@ private:
     };
     std::unordered_map<std::string, Entry> bySuffix_;
     std::unordered_map<std::string, std::vector<std::string>> byName_;
+    std::unordered_map<std::string, std::vector<std::string>> fullByName_;   // basename -> distinct full normalised paths
     std::vector<std::string> files_;
     std::vector<std::string> mounts_;
 };

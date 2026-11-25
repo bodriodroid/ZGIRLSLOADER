@@ -81,6 +81,45 @@ In both modes:
 * The pack is checked before it is loaded like any other folder (damaged files → error 4, native code → error 5).
 * The Mods screen / `zdroid_probe` show the mode of each pack.
 
+### pack.ini: mixing packs ([merge], requires, conflicts)
+
+By default a pack file **replaces** the game's file.  For text that wipes everything the pack does not mention, and two packs on the same
+file cannot both be used.  So a pack can say how its files are **mixed** with what is already there (the game's file, or what an earlier
+pack made of it — packs stack in priority order, each one on top of the result of the one before):
+
+```ini
+name = My pack
+priority = 20                       ; higher loads later (default 100)
+requires  = aotc, other             ; not loaded unless these pack ids are on (and a warning if they load after this one)
+conflicts = bigtranslation          ; not loaded while these are on
+
+[merge]
+loc = keys                          ; every *_loc.json  (this is the DEFAULT, you do not need the line)
+ini = replace                       ; every .ini        (the default)
+ui/config/MainMenu/challenges.ini = records ChalName
+*.txt = append
+```
+
+| rule | what it does |
+|---|---|
+| `replace` | the pack's file takes the other one's place (what a pack always did) |
+| `keys` | key by key.  `*.json`: flat `{"key": "text"}`; a key the pack has replaces that key, a new key is added, a `null` never blanks a text.  Text files: `Key: value` / `Key = value` lines; a key that repeats (`Choice:`) is replaced as a group in the place of its first line |
+| `records <Key>` | for the game's `.ini` lists of blank-line separated records (`challenges.ini`, the option menus): the record whose `<Key>` line has the same value is replaced in place, a new one is added at the end |
+| `append` | the pack's lines are added after the other file's |
+
+A pattern is `*suffix`, or a path / path tail (`challenges.ini`, `MainMenu/challenges.ini`); the words `loc` and `ini` stand for
+`*_loc.json` and `*.ini`.  A path pattern beats a word; among paths the first in the file wins.  No rule: `replace`, except `*_loc.json`
+which is `keys`.
+
+* **Automatic (by name) packs** mix into **every** game file with that name (as they replace by name).  To be exact, use `changes.lua`,
+  whose rules name the game path: only that path is mixed.
+* The combined file is written to `mods/.cache/changes/<pack>/merge/`; the game's files are never written to.  If a pack file is not
+  valid for its rule (not JSON for `keys`, ...) it is **not** mixed: it replaces whole, and the Mods screen / `zdroid_probe` log says so.
+* `zdroid_probe` shows `mixed into` instead of `wins over` for a file two packs share that was mixed.
+* The game's `.ini` files are record lists, not key/value tables, so `keys` on them is only right for single-record or flat files;
+  use `records <Key>` for lists.  (Verified against the game's own `challenges.ini`: the same record in, the file comes out unchanged.)
+* Not done yet: mixing of binary files (textures, palettes, `.gbs` scenes) — there the highest priority still wins whole.
+
 ### changes.lua (rules mode)
 
 A Lua 5.1 script run once at start in a sandbox (no `require`, no `os.execute`, no `io.popen`; `io.open` / `os.remove` only reach the
