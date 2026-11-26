@@ -57,6 +57,16 @@ the rows of the region table (Squigly and Marie here) is skipped with a line say
 
 The output is derived from your game's palette textures: keep it for yourself, do not publish it.  Only the generator is in the repository.
 
+### Converting a MUGEN character's sprites: `zdroid_mugen`
+
+`zdroid_mugen <character folder> <out folder>` reads a MUGEN 1.x character (`.def`, `.sff` v1, the `.act` palettes, `.air`) and writes
+`<name>.art`, one palette texture `<name>_<N>p.dds` per `.act`, PNG previews and a `manifest.json` (animations, frame timing, boxes).
+The conversion is lossless: a sprite's MUGEN palette index becomes the *band* (the row of the palette texture) and the grad plane stays 0,
+so swapping palettes is exact.  The tool decodes every sprite with every palette through the engine's own decoder and refuses to finish
+unless the result has 0 differing pixels.  This is the sprite side only (milestone 1); the `.foit` (states, frames, boxes) and the move
+logic (CNS/CMD is a different language from the game's slot scripts) are separate steps.  Convert only characters you may use; the output
+is derived from them, so it is not published here.
+
 ## modscustom/ — mods
 
 One folder per mod; inside, mirror the game's layout (`mymod/characters/filia.foit`, `mymod/UISound/x.wav` ...).  Optional

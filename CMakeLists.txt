@@ -48,6 +48,8 @@ add_library(zengine_core STATIC
   src/core/zipread.cpp
   src/core/pack_changes.cpp
   src/core/pack_merge.cpp
+  src/core/art_write.cpp
+  src/core/mugen.cpp
   src/core/chord_assist.cpp
   src/core/palfx.cpp
   src/core/screen_layout.cpp
@@ -168,6 +170,8 @@ if(NOT ANDROID)
   # Themed character palettes (*.pal) made from the palette textures of the player's own game data.
   add_executable(zdroid_palgen src/tools/zdroid_palgen.cpp)
   target_link_libraries(zdroid_palgen PRIVATE zengine_core)
+  add_executable(zdroid_mugen src/tools/zdroid_mugen.cpp)
+  target_link_libraries(zdroid_mugen PRIVATE zengine_core)
 
   # Writes one palettized HUD portrait (character_<name>_colors|lines|shade.pcx + a palette) as .png for inspection.
   add_executable(zdroid_hudart src/tools/zdroid_hudart.cpp)
@@ -195,6 +199,9 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   target_link_libraries(zdroid_pack_tests PRIVATE zengine_core)
   target_compile_definitions(zdroid_pack_tests PRIVATE ZG_EXAMPLES_DIR="${CMAKE_SOURCE_DIR}/examples")
   add_test(NAME zdroid_pack_tests COMMAND zdroid_pack_tests)
+  add_executable(zdroid_mugen_tests tests/test_mugen.cpp)
+  target_link_libraries(zdroid_mugen_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_mugen_tests COMMAND zdroid_mugen_tests)
 
   add_executable(zdroid_gfs_tests tests/test_gfs.cpp)
   target_link_libraries(zdroid_gfs_tests PRIVATE zengine_core)
