@@ -165,6 +165,7 @@ struct Object {
     bool hasRefC0 = false;
     uint8_t flagsDc = 0, x373 = 0;
     int32_t box[4] = {0, 0, 0, 0};  // default push box (top, bottom, left, right)
+    uint8_t childFlags = 0;         // the flag byte of this child's 13-byte header (children only)
     std::vector<Object> children;   // projectiles / effects; share the character's frame list
 
     int findState(const std::string& n) const {
@@ -181,6 +182,7 @@ struct Image {
     std::vector<uint8_t> mask;  // bit j (LSB first, row-major) = cell j stored
     bool hasData = false;       // flag bit 4: mask + plane references are present
     bool external = false;      // flag bit 5: planes live in the .art/.art-pt (otherwise `inl`)
+    uint32_t extra[2] = {0, 0};  // flag bit 2: two more words that the engine reads and does not use; kept so a file writes back unchanged
     uint32_t off = 0;
     uint32_t size[3] = {0, 0, 0};  // compressed sizes of the normal / grad / band planes
     std::vector<uint8_t> inl[3];
@@ -240,6 +242,8 @@ struct Character {
     LayerObject layer;
     size_t layerPos = 0;      // file offset where the layer object starts (right after the hasLayer byte)
     size_t tailPos = 0;       // file offset of the slot-default table block (list8); the layer object spans [layerPos, tailPos)
+    std::vector<uint8_t> preamble;  // bytes between the 13-byte file header and the body (the animation summary of header flag 8); kept as they are
+    std::vector<uint8_t> layerRaw;  // those bytes as they are in the file (the parser only keeps part of the layer object; foit_write.h copies them back)
     size_t fileSize = 0;
     size_t countStates() const;    // including all children
     size_t countChildren() const;  // recursive

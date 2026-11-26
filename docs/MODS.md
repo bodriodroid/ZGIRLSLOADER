@@ -57,15 +57,26 @@ the rows of the region table (Squigly and Marie here) is skipped with a line say
 
 The output is derived from your game's palette textures: keep it for yourself, do not publish it.  Only the generator is in the repository.
 
-### Converting a MUGEN character's sprites: `zdroid_mugen`
+### Converting a MUGEN character: `zdroid_mugen`
 
-`zdroid_mugen <character folder> <out folder>` reads a MUGEN 1.x character (`.def`, `.sff` v1, the `.act` palettes, `.air`) and writes
-`<name>.art`, one palette texture `<name>_<N>p.dds` per `.act`, PNG previews and a `manifest.json` (animations, frame timing, boxes).
-The conversion is lossless: a sprite's MUGEN palette index becomes the *band* (the row of the palette texture) and the grad plane stays 0,
-so swapping palettes is exact.  The tool decodes every sprite with every palette through the engine's own decoder and refuses to finish
-unless the result has 0 differing pixels.  This is the sprite side only (milestone 1); the `.foit` (states, frames, boxes) and the move
-logic (CNS/CMD is a different language from the game's slot scripts) are separate steps.  Convert only characters you may use; the output
-is derived from them, so it is not published here.
+`zdroid_mugen <character folder> <out folder> [--scale N] [--preview]` reads a MUGEN 1.x character (`.def`, `.sff` v1, the `.act` palettes,
+`.air`) and writes `<name>.art`, `<name>.foit`, one palette texture `<name>_<N>p.dds` per `.act`, PNG previews and a `manifest.json`.
+
+* **Sprites** are converted losslessly: a sprite's MUGEN palette index becomes the *band* (the row of the palette texture) and the grad plane
+  stays 0, so swapping palettes is exact.  `--scale N` enlarges the pixel art N times first (nearest neighbour; MUGEN sprites are small next to
+  the game's characters) and scales axes, offsets and boxes with it.
+* **The `.foit`** (`src/core/mugen_foit.*`, written by `src/core/foit_write.*`) has one frame per distinct `.air` frame (the sprite in image slot 0
+  at the `.air` offset minus the sprite's axis; a mirrored copy of the sprite for `H` / `V` flips; clsn2 -> hurt boxes, clsn1 -> hit boxes) and
+  one animation state per action: `Stand` is action 0, the others `Action_<id>`, and an action that loops from a later frame gets an extra
+  `<name>_Loop` state.  `-1` (hold forever) becomes 65535 ticks.  There are no commands, no transitions and no move scripts yet: MUGEN's
+  CNS / CMD is a different language from the game's slot scripts, so the character animates but does not play.
+* **Checks**: every sprite is decoded through the engine's own decoder under every palette and compared with the `.sff` (0 differing pixels
+  required), then the `.foit` is parsed back and every `.air` frame is checked in it (picture, position, duration, box counts).  `--preview`
+  writes what the engine draws for every node of every state into `preview/`.
+
+`foit::write` is the exact inverse of `foit::parse`: all 20 character files of the PC build are written back byte for byte (the test
+`zdroid_foit_write_tests` does that when `ZDROID_TEST_CHARS` names the folder with the game's `.foit` files).  Convert only characters you
+may use; the output is derived from them, so it is not published here.
 
 ## modscustom/ — mods
 

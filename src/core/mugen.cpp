@@ -255,5 +255,34 @@ Def parseDef(const std::string& text) {
     return d;
 }
 
+void scaleSprite(Sprite& s, int k) {
+    if (k < 2 || s.w <= 0 || s.h <= 0) return;
+    std::vector<uint8_t> o(static_cast<size_t>(s.w) * k * s.h * k);
+    const size_t W = static_cast<size_t>(s.w) * k;
+    for (int y = 0; y < s.h * k; ++y)
+        for (int x = 0; x < s.w * k; ++x) o[static_cast<size_t>(y) * W + x] = s.px[static_cast<size_t>(y / k) * s.w + x / k];
+    s.px = std::move(o);
+    s.w *= k;
+    s.h *= k;
+    s.axisX *= k;
+    s.axisY *= k;
+}
+
+void scaleActions(std::vector<AirAction>& acts, int k) {
+    if (k < 2) return;
+    for (AirAction& a : acts)
+        for (AirFrame& f : a.frames) {
+            f.x *= k;
+            f.y *= k;
+            for (std::vector<Box>* v : {&f.clsn1, &f.clsn2})
+                for (Box& b : *v) {
+                    b.x1 *= k;
+                    b.y1 *= k;
+                    b.x2 *= k;
+                    b.y2 *= k;
+                }
+        }
+}
+
 }  // namespace mugen
 }  // namespace zengine

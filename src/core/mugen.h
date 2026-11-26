@@ -51,5 +51,10 @@ struct Def {
 };
 Def parseDef(const std::string& text);
 
+// Whole-number enlargement for pixel art (nearest neighbour: every pixel becomes k x k, the palette indices stay exact).  Axis, frame offsets
+// and boxes are multiplied by k as well.  k < 2 changes nothing.
+void scaleSprite(Sprite& s, int k);
+void scaleActions(std::vector<AirAction>& a, int k);
+
 }  // namespace mugen
 }  // namespace zengine

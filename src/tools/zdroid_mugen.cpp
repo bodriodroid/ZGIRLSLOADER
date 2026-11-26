@@ -1,6 +1,9 @@
 // zdroid_mugen - turns the sprites of a MUGEN character into the sprite data of a ZGirls Loader character and checks the result.
 //
-//   zdroid_mugen <character folder with the .def> <out folder>
+//   zdroid_mugen <character folder with the .def> <out folder> [--scale N] [--preview]
+//
+//   --scale N    enlarge every sprite N times (whole numbers, nearest neighbour; MUGEN pixel art is tiny next to the game's characters)
+//   --preview    also write preview/<state>/<k>.png (what the engine draws for every node of every state) + preview/index.json
 //
 // Writes   <out>/<name>.art              the sprite planes (art_write.h), every image of the .sff
 //          <out>/<name>_<N>p.dds         one palette texture per .act (16 tones x 256 rows; row i = colour i, so a pixel of palette index i is
@@ -8,19 +11,25 @@
 //          <out>/sprites/<group>_<image>.png   every sprite as the engine's own decoder draws it from those planes (palette 1;
 //                                        sprites_p2/ ... for the other palettes)
 //          <out>/manifest.json           sprites (axis, size, where in the .art) and animations (frames, timing, boxes) for the next steps
-// and decodes every image back through the engine's decoder, comparing each pixel with the .sff under every palette.
+//          <out>/<name>.foit             frames, boxes and one animation state per .air action (mugen_foit.h)
+// It decodes every image back through the engine's decoder, comparing each pixel with the .sff under every palette, and then parses the
+// .foit it wrote and checks every .air frame in it: sprite pixels, position, timing and box counts.
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <sstream>
 #include <string>
 
 #include "art.h"
 #include "art_write.h"
 #include "foit.h"
+#include "foit_write.h"
 #include "mugen.h"
+#include "mugen_foit.h"
 
 namespace fs = std::filesystem;
 using namespace zengine;
@@ -73,6 +82,16 @@ int main(int argc, char** argv) {
         return 2;
     }
     const fs::path in = argv[1], out = argv[2];
+    int scale = 1;
+    bool preview = false;
+    for (int i = 3; i < argc; ++i) {
+        if (!std::strcmp(argv[i], "--scale") && i + 1 < argc) scale = std::max(1, std::min(32, std::atoi(argv[++i])));
+        else if (!std::strcmp(argv[i], "--preview")) preview = true;
+        else {
+            std::fprintf(stderr, "unknown option %s\n", argv[i]);
+            return 2;
+        }
+    }
     fs::path defPath;
     std::error_code ec;
     for (const auto& e : fs::directory_iterator(in, ec))
@@ -98,6 +117,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "%s: %s\n", sffPath.string().c_str(), err.c_str());
         return 1;
     }
+    for (mugen::Sprite& sp : sprites) mugen::scaleSprite(sp, scale);
     // palettes: pal1..palN of the .def, else the one inside the first sprite
     std::vector<std::array<uint8_t, 768>> pals;
     for (int n = 1; n <= 64; ++n) {
@@ -130,7 +150,6 @@ int main(int argc, char** argv) {
             return 1;
         }
     }
-    writeAll(out / (base + ".art"), art);
     std::vector<Palette> readBack;
     for (size_t k = 0; k < pals.size(); ++k) {
         std::vector<uint8_t> rgba(256 * 16 * 4);
@@ -202,6 +221,7 @@ int main(int argc, char** argv) {
         if (!p.empty()) {
             const std::vector<uint8_t> b = readAll(p);
             acts = mugen::parseAir(std::string(b.begin(), b.end()));
+            mugen::scaleActions(acts, scale);
         }
     }
     std::ostringstream js;
@@ -232,7 +252,156 @@ int main(int argc, char** argv) {
 
     size_t stored = 0;
     for (const foit::Image& im : images) stored += im.n;
-    std::printf("%s: %zu sprites, %zu palettes, %zu animations; .art %zu bytes, %zu cells stored\n", base.c_str(), sprites.size(), pals.size(), acts.size(), art.size(), stored);
+    std::printf("%s: %zu sprites, %zu palettes, %zu animations; .art %zu bytes, %zu cells stored (scale x%d)\n", base.c_str(), sprites.size(), pals.size(), acts.size(), art.size(), stored, scale);
     std::printf("verified through the engine's decoder: %zu pixels, %zu different\n", checked, bad);
-    return bad ? 1 : 0;
+    if (bad) return 1;
+
+    // ---- the .foit
+    mugen::FoitBuild fb;
+    if (!mugen::buildFoit(base, sprites, images, art, acts, fb, &err)) {
+        std::fprintf(stderr, "foit: %s\n", err.c_str());
+        return 1;
+    }
+    std::vector<uint8_t> foitBytes;
+    if (!foit::write(fb.ch, foitBytes, &err)) {
+        std::fprintf(stderr, "foit: cannot write (%s)\n", err.c_str());
+        return 1;
+    }
+    foit::Character back;
+    if (!foit::parse(foitBytes.data(), foitBytes.size(), back, &err)) {
+        std::fprintf(stderr, "foit: the engine's parser rejects what was written (%s)\n", err.c_str());
+        return 1;
+    }
+    writeAll(out / (base + ".art"), art);
+    writeAll(out / (base + ".foit"), foitBytes);
+
+    // every .air frame, read back out of the parsed .foit
+    std::map<std::pair<int, int>, size_t> byId;
+    for (size_t i = 0; i < sprites.size(); ++i) byId.emplace(std::make_pair(sprites[i].group, sprites[i].image), i);
+    size_t fchecked = 0, fbad = 0, pixelsChecked = 0;
+    auto problem = [&](const std::string& what) {
+        if (++fbad <= 10) std::fprintf(stderr, "  .foit check failed: %s\n", what.c_str());
+    };
+    for (const mugen::AirAction& a : acts) {
+        if (a.frames.empty()) continue;
+        const std::string nm = a.id == 0 ? "Stand" : "Action_" + std::to_string(a.id);
+        const int si = back.body.findState(nm);
+        if (si < 0) {
+            problem("state " + nm + " is missing");
+            continue;
+        }
+        const foit::State& st = back.body.states[static_cast<size_t>(si)];
+        if (st.hdr.nodes.size() != a.frames.size()) {
+            problem(nm + ": " + std::to_string(st.hdr.nodes.size()) + " nodes for " + std::to_string(a.frames.size()) + " frames");
+            continue;
+        }
+        const bool holds = a.frames.back().time < 0;
+        const size_t loop = std::min<size_t>(static_cast<size_t>(std::max(a.loopStart, 0)), a.frames.size() - 1);
+        if (!holds && loop > 0) {
+            const int li = back.body.findState(nm + "_Loop");
+            if (li < 0 || back.body.states[static_cast<size_t>(li)].hdr.nodes.size() != a.frames.size() - loop || st.next != li) problem(nm + ": the loop state is wrong");
+        } else if (st.next != si) {
+            problem(nm + ": does not repeat itself");
+        }
+        for (size_t k = 0; k < a.frames.size(); ++k) {
+            ++fchecked;
+            const mugen::AirFrame& af = a.frames[k];
+            const foit::Node& nd = st.hdr.nodes[k];
+            const int wantTicks = af.time < 0 ? 0xFFFF : std::min(std::max(af.time, 1), 0xFFFF);
+            if (nd.props.empty() || nd.props[0].dur != wantTicks) problem(nm + ": wrong duration on frame " + std::to_string(k));
+            if (nd.refs[1] == 0 || nd.refs[1] > back.frames.size()) {
+                problem(nm + ": frame reference outside the list");
+                continue;
+            }
+            const foit::Frame& fr = back.frames[nd.refs[1] - 1u];
+            if (fr.hit.size() != af.clsn1.size() || fr.hurt.size() != af.clsn2.size()) problem(nm + ": box count differs on frame " + std::to_string(k));
+            const auto it = byId.find(std::make_pair(af.group, af.image));
+            const bool drawn = it != byId.end() && images[it->second].n > 0;
+            if (!drawn) {
+                if (fr.slotMask != 0) problem(nm + ": a picture where there should be none");
+                continue;
+            }
+            const mugen::Sprite& sp = sprites[it->second];
+            if (!(fr.slotMask & 1) || fr.src != 5) {
+                problem(nm + ": picture missing on frame " + std::to_string(k));
+                continue;
+            }
+            const int wantX = af.flipH ? -af.x - (sp.w - sp.axisX) : af.x - sp.axisX;
+            const int wantY = af.flipV ? -af.y - (sp.h - sp.axisY) : af.y - sp.axisY;
+            if (fr.drawX(0) != wantX || fr.drawY(0) != wantY) problem(nm + ": wrong position on frame " + std::to_string(k));
+            ArtPlanes pl;
+            if (!foit::decodeImage(fr.img[0], art.data(), art.size(), pl)) {
+                problem(nm + ": picture cannot be decoded on frame " + std::to_string(k));
+                continue;
+            }
+            for (int y = 0; y < pl.height; ++y)
+                for (int x = 0; x < pl.width; ++x) {
+                    uint8_t want = 0;
+                    if (x < sp.w && y < sp.h) want = sp.px[static_cast<size_t>(af.flipV ? sp.h - 1 - y : y) * sp.w + (af.flipH ? sp.w - 1 - x : x)];
+                    ++pixelsChecked;
+                    if (pl.band[static_cast<size_t>(y) * pl.width + x] != want || pl.grad[static_cast<size_t>(y) * pl.width + x] != 0) {
+                        problem(nm + ": wrong pixel on frame " + std::to_string(k));
+                        y = pl.height;
+                        break;
+                    }
+                }
+        }
+    }
+    std::printf(".foit: %zu bytes, %zu frames, %zu states, %zu mirrored images added; %zu .air frames checked (%zu pixels), %zu problems\n", foitBytes.size(), fb.frames, fb.states,
+                fb.mirroredImages, fchecked, pixelsChecked, fbad);
+    if (fb.missingSprites) std::printf("  note: %zu .air frames name a sprite that is not in the .sff (kept as empty frames)\n", fb.missingSprites);
+
+    // preview: what the engine draws for every node of every state
+    if (preview) {
+        std::ostringstream ix;
+        ix << "[\n";
+        size_t nStates = 0;
+        for (size_t si = 0; si < back.body.states.size(); ++si) {
+            const foit::State& st = back.body.states[si];
+            struct Piece { ArtPlanes pl; int x = 0, y = 0; bool has = false; int ticks = 1; };
+            std::vector<Piece> pieces;
+            int x0 = 0, y0 = 0, x1 = 0, y1 = 0;   // the origin is always inside
+            for (const foit::Node& nd : st.hdr.nodes) {
+                Piece pc;
+                pc.ticks = nd.ticks();
+                if (nd.refs[1] > 0) {
+                    const foit::Frame& fr = back.frames[nd.refs[1] - 1u];
+                    if ((fr.slotMask & 1) && foit::decodeImage(fr.img[0], art.data(), art.size(), pc.pl)) {
+                        pc.has = true;
+                        pc.x = fr.drawX(0);
+                        pc.y = fr.drawY(0);
+                        x0 = std::min(x0, pc.x);
+                        y0 = std::min(y0, pc.y);
+                        x1 = std::max(x1, pc.x + pc.pl.width);
+                        y1 = std::max(y1, pc.y + pc.pl.height);
+                    }
+                }
+                pieces.push_back(std::move(pc));
+            }
+            const int W = x1 - x0, H = y1 - y0;
+            if (W <= 0 || H <= 0 || W > 8192 || H > 8192) continue;
+            ix << (nStates++ ? ",\n" : "") << " {\"state\":" << jstr(st.name) << ",\"origin\":[" << -x0 << "," << -y0 << "],\"size\":[" << W << "," << H << "],\"frames\":[";
+            for (size_t k = 0; k < pieces.size(); ++k) {
+                std::vector<uint8_t> canvas(static_cast<size_t>(W) * H * 4, 0);
+                if (pieces[k].has) {
+                    const std::vector<uint8_t> rgba = toRgba(pieces[k].pl, tables[0]);
+                    for (int y = 0; y < pieces[k].pl.height; ++y)
+                        for (int x = 0; x < pieces[k].pl.width; ++x) {
+                            const uint8_t* sp = &rgba[(static_cast<size_t>(y) * pieces[k].pl.width + x) * 4];
+                            if (!sp[3]) continue;
+                            std::memcpy(&canvas[(static_cast<size_t>(y + pieces[k].y - y0) * W + (x + pieces[k].x - x0)) * 4], sp, 4);
+                        }
+                }
+                const std::string rel = "preview/" + st.name + "/" + std::to_string(k) + ".png";
+                writeAll(out / rel, encodePngRgba(canvas.data(), W, H));
+                ix << (k ? "," : "") << "[" << jstr(rel) << "," << pieces[k].ticks << "]";
+            }
+            ix << "]}";
+        }
+        ix << "\n]\n";
+        const std::string t = ix.str();
+        writeAll(out / "preview" / "index.json", std::vector<uint8_t>(t.begin(), t.end()));
+        std::printf("preview: %zu states written to %s\n", nStates, (out / "preview").string().c_str());
+    }
+    return fbad ? 1 : 0;
 }

@@ -318,6 +318,7 @@ bool readChild(Rd& r, size_t nframes, Object& c, int depth, std::string* err) {
         if (err) *err = "bad child header at " + std::to_string(hdrPos);
         return false;
     }
+    c.childFlags = fl;
     if (fl & 8) {
         if (err) *err = "child with animation summary not supported (at " + std::to_string(hdrPos) + ")";
         return false;
@@ -354,8 +355,8 @@ bool readImage(Rd& r, Image& im) {
     im.n = r.u16();
     im.flags = r.u8();
     if (im.flags & 4) {
-        r.u32();
-        r.u32();
+        im.extra[0] = r.u32();
+        im.extra[1] = r.u32();
     }
     if (im.flags & 0x10) {
         im.hasData = true;
@@ -560,7 +561,8 @@ bool parse(const uint8_t* data, size_t size, Character& out, std::string* err) {
     out.headerFlags = r.u8();
     if (!r.ok || !mag || std::memcmp(mag, "VRSN", 4) != 0) return fail("not a .foit (missing VRSN)");
     if (out.version != 9) return fail("unsupported .foit version " + std::to_string(out.version));
-    if (off >= size) return fail("body offset outside the file");
+    if (off >= size || off < 13) return fail("body offset outside the file");
+    out.preamble.assign(data + 13, data + off);
     r.o = off;
     const uint8_t len = r.u8();
     Object body;
@@ -578,6 +580,7 @@ bool parse(const uint8_t* data, size_t size, Character& out, std::string* err) {
     out.layerPos = r.o;
     if (hasLayer && !readLayerObject(r, out.layer)) return fail("bad layer object (palettes) at " + std::to_string(out.layerPos));
     out.tailPos = r.o;
+    if (hasLayer) out.layerRaw.assign(data + out.layerPos, data + out.tailPos);
     std::vector<Frame> frames;
     if (!parseBody(r, body, frames, out.frameListPos, &childErr))
         return fail("character body does not match the grammar" + (childErr.empty() ? "" : ": " + childErr));
