@@ -2,5 +2,5 @@
 #pragma once
 
 namespace zengine {
-inline constexpr const char* kAppVersion = "0.0.0.0-Dev";   // 1.0.0.0 will be the main release; until then no dates in the name
+inline constexpr const char* kAppVersion = "0.0.0.1-Dev";   // 1.0.0.0 will be the main release; until then 0.0.0.N-Dev, no dates in the name
 }

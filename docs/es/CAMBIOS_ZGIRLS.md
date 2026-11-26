@@ -308,6 +308,18 @@ skull02_1/2 (New Meridian) · skull03_1/2 (Medici) · skull_maple_1/2 · skull01
   Los `.pal` generados salen de datos del juego: **no van en el repositorio ni en zips públicos**, solo el generador. Documentado en `docs/MODS.md`.
 - Android: `versionCode 12`, `versionName 0.8-zgirls-Dev_Nov-11`.
 
+## Build 0.0.0.1-Dev - resource packs que se mezclan, AOTC 0.18.0 y conversión de personajes MUGEN
+
+- **Resource packs mezclables** (`src/core/pack_merge.*`, `pack.ini`): `*_loc.json` se mezcla clave por clave por defecto (un pack que traduce tres líneas ya no borra el resto del idioma),
+  y la sección `[merge]` elige por tipo de archivo `replace | keys | records <Clave> | append`; `requires` / `conflicts` entre packs. El texto mezclado se escribe en `mods/.cache`, nunca en la carpeta del juego.
+- **Evitar mezclas por nombre:** `match = path` hace que un archivo solo reemplace el archivo del juego cuya ruta refleja su carpeta (dos `dx1.dds` de escenas distintas ya no se confunden); `ignore = ...` deja fuera archivos del pack.
+- **Ahead of the Curve 0.18.0** (restauración con `.foit`, `.art`, `.art-pt`): su `AOTC.lua` corre sin tocarlo (171 reglas, 15 archivos de personaje); `file:lines()` añadido al sandbox de `changes.lua`.
+- **Carpeta `examples/`** con un pack de ejemplo, uno de restauración y un mod de personaje (recolores / personajes), probados por `zdroid_pack_tests`.
+- **Conversión de personajes MUGEN** (`zdroid_mugen`, docs en `docs/MODS.md`): sprites SFF v1 + paletas `.act` a `.art` + texturas de paleta, sin pérdida (0 píxeles distintos al volver a decodificar con el motor), y un `.foit` con los frames, cajas y una animación por acción
+  del `.air`. `foit::write` es la inversa exacta del lector: los 20 `.foit` del juego se reescriben idénticos byte por byte. **Solo animación:** el personaje convertido todavía no juega (sin comandos ni scripts de movimiento).
+- **Sigue pendiente (dicho claro):** combate sin errores, 3D con fallos, voces, rediseño del menú de mods / packs (#33), y que los personajes convertidos puedan moverse y elegirse.
+- Android: `versionCode 23`, `versionName 0.0.0.1-Dev`.
+
 ## Build 0.0.0.0-Dev - retratos del HUD con sus colores (y la numeración vuelve a empezar)
 
 - **Numeración nueva:** la **1.0.0.0 será el lanzamiento principal**; hasta entonces las builds son `0.0.0.0-Dev` (sin fecha en el nombre). Las secciones de abajo (0.9.x) son la numeración anterior y se dejan como historia.

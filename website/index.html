@@ -928,7 +928,7 @@
 
   <!-- Strip de telemetría superior -->
   <div class="top-strip">
-    <span><span class="live-dot"></span><strong>Build 0.0.0.0-Dev</strong> • Host Lua 5.1 + SparkFx + Core Vault Cifrado</span>
+    <span><span class="live-dot"></span><strong>Build 0.0.0.1-Dev</strong> • Host Lua 5.1 + SparkFx + Core Vault Cifrado</span>
     <span id="liveRepoTelemetry">Repo: bodriodroid/ZGIRLSLOADER (5d803be) • Licencia MIT</span>
     <a href="#sample-stage">Sample Stage: Anna_Killer_ZGirlsLoaderPort →</a>
   </div>
@@ -972,7 +972,7 @@
       <div class="container hero-grid">
         <div>
           <div class="badge-row">
-            <span class="badge badge-dev"><span class="dot"></span> 0.0.0.0-Dev → Meta 1.0.0.0</span>
+            <span class="badge badge-dev"><span class="dot"></span> 0.0.0.1-Dev → Meta 1.0.0.0</span>
             <span class="badge badge-mit">MIT Open Source</span>
             <span class="badge badge-arch">C++17 • SDL2 2.30.9 • Android ARM64</span>
           </div>
@@ -1343,7 +1343,7 @@
                 </div>
                 <div class="meta-box">
                   <span>CARGADOR COMPATIBLE</span>
-                  <strong>ZGirlsLoader 0.0.0.0-Dev</strong>
+                  <strong>ZGirlsLoader 0.0.0.1-Dev</strong>
                 </div>
                 <div class="meta-box">
                   <span>PROPÓSITO</span>
@@ -1393,7 +1393,7 @@ git clone https://github.com/bodriodroid/Anna_Killer_ZGirlsLoaderPort.git
                 <button class="filter-pill" data-compat="wip">En progreso</button>
                 <button class="filter-pill" data-compat="plan">Rumbo 1.0</button>
               </div>
-              <span style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-dim);">Build actual: 0.0.0.0-Dev</span>
+              <span style="font-family:var(--font-mono); font-size:0.72rem; color:var(--text-dim);">Build actual: 0.0.0.1-Dev</span>
             </div>
 
             <table class="compat-table">
@@ -1840,11 +1840,11 @@ cmake --build build
 
           <div class="faq-item">
             <button class="faq-q">
-              <span>¿Por qué la versión sigue marcando <code>0.0.0.0-Dev</code>?</span>
+              <span>¿Por qué la versión es <code>0.0.0.N-Dev</code>?</span>
               <span class="faq-icon">+</span>
             </button>
             <div class="faq-a">
-              Todas las compilaciones en desarrollo conservan la etiqueta <code>0.0.0.0-Dev</code> hasta alcanzar la versión estable <code>1.0.0.0</code> (descomprimidor nativo <code>.gfs</code>, gestor visual de mods, Tutoriales/Trials completos con Lua 5.1 y modos Story/Survival). En Android, el <code>versionCode</code> aumenta en cada build para poder actualizar encima sin perder tus datos.
+              Las compilaciones en desarrollo se numeran <code>0.0.0.N-Dev</code> (la actual es <code>0.0.0.1-Dev</code>) hasta alcanzar la versión estable <code>1.0.0.0</code> (descomprimidor nativo <code>.gfs</code>, gestor visual de mods, Tutoriales/Trials completos con Lua 5.1 y modos Story/Survival). En Android, el <code>versionCode</code> aumenta en cada build para poder actualizar encima sin perder tus datos.
             </div>
           </div>
         </div>
@@ -1966,7 +1966,7 @@ cmake --build build
           ['SDL2 2.30.9 Bind', 'Enlace fuente directo via ZDROID_SDL2_SOURCE_DIR.'],
           ['Android NDK 26.1', 'Toolchain ARM64-v8a con SDK 34.'],
           ['Gradle APK Pipeline', 'Generación de app-debug.apk instalable.'],
-          ['versionCode Auto', 'Incremento continuo sobre 0.0.0.0-Dev.'],
+          ['versionCode Auto', 'Incremento continuo sobre 0.0.0.N-Dev.'],
           ['Feature Toggles', 'Flags como -DZDROID_FIGHT_MODE=ON/OFF.'],
           ['Lua 5.1 Vendoring', 'Compilación estática de third_party/lua51.'],
           ['CI Workflow Recipe', 'Compilación y ctest automatizados en GitHub.']
@@ -3140,7 +3140,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk`
       { title: 'Instalación Android / Linux / Windows (BYOC)', sub: 'Core Vault cifrado, CMake + Ninja, SDL2 2.30.9', type: 'Guía', action: () => location.hash = '#quickstart' },
       { title: 'Colour Editor interactivo por partes (.zgcol)', sub: 'Least-Squares Ramp Fit + favcolours/', type: 'Modding', action: () => location.hash = '#modding' },
       { title: 'Generador de Flags CLI & zgirls.savini', sub: 'zdroid_probe, zdroid_foit, zdroid_duel, zdroid_pafx', type: 'SDK / CLI', action: () => location.hash = '#herramientas' },
-      { title: 'Preguntas Frecuentes & Aviso Legal MIT', sub: 'BYOC, 0.0.0.0-Dev, permisos Android', type: 'FAQ', action: () => location.hash = '#faq' }
+      { title: 'Preguntas Frecuentes & Aviso Legal MIT', sub: 'BYOC, 0.0.0.1-Dev, permisos Android', type: 'FAQ', action: () => location.hash = '#faq' }
     ];
 
     function renderCmdResults(q = '') {
