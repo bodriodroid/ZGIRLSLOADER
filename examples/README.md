@@ -9,6 +9,7 @@ layout.  The entries named `EXAMPLE_*` are placeholders: do not leave them in a 
 | `resourcepacks/Example-Pack/` | a pack that is **mixed** into the game instead of replacing files: `match = path`, `[merge]`, `ignore`, `requires` |
 | `resourcepacks/Example-Restoration/` | the layout of a restoration pack (what Ahead of the Curve does): `changes.lua` + `filelist.txt` + files kept as `<archive>.gfs/<path in the game>` |
 | `modscustom/Example-Character/` | how a character is stored and altered: recolours (`.pal`, palette texture), `.foit` / `.art` / `.art-pt` |
+| `mugen/moves.example.ini` | the `--moves` file of `zdroid_mugen`: which MUGEN action plays where, speeds, attacks |
 
 ## Where things go (one line each)
 
@@ -28,5 +29,6 @@ that stands for two game files is skipped with a warning.  A `changes.lua` is ex
 ## Moving a MUGEN character over
 
 A MUGEN character is a `.def` + `.sff` (sprites) + `.air` (animations) + `.cmd` / `.cns` (moves).  The game's own character is a `.foit`
-(animations, frames, hitboxes, the script) + `.art` (the sprite banks) + palette textures.  Converting one into the other is a separate tool
-(not part of the loader yet): the loader only needs the finished `.foit` / `.art` in a mod folder like `modscustom/Example-Character/`.
+(animations, frames, hitboxes, the script) + `.art` (the sprite banks) + palette textures.  `zdroid_mugen` converts one into the other
+(sprites, palettes, animations and, with a small `--moves` file, a playable template: `examples/mugen/moves.example.ini`; see `docs/MODS.md`).
+The loader only needs the finished `.foit` / `.art` in a mod folder like `modscustom/Example-Character/`.

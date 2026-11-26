@@ -1,8 +1,9 @@
 // zdroid_mugen - turns the sprites of a MUGEN character into the sprite data of a ZGirls Loader character and checks the result.
 //
-//   zdroid_mugen <character folder with the .def> <out folder> [--scale N] [--preview]
+//   zdroid_mugen <character folder with the .def> <out folder> [--scale N] [--preview] [--moves <file>]
 //
 //   --scale N    enlarge every sprite N times (whole numbers, nearest neighbour; MUGEN pixel art is tiny next to the game's characters)
+//   --moves F    gameplay template (walk, crouch, jump, attacks, being hit) from the text file F, see mugen_moves.h
 //   --preview    also write preview/<state>/<k>.png (what the engine draws for every node of every state) + preview/index.json
 //
 // Writes   <out>/<name>.art              the sprite planes (art_write.h), every image of the .sff
@@ -20,6 +21,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <sstream>
 #include <string>
@@ -30,6 +32,7 @@
 #include "foit_write.h"
 #include "mugen.h"
 #include "mugen_foit.h"
+#include "mugen_moves.h"
 
 namespace fs = std::filesystem;
 using namespace zengine;
@@ -84,9 +87,11 @@ int main(int argc, char** argv) {
     const fs::path in = argv[1], out = argv[2];
     int scale = 1;
     bool preview = false;
+    std::string movesFile;
     for (int i = 3; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--scale") && i + 1 < argc) scale = std::max(1, std::min(32, std::atoi(argv[++i])));
         else if (!std::strcmp(argv[i], "--preview")) preview = true;
+        else if (!std::strcmp(argv[i], "--moves") && i + 1 < argc) movesFile = argv[++i];
         else {
             std::fprintf(stderr, "unknown option %s\n", argv[i]);
             return 2;
@@ -261,6 +266,24 @@ int main(int argc, char** argv) {
     if (!mugen::buildFoit(base, sprites, images, art, acts, fb, &err)) {
         std::fprintf(stderr, "foit: %s\n", err.c_str());
         return 1;
+    }
+    if (!movesFile.empty()) {
+        std::ifstream mf(movesFile, std::ios::binary);
+        if (!mf) {
+            std::fprintf(stderr, "cannot read %s\n", movesFile.c_str());
+            return 1;
+        }
+        const std::string text((std::istreambuf_iterator<char>(mf)), std::istreambuf_iterator<char>());
+        mugen::MoveSet ms;
+        std::vector<std::string> warn, notes;
+        mugen::parseMoves(text, ms, &warn);
+        for (const std::string& w : warn) std::printf("  moves: %s\n", w.c_str());
+        if (!mugen::addMoves(fb.ch, ms, &notes, &err)) {
+            std::fprintf(stderr, "moves: %s\n", err.c_str());
+            return 1;
+        }
+        for (const std::string& n : notes) std::printf("  moves: %s\n", n.c_str());
+        fb.states = fb.ch.body.states.size();
     }
     std::vector<uint8_t> foitBytes;
     if (!foit::write(fb.ch, foitBytes, &err)) {

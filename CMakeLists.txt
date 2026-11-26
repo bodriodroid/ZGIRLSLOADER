@@ -51,6 +51,7 @@ add_library(zengine_core STATIC
   src/core/art_write.cpp
   src/core/foit_write.cpp
   src/core/mugen_foit.cpp
+  src/core/mugen_moves.cpp
   src/core/mugen.cpp
   src/core/chord_assist.cpp
   src/core/palfx.cpp
@@ -204,6 +205,9 @@ if(ZDROID_BUILD_TESTS AND NOT ANDROID)
   add_executable(zdroid_mugen_tests tests/test_mugen.cpp)
   target_link_libraries(zdroid_mugen_tests PRIVATE zengine_core)
   add_test(NAME zdroid_mugen_tests COMMAND zdroid_mugen_tests)
+  add_executable(zdroid_mugen_moves_tests tests/test_mugen_moves.cpp)
+  target_link_libraries(zdroid_mugen_moves_tests PRIVATE zengine_core)
+  add_test(NAME zdroid_mugen_moves_tests COMMAND zdroid_mugen_moves_tests)
   add_executable(zdroid_foit_write_tests tests/test_foit_write.cpp)
   target_link_libraries(zdroid_foit_write_tests PRIVATE zengine_core)
   add_test(NAME zdroid_foit_write_tests COMMAND zdroid_foit_write_tests)

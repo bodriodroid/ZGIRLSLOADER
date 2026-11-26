@@ -59,7 +59,7 @@ The output is derived from your game's palette textures: keep it for yourself, d
 
 ### Converting a MUGEN character: `zdroid_mugen`
 
-`zdroid_mugen <character folder> <out folder> [--scale N] [--preview]` reads a MUGEN 1.x character (`.def`, `.sff` v1, the `.act` palettes,
+`zdroid_mugen <character folder> <out folder> [--scale N] [--preview] [--moves <file>]` reads a MUGEN 1.x character (`.def`, `.sff` v1, the `.act` palettes,
 `.air`) and writes `<name>.art`, `<name>.foit`, one palette texture `<name>_<N>p.dds` per `.act`, PNG previews and a `manifest.json`.
 
 * **Sprites** are converted losslessly: a sprite's MUGEN palette index becomes the *band* (the row of the palette texture) and the grad plane
@@ -68,8 +68,34 @@ The output is derived from your game's palette textures: keep it for yourself, d
 * **The `.foit`** (`src/core/mugen_foit.*`, written by `src/core/foit_write.*`) has one frame per distinct `.air` frame (the sprite in image slot 0
   at the `.air` offset minus the sprite's axis; a mirrored copy of the sprite for `H` / `V` flips; clsn2 -> hurt boxes, clsn1 -> hit boxes) and
   one animation state per action: `Stand` is action 0, the others `Action_<id>`, and an action that loops from a later frame gets an extra
-  `<name>_Loop` state.  `-1` (hold forever) becomes 65535 ticks.  There are no commands, no transitions and no move scripts yet: MUGEN's
-  CNS / CMD is a different language from the game's slot scripts, so the character animates but does not play.
+  `<name>_Loop` state.  `-1` (hold forever) becomes 65535 ticks.  Without `--moves` there are no commands, no transitions and no move scripts:
+  MUGEN's CNS / CMD is a different language from the game's slot scripts, so that character animates but does not play.
+* **`--moves <file>`: a playable template** (`src/core/mugen_moves.*`).  The CNS / CMD logic is *not* translated; instead the character's own
+  animations are put into a fixed set of gameplay states whose scripts, transitions and hit data use the slots and ops of the engine's own
+  runtime: `Stand`, `WalkFwd`, `WalkBack`, `Crouch`, `JumpStart_N/F/B` -> `Jump_N/F/B` -> `JumpAir_N/F/B` -> `JumpLand`, `s.Hit` / `c.Hit` /
+  `j.Hit` (+ `s/c/j.HitStun` loops) and one state per attack.  Which action plays where, and the numbers, come from a small text file
+  (see `examples/mugen/moves.example.ini`; every key is optional and a move whose action is missing is skipped and reported):
+
+  ```ini
+  [Moves]                         ; action numbers of the .air
+  stand = 0   walkfwd = 20   walkback = 21   crouch = 11
+  jumpstart = 40   jump = 41, 42, 43   land = 47      ; jump: neutral, forward, back
+  hit = 5000   crouchhit = 5010   airhit = 5020
+  walkspeed = 6   walkbackspeed = 4.5   jumpspeed = 32   jumpforward = 8   jumpback = 7   life = 14300
+  push = 38, 40                   ; how far the body pushes the opponent (back, front); default = the stand hurt box, usually wider (arms)
+
+  [Attack s.Jab]                  ; one section per attack; the posture decides where it can start
+  posture = stand                 ; stand | crouch | air
+  button = LP MP HP               ; any of LP MP HP LK MK HK
+  anim = 200, 201                 ; actions played in a row; their clsn1 boxes are the hit boxes
+  damage = 350  hitstop = 7  hitstun = 18  level = 3  pushback = 8
+  ```
+
+  From a standing state, a button without *down* starts a `stand` attack and *down* + button a `crouch` one; an `air` attack starts in the
+  air and, if its animation ends first, the character keeps falling.  A character made this way walks, crouches, jumps, attacks and takes
+  hits (checked with `zdroid_sim` against a shipped character: damage taken, the reaction states, back to `Stand`); it has **no blocking,
+  knock-down, specials, supers or KO** yet.  Size matters: a hit box only connects with a hurt box at its height, so a character scaled much
+  smaller than its opponent can be passed over by high attacks.
 * **Checks**: every sprite is decoded through the engine's own decoder under every palette and compared with the `.sff` (0 differing pixels
   required), then the `.foit` is parsed back and every `.air` frame is checked in it (picture, position, duration, box counts).  `--preview`
   writes what the engine draws for every node of every state into `preview/`.
