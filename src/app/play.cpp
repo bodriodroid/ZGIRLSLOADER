@@ -264,6 +264,13 @@ bool Skin::loadData(const GameData& gd, const CharacterAssets& c, int palIdx, st
     tables_ = buildRgbaTables(pal);
     lit_ = buildLitTable(pal);
     pal_ = pal;
+    needsArtPt_ = false;
+    for (const foit::Frame& f : ch->frames) {
+        if (f.src != 4) continue;
+        for (int sl = 0; sl < foit::kSlots && !needsArtPt_; ++sl)
+            if (!f.img[sl].placeholder()) needsArtPt_ = true;
+        if (needsArtPt_) break;
+    }
     if (!ms_.build(ch, &e)) return fail(e);
     ok = true;
     return true;
@@ -1351,7 +1358,7 @@ void PlayScreen::finishLoad() {
         duel_.ms[1] = &skin_[1].moves();
         duel_.stageHalf = lv ? std::max(600, lv->width / 2 - 150) : 1700;
         for (int i = 0; i < 2; ++i)
-            if (!skin_[i].hasArtPt())
+            if (skin_[i].lacksNeededArtPt())
                 std::printf("[play] %s: no .art-pt - frames that live in it will be drawn as a dummy\n", playerName(i).c_str());
     }
     // debugging aids for headless runs (smoke screenshots): both sides on the AI, boxes visible
@@ -1813,7 +1820,7 @@ bool PlayScreen::buildFoit(const LevelInfo* lv) {
     foit_ = std::move(fd);
     heldFrame_[0] = heldFrame_[1] = -1;
     for (int i = 0; i < 2; ++i) {   // a roster entry without its .art-pt cannot draw about half of its frames: say so instead of failing silently
-        if (skin_[i].hasArt() && !skin_[i].hasArtPt()) {
+        if (skin_[i].hasArt() && skin_[i].lacksNeededArtPt()) {
             std::printf("[play] %s has no .art-pt: the frames that live in it (about half of the animations) cannot be drawn\n", skin_[i].name.c_str());
             if (!artPtWarned_) {
                 artPtWarned_ = true;

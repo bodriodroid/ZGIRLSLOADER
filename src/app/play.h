@@ -171,6 +171,9 @@ public:
     const Palette& palette() const { return pal_; }
     bool hasArt() const { return !art_.empty(); }
     bool hasArtPt() const { return !artPt_.empty(); }
+    // true when some frame of the .foit lives in the .art-pt and the file is not there (a character whose pixels are all in its .art, such as
+    // one made by zdroid_mugen, does not need one and must not be warned about)
+    bool lacksNeededArtPt() const { return needsArtPt_ && artPt_.empty(); }
 
 private:
     struct Tex {
@@ -200,6 +203,7 @@ private:
 
     fight::MoveSet ms_;
     std::vector<uint8_t> art_, artPt_, tables_;
+    bool needsArtPt_ = false;    // some frame of the .foit draws from the .art-pt
     Palette pal_;
     FighterLight light_;         // the stage's lights (setLight)
     bool lightOn_ = false;       // light_ changes the colours and the route allows it
