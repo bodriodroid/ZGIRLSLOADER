@@ -52,6 +52,7 @@
 #include "credits.h"
 #include "gallery.h"
 #include "fighter_pick.h"
+#include "pad_editor.h"
 #include "lesson_data.h"
 #include "lessons_screen.h"
 #include "story_mode.h"
@@ -87,7 +88,7 @@ std::string lower(std::string s) {
 
 
 // ---------------------------------------------------------------------------------------- application state
-enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits, Lessons, Fighters };   // Story after Menu: the top bar maps tabs 0..3
+enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits, Lessons, Fighters, PadEditor };   // Story after Menu: the top bar maps tabs 0..3
 
 struct Options {
     std::vector<std::string> dirs;
@@ -302,6 +303,7 @@ struct App {
     menu::MenuScreen menu;
     gallery::GalleryScreen gallery;   // Extras -> Art Gallery
     fighters::FighterPick fighters;   // Extras -> Custom Fight: any fighter of the data, mods' included
+    padedit::PadEditor padEditor;     // Extras -> Touch Controls: the on-screen pad's layout
     credits::CreditsScreen credits;   // Extras -> Credits / Contributors
     lessons::LessonsScreen lessons;   // Training -> Tutorials / Trials / Challenges
     story::StoryScreen story;   // Story Mode (Visual Novel): cutscenes + fights, front door is the menu
@@ -1350,6 +1352,10 @@ int main(int argc, char** argv) {
     if (opt.screen == "warning") { app.menu.acceptNotice(); app.menu.showWarning(); }   // the photosensitivity warning (smoke / screenshots)
     if (opt.screen == "title") app.menu.showTitle();   // the title screen (smoke / screenshots)
     if (opt.screen == "splash") app.menu.showSplash();   // the game's own loading screen (smoke / screenshots)
+    if (opt.screen == "padedit") {   // Extras -> Touch Controls (smoke / screenshots)
+        app.padEditor.begin(opt.lang.empty() ? std::string("en") : opt.lang);
+        app.screen = Screen::PadEditor;
+    }
     if (opt.screen == "fighters") {   // Extras -> Custom Fight (smoke / screenshots)
         app.fighters.begin(opt.lang.empty() ? std::string("en") : opt.lang);
         app.screen = Screen::Fighters;
@@ -1677,6 +1683,9 @@ int main(int argc, char** argv) {
                 }
                 break;
             }
+            case Screen::PadEditor:
+                if (app.padEditor.frame(ui, ren, dtMs).done) app.screen = Screen::Menu;
+                break;
             case Screen::Credits:
                 if (!app.credits.frame(ui, ren, dtMs)) app.screen = Screen::Menu;
                 break;
@@ -1704,6 +1713,9 @@ int main(int argc, char** argv) {
                                                                               : lessons::LessonsScreen::Kind::Challenges,
                                       app.menu.language());
                     app.screen = Screen::Lessons;
+                } else if (mr.kind == menu::Result::Kind::PadEditor) {
+                    app.padEditor.begin(app.menu.language());
+                    app.screen = Screen::PadEditor;
                 } else if (mr.kind == menu::Result::Kind::Fighters) {
                     app.fighters.begin(app.menu.language());
                     app.screen = Screen::Fighters;
@@ -1725,7 +1737,7 @@ int main(int argc, char** argv) {
         }
         // last, so it sits above scrolled content; the menu and a running match are full-screen (the HUD needs the top)
         const bool inMatch = app.screen == Screen::Play && app.play.phase() != play::Phase::Select;
-        if (app.screen != Screen::Menu && app.screen != Screen::Story && app.screen != Screen::Gallery && app.screen != Screen::Credits && app.screen != Screen::Lessons && app.screen != Screen::Fighters && !inMatch) drawTopBar(ui, app);
+        if (app.screen != Screen::Menu && app.screen != Screen::Story && app.screen != Screen::Gallery && app.screen != Screen::Credits && app.screen != Screen::Lessons && app.screen != Screen::Fighters && app.screen != Screen::PadEditor && !inMatch) drawTopBar(ui, app);
         ui.endFrame();
         if (barFill) bars.end(ren);
 

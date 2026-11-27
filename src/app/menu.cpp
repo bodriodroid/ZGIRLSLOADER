@@ -195,6 +195,8 @@ std::string MenuScreen::own(const std::string& key) const {
         {"boot.s4", "Preparing the interface and audio", "Preparando la interfaz y el audio"},
         {"boot.done", "Ready", "Listo"},
         {"mods", "Mods", "Mods"},
+        {"padedit", "Touch Controls", "Controles táctiles"},
+        {"padedit.desc", "Move, resize, add and remove the on-screen buttons, move the stick, or swap hands.", "Mueve, cambia de tamaño, añade y quita los botones en pantalla, mueve el stick o cambia de mano."},
         {"fighters", "Custom Fight", "Combate libre"},
         {"fighters.desc", "Pick any fighter, including the ones a mod adds, and a colour, a mode and a stage.", "Elige cualquier personaje, también los que añade un mod, con su color, un modo y un escenario."},
         {"mods.desc", "Resource packs, game mods, custom stages and colours from the mods folder.", "Paquetes de recursos, mods de juego, escenarios y colores personalizados de la carpeta mods."},
@@ -294,6 +296,12 @@ MenuScreen::Page MenuScreen::makePage(const std::string& file) {
         fo.description = "@own:fighters.desc";
         fo.keyword = "ACT_ZD_FIGHTERS";
         p.def.options.push_back(fo);
+        MenuOption po;   // ZDroid's own entry: the touch pad's layout editor
+        po.type = MenuOptType::Advance;
+        po.text = "@own:padedit";
+        po.description = "@own:padedit.desc";
+        po.keyword = "ACT_ZD_PADEDIT";
+        p.def.options.push_back(po);
     }
     for (size_t i = 0; i < p.def.options.size(); ++i)
         if (p.def.options[i].visibleOn(platform_)) p.vis.push_back(static_cast<int>(i));
@@ -721,6 +729,7 @@ bool MenuScreen::isFightAction(const std::string& k) {
 bool MenuScreen::actionImplemented(const std::string& k) const {
     if (k == "ACT_EXTRAS_GALLERY") return true;   // Extras -> Art Gallery (gallery.cpp)
     if (k == "ACT_ZD_FIGHTERS") return true;      // Extras -> Custom Fight (fighter_pick.cpp)
+    if (k == "ACT_ZD_PADEDIT") return true;       // Extras -> Touch Controls (pad_editor.cpp)
     if (k == "ACT_CREDITSNORMAL" || k == "ACT_CREDITSCONT") return true;   // Extras -> Credits / Contributors (credits.cpp)
     if (k == "ACT_TUTORIAL" || k == "ACT_TRIALS" || k == "ACT_CHALLENGES") return true;   // Training -> lists (lessons_screen.cpp)
     if (k == "ACT_STORY") return true;   // the Character Select (no stage, no 2nd fighter) or the story screen's own list
@@ -996,6 +1005,8 @@ Result MenuScreen::runAction(const MenuOption& o) {
         res.kind = Result::Kind::Gallery;
     } else if (k == "ACT_ZD_FIGHTERS") {
         res.kind = Result::Kind::Fighters;
+    } else if (k == "ACT_ZD_PADEDIT") {
+        res.kind = Result::Kind::PadEditor;
     } else if (k == "ACT_CREDITSNORMAL" || k == "ACT_CREDITSCONT") {
         res.kind = Result::Kind::Credits;
         res.contributors = k == "ACT_CREDITSCONT";

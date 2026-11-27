@@ -11,7 +11,8 @@
 //   * macro buttons: 3P (LP+MP+HP) and 3K (LK+MK+HK) - the runtime already expands kMacro1 / kMacro2 - and P+K.
 //   * Start.
 // Coordinates are the game's logical 640x360 space.  The layout can be scaled per user (big hands, tablets) and saved
-// as a small text file (serialize / parse).
+// as a small text file (serialize / parse).  The editing helpers (move / resize / add / remove a button, move the stick,
+// mirror for left-handed play) are here too, so the layout editor screen only draws and the rules can be tested.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -41,8 +42,9 @@ struct Layout {
     int deadZone = 14;              // px of travel that still reads as neutral
     int diagonalDeg = 60;           // angular width of each diagonal sector (cardinals get 90 - diagonal); 45 = even
     bool floating = true;           // the base appears where the thumb lands (inside the stick zone)
-    int zoneRight = 280;            // fingers that land left of this x (and below zoneTop) take the stick
+    int zoneRight = 280;            // fingers that land between zoneLeft and zoneRight (and below zoneTop) take the stick
     int zoneTop = 120;
+    int zoneLeft = 0;               // 0 for the usual left-hand stick; a mirrored (left-handed) layout has it on the right
     // buttons
     std::vector<PadButton> buttons;
     int grow = 6;                   // extra px of hit area around each button
@@ -58,6 +60,23 @@ struct Layout {
     static bool parse(const std::string& text, Layout& out);  // false on garbage; `out` keeps defaults for missing keys
     PadButton scaled(const PadButton& b) const;
     int scaledRadius() const { return static_cast<int>(static_cast<float>(stickRadius) * scale + 0.5f); }
+
+    // ---- editing (all in the logical 640 x 360 space of the base layout; w / h are the size of the screen the elements must stay in)
+    struct Preset {
+        const char* label;
+        uint16_t bits;
+    };
+    static constexpr size_t kMaxButtons = 16;
+    static const std::vector<Preset>& presets();            // the buttons the editor offers to add (LP .. HK, 3P, 3K, P+K, two-button chords, Start)
+    int addButton(const Preset& p, int w = 640, int h = 360);   // a free spot is searched; the new index, -1 = full (kMaxButtons)
+    bool removeButton(size_t i);                            // false for the last one (a pad without buttons is not a pad)
+    void moveButton(size_t i, int x, int y, int w = 640, int h = 360);   // top-left; kept inside the screen
+    void resizeButton(size_t i, int newW, int w = 640, int h = 360);    // keeps the proportions and the centre
+    void moveStick(int x, int y, int w = 640, int h = 360);   // the resting centre; the stick zone follows (fitZone)
+    void setStickRadius(int r, int w = 640, int h = 360);
+    void fitZone(int w = 640);        // the stick zone from the stick side of the screen up to the nearest button cluster
+    Layout mirrored(int w = 640) const;   // the same pad for the other hand: every x is reflected
+    bool leftHanded(int w = 640) const { return stickX >= w / 2; }
 };
 
 class TouchPad {

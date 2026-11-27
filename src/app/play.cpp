@@ -10,6 +10,8 @@
 #include "fx_store.h"
 #include "dds.h"
 #include "imgscale.h"
+#include "pad_draw.h"
+#include "pad_editor.h"
 #include "level.h"
 #include "savini.h"
 
@@ -1380,17 +1382,9 @@ void PlayScreen::finishLoad() {
             p = semi + 1;
         }
     }
-    {   // user layout: <pref dir>/touch_layout.txt (written by hand or by a future layout editor)
+    {   // user layout: <pref dir>/touch_layout.txt (Extras -> Touch controls writes it; it can also be written by hand)
         touch::Layout lay = touch::Layout::defaults();
-        {
-            std::ifstream f(apppaths::prefFile("touch_layout.txt"));
-            if (f) {
-                std::stringstream ss;
-                ss << f.rdbuf();
-                touch::Layout user;
-                if (touch::Layout::parse(ss.str(), user)) lay = user;
-            }
-        }
+        padedit::loadSaved(lay);   // the layout the "Touch controls" editor saved (or a hand-written one)
         baseLayout_ = lay;
         touchPad_.setLayout(touch::Layout::widened(baseLayout_, viewW_ - 640));
     }
@@ -2842,42 +2836,7 @@ void PlayScreen::drawHudFlat(Ui& ui) {
     }
 }
 
-void PlayScreen::drawPad(Ui& ui, SDL_Renderer*) {
-    const touch::Layout& L = touchPad_.layout();
-    const uint8_t a = static_cast<uint8_t>(std::clamp(L.opacity, 0, 255));
-    auto alpha = [&](int v) { return static_cast<uint8_t>(std::clamp(v * a / 255, 0, 255)); };
-
-    // ---- stick: base ring, the 8 direction ticks (the active one lit), knob
-    const int bx = touchPad_.baseX(), by = touchPad_.baseY(), rad = L.scaledRadius();
-    ui.disc(bx, by, rad + 8, rad + 8, Col{20, 20, 30, alpha(150)});
-    ui.disc(bx, by, rad, rad, Col{46, 46, 66, alpha(150)});
-    static const int dirs[8][3] = {{6, 1, 0}, {9, 1, -1}, {8, 0, -1}, {7, -1, -1}, {4, -1, 0}, {1, -1, 1}, {2, 0, 1}, {3, 1, 1}};
-    for (const auto& d : dirs) {
-        const double len = (d[1] != 0 && d[2] != 0) ? 0.7071 : 1.0;
-        const int tx = bx + static_cast<int>(d[1] * len * (rad + 2)), ty = by + static_cast<int>(d[2] * len * (rad + 2));
-        const bool lit = touchPad_.direction() == d[0];
-        ui.disc(tx, ty, lit ? 6 : 3, lit ? 6 : 3, lit ? kAccent : Col{150, 150, 175, alpha(200)});
-    }
-    const bool active = touchPad_.stickActive();
-    const int kr = std::max(12, rad * 9 / 20);
-    ui.disc(touchPad_.knobX(), touchPad_.knobY(), kr, kr, active ? kAccent : Col{120, 120, 150, alpha(210)});
-    ui.disc(touchPad_.knobX(), touchPad_.knobY(), kr - 4, kr - 4, active ? Col{255, 255, 255, 230} : Col{170, 170, 195, alpha(210)});
-
-    // ---- buttons: punches cool, kicks warm, macros / P+K violet, Start grey
-    for (size_t i = 0; i < L.buttons.size(); ++i) {
-        const touch::PadButton b = L.scaled(L.buttons[i]);
-        const Rect r{b.x, b.y, b.w, b.h};
-        const bool held = touchPad_.pressed(i);
-        Col base{60, 60, 80, alpha(150)};
-        if (b.bits & (fight::kLP | fight::kMP | fight::kHP)) base = Col{48, 70, 120, alpha(150)};
-        if (b.bits & (fight::kLK | fight::kMK | fight::kHK)) base = Col{120, 60, 48, alpha(150)};
-        if ((b.bits & (fight::kMacro1 | fight::kMacro2)) || ((b.bits & fight::kLP) && (b.bits & fight::kLK)))
-            base = Col{90, 56, 120, alpha(150)};
-        ui.fill(r, held ? kAccent : base);
-        ui.outline(r, held ? kText : Col{200, 200, 220, alpha(160)});
-        ui.textIn(r, b.label, held ? Col{255, 255, 255, 255} : Col{230, 230, 240, alpha(235)}, true);
-    }
-}
+void PlayScreen::drawPad(Ui& ui, SDL_Renderer*) { padview::draw(ui, touchPad_.layout(), touchPad_); }
 
 }  // namespace play
 }  // namespace zengine

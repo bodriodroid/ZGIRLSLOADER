@@ -39,6 +39,117 @@ Layout Layout::widened(const Layout& base, int extra) {
     if (extra <= 0) return l;
     for (PadButton& b : l.buttons)
         if (b.x + b.w / 2 >= 320) b.x += extra;
+    if (l.stickX >= 320) {   // a left-handed layout: the stick sits on the right and goes with that edge
+        l.stickX += extra;
+        l.zoneLeft += extra;
+        l.zoneRight += extra;
+    }
+    return l;
+}
+
+const std::vector<Layout::Preset>& Layout::presets() {
+    using namespace fight;
+    static const std::vector<Preset> p = {
+        {"LP", kLP}, {"MP", kMP}, {"HP", kHP}, {"LK", kLK}, {"MK", kMK}, {"HK", kHK}, {"3P", kMacro1}, {"3K", kMacro2},
+        {"P+K", static_cast<uint16_t>(kLP | kLK)},
+        {"LP+MP", static_cast<uint16_t>(kLP | kMP)}, {"MP+HP", static_cast<uint16_t>(kMP | kHP)},
+        {"LK+MK", static_cast<uint16_t>(kLK | kMK)}, {"MK+HK", static_cast<uint16_t>(kMK | kHK)},
+        {"HP+HK", static_cast<uint16_t>(kHP | kHK)}, {"ST", kStart},
+    };
+    return p;
+}
+
+namespace {
+bool overlapsAny(const Layout& l, int x, int y, int w, int h, size_t skip) {
+    for (size_t i = 0; i < l.buttons.size(); ++i) {
+        if (i == skip) continue;
+        const PadButton& b = l.buttons[i];
+        if (x < b.x + b.w + 4 && x + w + 4 > b.x && y < b.y + b.h + 4 && y + h + 4 > b.y) return true;
+    }
+    return false;
+}
+}  // namespace
+
+int Layout::addButton(const Preset& p, int w, int h) {
+    if (buttons.size() >= kMaxButtons) return -1;
+    const bool start = p.bits == fight::kStart;
+    PadButton b{0, 0, start ? 42 : 46, start ? 26 : 46, p.bits, p.label};
+    // the first free spot, from the lower right (where the thumb rests) towards the upper left
+    int bx = w / 2, by = h / 2;
+    bool found = false;
+    for (int y = h - b.h - 8; y >= 40 && !found; y -= 10)
+        for (int x = w - b.w - 8; x >= 8 && !found; x -= 10)
+            if (!overlapsAny(*this, x, y, b.w, b.h, buttons.size())) {
+                bx = x;
+                by = y;
+                found = true;
+            }
+    b.x = bx;
+    b.y = by;
+    buttons.push_back(b);
+    return static_cast<int>(buttons.size()) - 1;
+}
+
+bool Layout::removeButton(size_t i) {
+    if (i >= buttons.size() || buttons.size() <= 1) return false;
+    buttons.erase(buttons.begin() + static_cast<std::ptrdiff_t>(i));
+    return true;
+}
+
+void Layout::moveButton(size_t i, int x, int y, int w, int h) {
+    if (i >= buttons.size()) return;
+    PadButton& b = buttons[i];
+    b.x = std::clamp(x, 0, std::max(0, w - b.w));
+    b.y = std::clamp(y, 0, std::max(0, h - b.h));
+}
+
+void Layout::resizeButton(size_t i, int newW, int w, int h) {
+    if (i >= buttons.size()) return;
+    PadButton& b = buttons[i];
+    const int nw = std::clamp(newW, 24, 120);
+    const int nh = std::max(18, static_cast<int>(static_cast<float>(b.h) * static_cast<float>(nw) / static_cast<float>(std::max(1, b.w)) + 0.5f));
+    const int cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+    b.w = nw;
+    b.h = std::min(nh, 120);
+    moveButton(i, cx - b.w / 2, cy - b.h / 2, w, h);
+}
+
+void Layout::setStickRadius(int r, int w, int h) {
+    stickRadius = std::clamp(r, 30, 90);
+    moveStick(stickX, stickY, w, h);
+}
+
+void Layout::moveStick(int x, int y, int w, int h) {
+    const int r = scaledRadius();
+    stickX = std::clamp(x, r, std::max(r, w - r));
+    stickY = std::clamp(y, r, std::max(r, h - r));
+    fitZone(w);
+}
+
+void Layout::fitZone(int w) {
+    const int reach = stickRadius + 136;
+    if (stickX < w / 2) {   // right-handed: the stick zone starts at the left edge
+        int stop = stickX + reach;
+        for (const PadButton& b : buttons)
+            if (b.x + b.w / 2 > stickX) stop = std::min(stop, b.x - 6);
+        zoneLeft = 0;
+        zoneRight = std::max(stickX + stickRadius + 16, stop);
+    } else {
+        int start = stickX - reach;
+        for (const PadButton& b : buttons)
+            if (b.x + b.w / 2 < stickX) start = std::max(start, b.x + b.w + 6);
+        zoneRight = w;
+        zoneLeft = std::min(stickX - stickRadius - 16, start);
+    }
+    zoneLeft = std::max(0, zoneLeft);
+}
+
+Layout Layout::mirrored(int w) const {
+    Layout l = *this;
+    for (PadButton& b : l.buttons) b.x = w - b.x - b.w;
+    l.stickX = w - stickX;
+    l.zoneLeft = std::max(0, w - zoneRight);
+    l.zoneRight = std::max(l.zoneLeft + 40, w - zoneLeft);
     return l;
 }
 
@@ -57,7 +168,7 @@ std::string Layout::serialize() const {
     std::ostringstream o;
     o << "zdroid-touch 1\n";
     o << "stick " << stickX << ' ' << stickY << ' ' << stickRadius << ' ' << deadZone << ' ' << diagonalDeg << ' '
-      << (floating ? 1 : 0) << ' ' << zoneRight << ' ' << zoneTop << '\n';
+      << (floating ? 1 : 0) << ' ' << zoneRight << ' ' << zoneTop << ' ' << zoneLeft << '\n';
     o << "grow " << grow << '\n';
     o << "scale " << scale << '\n';
     o << "opacity " << opacity << '\n';
@@ -81,6 +192,8 @@ bool Layout::parse(const std::string& text, Layout& out) {
             if (!(ls >> l.stickX >> l.stickY >> l.stickRadius >> l.deadZone >> l.diagonalDeg >> fl >> l.zoneRight >> l.zoneTop))
                 return false;
             l.floating = fl != 0;
+            int zl = 0;
+            l.zoneLeft = (ls >> zl) ? zl : 0;   // older files have no left edge
         } else if (key == "grow") {
             if (!(ls >> l.grow)) return false;
         } else if (key == "scale") {
@@ -100,6 +213,19 @@ bool Layout::parse(const std::string& text, Layout& out) {
     l.stickRadius = std::clamp(l.stickRadius, 20, 120);
     l.deadZone = std::clamp(l.deadZone, 0, l.stickRadius - 1);
     l.diagonalDeg = std::clamp(l.diagonalDeg, 20, 70);
+    // a hand-edited file must not leave the pad off the screen or without a stick zone
+    l.stickX = std::clamp(l.stickX, 0, 640);
+    l.stickY = std::clamp(l.stickY, 0, 360);
+    l.zoneLeft = std::clamp(l.zoneLeft, 0, 640);
+    l.zoneRight = std::clamp(l.zoneRight, l.zoneLeft + 40, 1400);
+    l.zoneTop = std::clamp(l.zoneTop, 0, 340);
+    if (btns.size() > kMaxButtons) btns.resize(kMaxButtons);
+    for (PadButton& b : btns) {
+        b.w = std::clamp(b.w, 16, 140);
+        b.h = std::clamp(b.h, 14, 140);
+        b.x = std::clamp(b.x, -20, 660);
+        b.y = std::clamp(b.y, -20, 380);
+    }
     if (!btns.empty()) l.buttons = btns;
     out = l;
     return true;
@@ -153,7 +279,7 @@ uint16_t TouchPad::update(const std::vector<Finger>& fingers) {
     if (!stick) {
         stickId_ = kNone;
         for (const Finger& f : fingers) {
-            if (f.x < lay_.zoneRight && f.y >= lay_.zoneTop) {
+            if (f.x >= lay_.zoneLeft && f.x < lay_.zoneRight && f.y >= lay_.zoneTop) {
                 // a finger that sits on a button belongs to the button, not to the stick
                 bool onButton = false;
                 for (const PadButton& b0 : lay_.buttons)

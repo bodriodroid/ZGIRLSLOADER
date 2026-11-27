@@ -15,7 +15,7 @@ fixed 16:9 (640x360) picture with black bars. Nothing is stretched and the phone
   that area and copied to the middle (`beginOverlay()` / `endOverlay()`); the pointer is expressed in 640-space while they are drawn, so their hit
   tests are unchanged. The outermost column is stretched over the side bands, so full-width bars and the dimming behind a menu reach the edges.
 * **Touch pad**: `touch::Layout::widened()` moves the buttons of the right half to the real right edge; the stick and the left side stay.
-  The player's own `touch_layout.txt` is the 16:9 base and is widened the same way.
+  The player's own `touch_layout.txt` is the 16:9 base and is widened the same way.  A left-handed layout (Extras -> Touch Controls -> Swap hand) has its stick on the right: the stick and its zone go to the real right edge, the buttons on the left stay.
 * **Touch input**: SDL already normalises finger positions to the logical picture, so the viewer multiplies by the current logical width.
 
 ## Checking it headless
