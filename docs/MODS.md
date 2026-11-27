@@ -96,6 +96,11 @@ The output is derived from your game's palette textures: keep it for yourself, d
   hits (checked with `zdroid_sim` against a shipped character: damage taken, the reaction states, back to `Stand`); it has **no blocking,
   knock-down, specials, supers or KO** yet.  Size matters: a hit box only connects with a hurt box at its height, so a character scaled much
   smaller than its opponent can be passed over by high attacks.
+* **Playing it**: put the output in a mod folder as a *new* character (`characters/<name>.foit` + `<name>.art`, `sprites/<name>_<N>p.dds`, a
+  `mod.ini`; nothing is needed in `.art-pt`, every frame is in the `.art`).  The game's Character Select is a fixed grid of the game's own
+  fighters, so a mod's character is picked in **Extras -> Custom Fight** instead: every fighter of the mounted data (the game's and the
+  mod's), a preview of its standing pose, its colours, the mode (training / vs CPU / two players), the stage, and FIGHT.  The movement
+  buttons are the match's usual touch pad.
 * **Checks**: every sprite is decoded through the engine's own decoder under every palette and compared with the `.sff` (0 differing pixels
   required), then the `.foit` is parsed back and every `.air` frame is checked in it (picture, position, duration, box counts).  `--preview`
   writes what the engine draws for every node of every state into `preview/`.

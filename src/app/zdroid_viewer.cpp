@@ -51,6 +51,7 @@
 #include "vault.h"
 #include "credits.h"
 #include "gallery.h"
+#include "fighter_pick.h"
 #include "lesson_data.h"
 #include "lessons_screen.h"
 #include "story_mode.h"
@@ -86,7 +87,7 @@ std::string lower(std::string s) {
 
 
 // ---------------------------------------------------------------------------------------- application state
-enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits, Lessons };   // Story after Menu: the top bar maps tabs 0..3
+enum class Screen { Home, Browse, Steam, Play, Menu, Story, Gallery, Credits, Lessons, Fighters };   // Story after Menu: the top bar maps tabs 0..3
 
 struct Options {
     std::vector<std::string> dirs;
@@ -299,6 +300,7 @@ struct App {
     play::PlayScreen play;
     menu::MenuScreen menu;
     gallery::GalleryScreen gallery;   // Extras -> Art Gallery
+    fighters::FighterPick fighters;   // Extras -> Custom Fight: any fighter of the data, mods' included
     credits::CreditsScreen credits;   // Extras -> Credits / Contributors
     lessons::LessonsScreen lessons;   // Training -> Tutorials / Trials / Challenges
     story::StoryScreen story;   // Story Mode (Visual Novel): cutscenes + fights, front door is the menu
@@ -462,6 +464,7 @@ struct App {
             lessons.setGameData(&gd, names);
         }
         gallery.setGameData(&gd);
+        fighters.setGameData(&gd, &inv);
         credits.setGameData(&gd);
         std::vector<LevelMusic> levelMusic;   // what each stage's own .lvl says about its music: it decides what a fight plays
         for (const LevelInfo& l : inv.levels) levelMusic.push_back(LevelMusic{l.name, l.musicIntro, l.musicLoop});
@@ -1345,7 +1348,10 @@ int main(int argc, char** argv) {
     if (opt.screen == "warning") { app.menu.acceptNotice(); app.menu.showWarning(); }   // the photosensitivity warning (smoke / screenshots)
     if (opt.screen == "title") app.menu.showTitle();   // the title screen (smoke / screenshots)
     if (opt.screen == "splash") app.menu.showSplash();   // the game's own loading screen (smoke / screenshots)
-    if (opt.screen == "home") app.screen = Screen::Home;
+    if (opt.screen == "fighters") {   // Extras -> Custom Fight (smoke / screenshots)
+        app.fighters.begin(opt.lang.empty() ? std::string("en") : opt.lang);
+        app.screen = Screen::Fighters;
+    } else if (opt.screen == "home") app.screen = Screen::Home;
     else if (opt.screen == "browse") app.screen = Screen::Browse;
     else if (opt.screen == "steam") app.screen = Screen::Steam;
     else if (opt.screen == "play") {
@@ -1659,6 +1665,16 @@ int main(int argc, char** argv) {
             case Screen::Gallery:
                 if (!app.gallery.frame(ui, ren, dtMs)) app.screen = Screen::Menu;
                 break;
+            case Screen::Fighters: {
+                const fighters::Out fo = app.fighters.frame(ui, ren, dtMs);
+                if (fo.kind == fighters::Out::Kind::Back) {
+                    app.screen = Screen::Menu;
+                } else if (fo.kind == fighters::Out::Kind::Fight) {
+                    app.play.enterMatch(ren, fo.mode, app.menu.rules(), fo.p1, fo.p2, fo.stage, fo.p1Pal, fo.p2Pal);
+                    app.screen = Screen::Play;
+                }
+                break;
+            }
             case Screen::Credits:
                 if (!app.credits.frame(ui, ren, dtMs)) app.screen = Screen::Menu;
                 break;
@@ -1686,6 +1702,9 @@ int main(int argc, char** argv) {
                                                                               : lessons::LessonsScreen::Kind::Challenges,
                                       app.menu.language());
                     app.screen = Screen::Lessons;
+                } else if (mr.kind == menu::Result::Kind::Fighters) {
+                    app.fighters.begin(app.menu.language());
+                    app.screen = Screen::Fighters;
                 } else if (mr.kind == menu::Result::Kind::Gallery) {
                     app.gallery.begin(app.menu.language());
                     app.screen = Screen::Gallery;
@@ -1704,7 +1723,7 @@ int main(int argc, char** argv) {
         }
         // last, so it sits above scrolled content; the menu and a running match are full-screen (the HUD needs the top)
         const bool inMatch = app.screen == Screen::Play && app.play.phase() != play::Phase::Select;
-        if (app.screen != Screen::Menu && app.screen != Screen::Story && app.screen != Screen::Gallery && app.screen != Screen::Credits && app.screen != Screen::Lessons && !inMatch) drawTopBar(ui, app);
+        if (app.screen != Screen::Menu && app.screen != Screen::Story && app.screen != Screen::Gallery && app.screen != Screen::Credits && app.screen != Screen::Lessons && app.screen != Screen::Fighters && !inMatch) drawTopBar(ui, app);
         ui.endFrame();
         if (barFill) bars.end(ren);
 
