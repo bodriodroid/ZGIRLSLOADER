@@ -16,17 +16,23 @@
 //   * locked characters keep their portrait, get the greyed icon and a "LOCKED!" plate over the portrait
 // The roster order (index -> character) was matched against the icons of a real screenshot.
 //
+// Fighters a mod adds (a character made with zdroid_mugen, say) take the five cells the game reserves but leaves empty (the two top corners and
+// the bottom row, in reading order): setCustomFighters().  Their icons, portrait and name plates are drawn from their own fight art
+// (custom_cards.h) and the pose stands on the pedestal.  Story mode never gets them (the story only knows the game's characters).
+//
 // Not done yet: the character idle animation standing on the pedestal, assist / colour pages, a real second player.
 #pragma once
 #include <SDL.h>
 
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "char_sprite.h"
+#include "custom_cards.h"
 #include "game_ui.h"
 #include "menu_data.h"
 #include "ui.h"
@@ -38,6 +44,7 @@ class CharSelect {
 public:
     static constexpr int kRoster = 18;  // characters the game knows (indices used by the cell table)
     static constexpr int kCells = 24;   // 8 rows x 3 columns
+    static constexpr int kExtraMax = 5; // cells the game reserves without a character: where a mod's fighters go
 
     enum class Step { Size, Fighter, Stage };
 
@@ -59,6 +66,18 @@ public:
     struct PaletteChoice {
         std::string label, path;
     };
+
+    // The fighters of the mods, in the order the cells are filled (more than kExtraMax are cut: the "Custom fight" screen lists them all).  They need a
+    // colour (setPalettes) to be drawn; one without any is left out.  Call before enter(); an empty list = none (Story mode).
+    void setCustomFighters(std::vector<CustomFighter> v);
+    int customCount() const { return static_cast<int>(extra_.size()); }
+    std::vector<std::string> customNames() const;
+    // The cell (row * 3 + column) the k-th mod fighter takes (0 <= k < kExtraMax), -1 = none.
+    static int extraCell(int k);
+    // true for the game's own characters (the roster, the boss, the spark effect): everything else is a mod's.
+    static bool isBaseName(const std::string& name);
+    // Destroys the textures of the standing poses (call while the renderer is alive; load() and setCustomFighters() do it themselves).
+    void releaseCustom();
 
     // Looks the views up (switches GameUi to Charselect.gbs and back to `restore`).  false = scene or art missing.
     bool load(GameUi& gfx, const std::string& restore);
@@ -100,6 +119,7 @@ public:
 
     // introspection (tests / smoke)
     int cursor() const { return cur_; }
+    bool pickName(const std::string& name);   // cursor onto that character (smoke runs / tests); false = it has no usable cell
     std::string cursorName() const;
     bool cursorLocked() const;
     int enabledCount() const;
@@ -168,6 +188,25 @@ private:
     double acc_ = 0;
     int lastMs_ = -1;
     std::vector<std::pair<std::string, float>> sounds_;
+
+    // a fighter that comes from a mod; its pose stands on the pedestal and its pictures are in the GameUi cache under the scene's names
+    struct Extra {
+        CustomFighter f;
+        CharSpriteEdit pose;
+        bool failed = false;   // the pictures could not be made: the cell stays empty
+        std::string paintedPath;   // the palette the pose is coloured with now
+        Palette pal;
+        std::string palFile;       // the file `pal` was read from
+    };
+    std::vector<std::unique_ptr<Extra>> extra_;
+    bool extraDirty_ = false;
+    int extraAt(int cell) const;   // index into extra_, -1 = not a mod's cell
+    Extra* extraNamed(const std::string& name);
+    void buildExtras(GameUi& gfx);
+    bool paintExtra(GameUi& gfx, Extra& e, const std::string& palPath);
+    std::string palPathOf(const std::string& name, int idx) const;
+    // The pose of a mod fighter standing at the pedestal's hot spot (hx, hy); false = none to draw.
+    bool drawExtra(GameUi& gfx, const std::string& name, const std::string& palPath, float hx, float hy, bool flip, float alpha, Rect* hit);
 
     bool cellOk(int cell) const;
     bool lockedAt(int cell) const;

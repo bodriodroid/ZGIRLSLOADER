@@ -162,6 +162,22 @@ GameUi::Tex GameUi::loadAtlasRegion(const GbsTexture& gt) {
     return out;
 }
 
+void GameUi::putTexture(const std::string& name, SDL_Texture* t, int w, int h) {
+    if (name.empty()) return;
+    const std::string key = lower(name);
+    auto it = tex_.find(key);
+    if (it != tex_.end()) {
+        if (it->second.t && it->second.t != t) SDL_DestroyTexture(it->second.t);
+        if (!t) {
+            tex_.erase(it);
+            return;
+        }
+        it->second = Tex{t, w, h};
+        return;
+    }
+    if (t) tex_.emplace(key, Tex{t, w, h});
+}
+
 SDL_Texture* GameUi::texture(const std::string& name, int* w, int* h) {
     if (!r_ || name.empty()) return nullptr;
     const std::string key = lower(name);

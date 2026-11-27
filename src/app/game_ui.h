@@ -102,6 +102,9 @@ public:
     // has no file of its own.
     SDL_Texture* texture(const std::string& name, int* w = nullptr, int* h = nullptr);
     bool hasTexture(const std::string& name);
+    // Hands the cache a texture the caller made (a render target read back, a pixel upload) under a scene-style name; from now on texture(name)
+    // returns it, the cache owns it (reset() or putting the name again destroys it).  nullptr removes the name.
+    void putTexture(const std::string& name, SDL_Texture* t, int w, int h);
 
     // ---- text (metrics are in canvas pixels at scale 1)
     const GbsFont* font(uint32_t id) const;                 // honours setJapanese()

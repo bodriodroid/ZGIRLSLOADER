@@ -738,14 +738,22 @@ std::map<std::string, std::vector<CharSelect::PaletteChoice>> MenuScreen::buildP
     favsByChar_.clear();
     if (!gd_) return pm;
     if (!favs_.enabled() && !prefsDir_.empty()) favs_ = coledit::Favourites(prefsDir_ + "/favcolours");
-    for (int i = 0; i < CharSelect::kRoster; ++i) {
-        const char* rn = CharSelect::rosterName(i);
-        if (!rn || !*rn) continue;
-        const std::string name = rn;
+    std::vector<std::string> names;
+    for (int i = 0; i < CharSelect::kRoster; ++i)
+        if (const char* rn = CharSelect::rosterName(i); rn && *rn) names.push_back(rn);
+    const std::vector<std::string> extra = charSel_.customNames();   // the fighters of mods that have a cell (never in Story mode)
+    names.insert(names.end(), extra.begin(), extra.end());
+    for (const std::string& name : names) {
         std::vector<CharSelect::PaletteChoice>& v = pm[name];
-        for (int n = 1; n <= 40; ++n) {
-            std::string real;
-            if (gd_->vfs().resolve(name + "_" + std::to_string(n) + "p.dds", &real)) v.push_back({std::to_string(n) + "p", real});
+        if (CharSelect::isBaseName(name)) {
+            for (int n = 1; n <= 40; ++n) {
+                std::string real;
+                if (gd_->vfs().resolve(name + "_" + std::to_string(n) + "p.dds", &real)) v.push_back({std::to_string(n) + "p", real});
+            }
+        } else if (inv_) {   // a mod's character: the palettes the inventory found next to its .foit
+            for (const CharacterAssets& ca : inv_->characters)
+                if (ca.name == name)
+                    for (const auto& p : ca.palettes) v.push_back({p.first, p.second});
         }
         for (const palmod::Entry* e : gd_->customPalettes().forCharacter(name)) v.push_back({"mod:" + e->label, e->dds});
         if (v.empty()) {
@@ -849,6 +857,15 @@ bool MenuScreen::showCharSelect(bool story, int firstStep) {
         for (auto it = locked.begin(); it != locked.end();) it = (zp.storyUnlocked(*it) || zgOption("story_all")) ? locked.erase(it) : std::next(it);
         charSel_.setLocked(locked);
     }
+    {   // the fighters a mod adds take the free cells of the grid; Story mode only knows the game's own characters
+        std::vector<CustomFighter> cf;
+        if (!story && inv_)
+            for (const CharacterAssets& ca : inv_->characters) {
+                if (CharSelect::isBaseName(ca.name) || (ca.artPath.empty() && ca.artPtPath.empty()) || ca.palettes.empty()) continue;
+                cf.push_back({ca.name, ca.foitPath, ca.artPath, ca.artPtPath});
+            }
+        charSel_.setCustomFighters(std::move(cf));
+    }
     if (gd_) {   // stages dropped into mods/stages
         std::vector<CharSelect::CustomStage> cst;
         for (const modsdir::StageMod& s : gd_->customStages()) cst.push_back({s.id, s.name});
@@ -860,6 +877,8 @@ bool MenuScreen::showCharSelect(bool story, int firstStep) {
         charSel_.setPalettes(std::move(pm));
     }
     charSel_.enterAt(timeMs_, story, firstStep == 2 ? CharSelect::Step::Stage : firstStep == 1 ? CharSelect::Step::Fighter : CharSelect::Step::Size);
+    if (!pendingPick_.empty()) charSel_.pickName(pendingPick_);   // --cs-pick (smoke runs)
+    pendingPick_.clear();
     if (pendingPal_ > 0) charSel_.setPaletteIndex(pendingPal_);   // --cs-pal (smoke runs)
     pendingPal_ = 0;
     confirmExit_ = controls_ = false;

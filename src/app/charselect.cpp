@@ -8,6 +8,9 @@
 #include <cstdlib>
 #include <map>
 
+#include "art.h"
+#include "vfs.h"
+
 namespace zengine {
 namespace menu {
 
@@ -31,6 +34,8 @@ const int kCellTable[CharSelect::kCells] = {18, 17, 19,   //
                                             10, 12, 13,   //
                                             15, 14, 16,   //
                                             22, 20, 21};
+
+constexpr float kStandHeight = 150.0f;   // canvas pixels a mod fighter's pose is drawn at on the pedestal
 
 float clamp01(float v) { return std::clamp(v, 0.0f, 1.0f); }
 float easeOutCubic(float t) {
@@ -166,14 +171,157 @@ std::map<std::string, std::string> parseStageSongs(const std::string& text) {
 const char* CharSelect::rosterName(int idx) { return (idx >= 0 && idx < kRoster) ? kNames[idx] : ""; }
 int CharSelect::cellRoster(int cell) { return (cell >= 0 && cell < kCells) ? kCellTable[cell] : -2; }
 
+int CharSelect::extraCell(int k) {
+    if (k < 0) return -1;
+    int n = 0;
+    for (int c = 0; c < kCells; ++c)
+        if (kCellTable[c] >= kRoster) {
+            if (n == k) return c;
+            ++n;
+        }
+    return -1;
+}
+
+bool CharSelect::isBaseName(const std::string& name) {
+    if (name == "bossmarie" || name == "hitspark") return true;
+    for (int i = 0; i < kRoster; ++i)
+        if (name == kNames[i]) return true;
+    return false;
+}
+
+int CharSelect::extraAt(int cell) const {
+    for (int k = 0; k < static_cast<int>(extra_.size()); ++k)
+        if (extraCell(k) == cell) return k;
+    return -1;
+}
+
+CharSelect::Extra* CharSelect::extraNamed(const std::string& name) {
+    for (auto& e : extra_)
+        if (e->f.name == name) return e.get();
+    return nullptr;
+}
+
+std::vector<std::string> CharSelect::customNames() const {
+    std::vector<std::string> v;
+    for (const auto& e : extra_) v.push_back(e->f.name);
+    return v;
+}
+
+void CharSelect::setCustomFighters(std::vector<CustomFighter> v) {
+    std::vector<CustomFighter> keep;
+    for (CustomFighter& f : v) {
+        if (static_cast<int>(keep.size()) >= kExtraMax) break;
+        if (f.name.empty() || f.foit.empty() || isBaseName(f.name)) continue;
+        bool dup = false;
+        for (const CustomFighter& k : keep) dup = dup || k.name == f.name;
+        if (!dup) keep.push_back(std::move(f));
+    }
+    bool same = keep.size() == extra_.size();
+    for (size_t i = 0; same && i < keep.size(); ++i)
+        same = keep[i].name == extra_[i]->f.name && keep[i].foit == extra_[i]->f.foit && keep[i].art == extra_[i]->f.art && keep[i].artPt == extra_[i]->f.artPt;
+    if (same) return;   // the same fighters as last time: what was drawn for them stays
+    releaseCustom();
+    extra_.clear();
+    for (CustomFighter& f : keep) {
+        auto e = std::make_unique<Extra>();
+        e->f = std::move(f);
+        extra_.push_back(std::move(e));
+    }
+    extraDirty_ = !extra_.empty();
+}
+
+void CharSelect::releaseCustom() {
+    for (auto& e : extra_) {
+        e->pose.close();
+        e->paintedPath.clear();
+        e->failed = false;
+    }
+    extraDirty_ = !extra_.empty();
+}
+
+std::string CharSelect::palPathOf(const std::string& name, int idx) const {
+    const auto it = pals_.find(name);
+    if (it == pals_.end() || it->second.empty()) return std::string();
+    return it->second[static_cast<size_t>(std::clamp(idx, 0, static_cast<int>(it->second.size()) - 1))].path;
+}
+
+// Draws the pictures of every mod fighter (needs the Charselect scene current: its font writes the names).  One that cannot be drawn
+// (no colour, no standing pose) leaves its cell empty.
+void CharSelect::buildExtras(GameUi& gfx) {
+    extraDirty_ = false;
+    for (auto& up : extra_) {
+        Extra& e = *up;
+        const Uint32 t0 = SDL_GetTicks();
+        e.failed = true;
+        e.pose.close();
+        e.paintedPath.clear();
+        const std::string pp = palPathOf(e.f.name, 0);
+        std::vector<uint8_t> bytes;
+        if (pp.empty() || !readFile(pp, bytes) || !readDds(bytes.data(), bytes.size(), e.pal) || e.pal.bands < 2) {
+            std::printf("[charselect] %s: no colours (<name>_1p.dds), left out of the grid\n", e.f.name.c_str());
+            continue;
+        }
+        e.palFile = pp;
+        if (!e.pose.openArt(gfx, e.f.foit, e.f.art, e.f.artPt, e.pal)) {
+            std::printf("[charselect] %s: no standing pose in its .foit / .art, left out of the grid\n", e.f.name.c_str());
+            continue;
+        }
+        e.paintedPath = pp;
+        e.failed = !customcards::make(gfx, e.f.name, e.pose);
+        std::printf("[charselect] %s: %s (%u ms)\n", e.f.name.c_str(), e.failed ? "pictures could not be drawn" : "in the grid", static_cast<unsigned>(SDL_GetTicks() - t0));
+    }
+    if (!cellOk(cur_))
+        for (int c = 0; c < kCells; ++c)
+            if (cellOk(c)) {
+                cur_ = prev_ = c;
+                break;
+            }
+}
+
+bool CharSelect::paintExtra(GameUi& gfx, Extra& e, const std::string& palPath) {
+    (void)gfx;
+    if (!e.pose.isOpen()) return false;
+    if (palPath == e.paintedPath) return true;
+    if (palPath != e.palFile) {
+        std::vector<uint8_t> bytes;
+        Palette p;
+        if (!readFile(palPath, bytes) || !readDds(bytes.data(), bytes.size(), p) || p.bands < 2) return false;
+        e.pal = std::move(p);
+        e.palFile = palPath;
+    }
+    e.pose.paint(e.pal);
+    e.paintedPath = palPath;
+    return true;
+}
+
+bool CharSelect::drawExtra(GameUi& gfx, const std::string& name, const std::string& palPath, float hx, float hy, bool flip, float alpha, Rect* hit) {
+    Extra* e = extraNamed(name);
+    if (!e || e->failed || !e->pose.isOpen()) return false;
+    paintExtra(gfx, *e, palPath.empty() ? palPathOf(name, 0) : palPath);
+    customcards::drawStanding(gfx, e->pose, hx, hy, kStandHeight, flip, alpha);
+    if (hit) {
+        const SDL_FRect q = customcards::standingRect(e->pose, hx, hy, kStandHeight, flip);
+        *hit = Rect{static_cast<int>(q.x * kScale), static_cast<int>(q.y * kScale), static_cast<int>(q.w * kScale), static_cast<int>(q.h * kScale)};
+    }
+    return true;
+}
+
 bool CharSelect::cellOk(int cell) const {
     const int idx = cellRoster(cell);
     if (idx == -1) return true;  // Random!
-    return idx >= 0 && idx < kRoster && art_[idx];
+    if (idx >= kRoster) {        // a slot the game reserves: a mod's fighter, when there is one
+        const int k = extraAt(cell);
+        return k >= 0 && !extra_[static_cast<size_t>(k)]->failed;
+    }
+    return idx >= 0 && art_[idx];
 }
 
 std::string CharSelect::nameAt(int cell) const {
     const int idx = cellRoster(cell);
+    if (idx >= kRoster) {
+        const int k = extraAt(cell);
+        return k >= 0 ? extra_[static_cast<size_t>(k)]->f.name : std::string();
+    }
     return idx == -1 ? "random" : rosterName(idx);
 }
 
@@ -218,6 +366,16 @@ bool CharSelect::stepPalette(int dir) {
 }
 bool CharSelect::cursorLocked() const { return lockedAt(cur_); }
 
+bool CharSelect::pickName(const std::string& name) {
+    for (int c = 0; c < kCells; ++c)
+        if (cellOk(c) && nameAt(c) == name) {
+            cur_ = prev_ = c;
+            palIdx_ = 0;
+            return true;
+        }
+    return false;
+}
+
 std::set<std::string> CharSelect::parseLocked(const std::string& text) {
     std::set<std::string> out;
     size_t pos = 0;
@@ -259,6 +417,7 @@ std::string voiceFile(const std::string& cue, bool jp) {
 bool CharSelect::load(GameUi& gfx, const std::string& restore) {
     ready_ = false;
     sprites_.clear();
+    releaseCustom();   // the texture cache may have been rebuilt since: the mod fighters' pictures are drawn again
     bg_ = Layer{};
     fade_ = Layer{};
     fight_ = Layer{};
@@ -784,6 +943,7 @@ void CharSelect::draw(GameUi& gfx, const Localization& loc, const std::string& l
     gfx.setViewport(0, 0, kScale);
     gfx.setJapanese(lang == "jp");
     if (stagesDirty_) buildStages(gfx);   // mods/stages changed since the scene was loaded
+    if (extraDirty_) buildExtras(gfx);    // the pictures of the mod fighters (their cells show nothing until then)
     const std::string cname = nameAt(cur_);
     const bool random = cname == "random", locked = lockedAt(cur_);
     const std::string pre = (lang == "en" || lang.empty()) ? "" : lang + ".";
@@ -895,11 +1055,16 @@ void CharSelect::draw(GameUi& gfx, const Localization& loc, const std::string& l
             if (flip && !firstPick_.empty()) {                    // player 1's pick, standing still on the left pedestal
                 if (const GbsNode* p1pil = fight_.v->find("P1_L1_PillarGrp")) {
                     const GbsPose* p1pp = fight_.p.pose(p1pil->id);
-                    if (const CharSprite* fs = sprites_.get(gfx, firstPick_, firstPal_))
-                        CharSprites::draw(gfx, *fs, nowMs - enterMs_, (p1pp ? p1pp->x : p1pil->x) + 58.0f, (p1pp ? p1pp->y : p1pil->y) + 23.0f, false, 1.0f);
+                    const float fx = (p1pp ? p1pp->x : p1pil->x) + 58.0f, fy = (p1pp ? p1pp->y : p1pil->y) + 23.0f;
+                    if (extraNamed(firstPick_)) drawExtra(gfx, firstPick_, firstPal_, fx, fy, false, 1.0f, nullptr);
+                    else if (const CharSprite* fs = sprites_.get(gfx, firstPick_, firstPal_))
+                        CharSprites::draw(gfx, *fs, nowMs - enterMs_, fx, fy, false, 1.0f);
                 }
             }
-            if (const CharSprite* cs = sprites_.get(gfx, cname, palPath())) {
+            if (extraNamed(cname)) {
+                Rect hit{0, 0, 0, 0};
+                if (drawExtra(gfx, cname, palPath(), hx, py + 23.0f, flip, clamp01(static_cast<float>(nowMs - moveMs_) / 140.0f), &hit)) spriteHit_ = hit;
+            } else if (const CharSprite* cs = sprites_.get(gfx, cname, palPath())) {
                 const int since = nowMs - moveMs_;
                 CharSprites::draw(gfx, *cs, since, hx, py + 23.0f, flip, clamp01(static_cast<float>(since) / 140.0f) * 1.0f);
                 if (!cs->idle.empty()) {
@@ -1063,7 +1228,10 @@ void CharSelect::draw(GameUi& gfx, const Localization& loc, const std::string& l
             const float bx = player_ == 1 ? 810.0f : 20.0f, bw = 450.0f, bh = 30.0f;
             const Col dark{12, 6, 4, 255};
             const int off[4][2] = {{-2, 0}, {2, 0}, {0, -2}, {0, 2}};
+            // a mod's fighter is drawn taller than the game's sprites: the labels move up out of its way
+            const float lift = extraNamed(cname) ? -72.0f : 0.0f;
             auto line = [&](const std::string& t, float by, float sc, Col col) {
+                by += lift;
                 for (auto& o : off) gfx.drawLabelText(*f, t, bx + o[0], by + o[1], bw, bh, 1, true, dark, sc, 0.9f);
                 gfx.drawLabelText(*f, t, bx, by, bw, bh, 1, true, col, sc, 1.0f);
             };

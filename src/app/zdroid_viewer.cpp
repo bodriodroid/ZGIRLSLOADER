@@ -95,6 +95,7 @@ struct Options {
     int frame = 0, bg = -1, smokeFrames = 4, loadDelayMs = 0, smokeScale = 1, fixedDtMs = 0, smokeW = 640;   // smokeW: capture window width in logical units (No Limits Screen)
     bool steamAutostart = false, skipTitle = false, acceptNotice = false, smokeLoading = false, gallery = false, credits = false, contributors = false;
     int csStep = 0, csPal = 0;
+    std::string csPick;   // --cs-pick <name>: the Character Select cursor starts on that character (smoke)
     bool csEdit = false;
     std::string csEditWho;   // --cs-edit-char <name>: the editor on that character instead of the cursor's   // --cs-edit: open the colour editor on the cursor's character (smoke)
     bool storyAudit = false;                 // --story-audit: check every story node, print the problems, exit (smoke)
@@ -1163,6 +1164,7 @@ Options parseArgs(int argc, char** argv) {
         else if (a == "--lesson") o.lesson = val(i);   // "training/beginner/basicmovement.ini": start that tutorial / trial on the Play screen (smoke)
         else if (a == "--fight") o.fight = val(i);   // "annie:beowulf:new_meridian": start a match like the Character Select would (smoke)
         else if (a == "--cs-pal") o.csPal = std::max(0, std::atoi(val(i).c_str()));
+        else if (a == "--cs-pick") o.csPick = val(i);
         else if (a == "--attract-shot") o.attractShot = std::max(1, std::atoi(val(i).c_str())) - 1;
         else if (a == "--attract-tick") o.attractTick = std::max(0, std::atoi(val(i).c_str()));
         else if (a == "--smoke-loading") o.smokeLoading = true;      // capture while the splash is still loading
@@ -1341,7 +1343,7 @@ int main(int argc, char** argv) {
     if (opt.screen == "charselect") {
         app.menu.skipTitle();
         if (!opt.csP2.empty()) app.menu.requestCharSelectP2(opt.csP2);
-        else app.menu.requestCharSelect(opt.csStory, opt.csStep, opt.csPal);
+        else app.menu.requestCharSelect(opt.csStory, opt.csStep, opt.csPal, opt.csPick);
         if (opt.csEdit) app.menu.requestColourEditor(opt.csEditWho);
     }
     if (opt.screen == "attract") app.menu.showAttract(opt.attractShot, opt.attractTick);   // the opening montage (smoke / screenshots)

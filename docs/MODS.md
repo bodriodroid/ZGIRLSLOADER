@@ -97,10 +97,13 @@ The output is derived from your game's palette textures: keep it for yourself, d
   knock-down, specials, supers or KO** yet.  Size matters: a hit box only connects with a hurt box at its height, so a character scaled much
   smaller than its opponent can be passed over by high attacks.
 * **Playing it**: put the output in a mod folder as a *new* character (`characters/<name>.foit` + `<name>.art`, `sprites/<name>_<N>p.dds`, a
-  `mod.ini`; nothing is needed in `.art-pt`, every frame is in the `.art`).  The game's Character Select is a fixed grid of the game's own
-  fighters, so a mod's character is picked in **Extras -> Custom Fight** instead: every fighter of the mounted data (the game's and the
-  mod's), a preview of its standing pose, its colours, the mode (training / vs CPU / two players), the stage, and FIGHT.  The movement
-  buttons are the match's usual touch pad.
+  `mod.ini`; nothing is needed in `.art-pt`, every frame is in the `.art`).  The game's Character Select is a fixed grid with five cells the
+  game reserves and leaves empty (the two top corners and the bottom row): a mod's characters take them, in order, in every mode except
+  Story (Story only knows the game's own characters).  The icon, the big picture, the name plates and the coin are drawn from the
+  character's own standing pose and its first colour; the pose stands on the pedestal and Tab / a tap on it steps through its colours,
+  exactly like a game character.  A character needs at least `<name>_1p.dds` to get a cell, and only the first five (by name) fit: the
+  **Extras -> Custom Fight** screen lists every fighter of the mounted data (the game's and the mod's) with a preview of its standing pose,
+  its colours, the mode (training / vs CPU / two players), the stage, and FIGHT.  The movement buttons are the match's usual touch pad.
 * **Checks**: every sprite is decoded through the engine's own decoder under every palette and compared with the `.sff` (0 differing pixels
   required), then the `.foit` is parsed back and every `.air` frame is checked in it (picture, position, duration, box counts).  `--preview`
   writes what the engine draws for every node of every state into `preview/`.

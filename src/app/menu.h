@@ -104,7 +104,7 @@ public:
         pickingP2_ = twoPicks_ = true;
         requestCharSelect(false, 1);
     }
-    void requestCharSelect(bool story = false, int firstStep = 0, int palette = 0) { pendingCharSelect_ = true; pendingStory_ = story; pendingStep_ = firstStep; pendingPal_ = palette; }
+    void requestCharSelect(bool story = false, int firstStep = 0, int palette = 0, const std::string& pick = std::string()) { pendingCharSelect_ = true; pendingStory_ = story; pendingStep_ = firstStep; pendingPal_ = palette; pendingPick_ = pick; }
     void requestColourEditor(const std::string& who = std::string()) { pendingEdit_ = true; pendingEditWho_ = who; }   // smoke runs: open the colour editor on the character under the cursor as soon as the selector is up
     bool charSelectReady() const { return charSel_.ready(); }
     const CharSelect& charSelect() const { return charSel_; }
@@ -309,6 +309,7 @@ private:
     void openColourEditor(const std::string& name, int palIdx);
     void finishColourEdit(const ColourEditor::Result& r);
     int pendingStep_ = 0, pendingPal_ = 0;
+    std::string pendingPick_;   // --cs-pick (smoke runs): the character the cursor starts on
     bool pendingEdit_ = false;
     std::string pendingEditWho_;
 

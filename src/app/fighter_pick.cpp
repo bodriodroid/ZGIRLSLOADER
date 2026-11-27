@@ -20,14 +20,7 @@ constexpr int kW = 640, kH = 360;
 
 }  // namespace
 
-bool FighterPick::isBaseGameName(const std::string& name) {
-    if (name == "bossmarie" || name == "hitspark") return true;
-    for (int i = 0; i < menu::CharSelect::kRoster; ++i) {
-        const char* rn = menu::CharSelect::rosterName(i);
-        if (rn && name == rn) return true;
-    }
-    return false;
-}
+bool FighterPick::isBaseGameName(const std::string& name) { return menu::CharSelect::isBaseName(name); }
 
 size_t FighterPick::customCount() const {
     size_t n = 0;
