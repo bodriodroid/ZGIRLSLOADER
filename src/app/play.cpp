@@ -928,6 +928,10 @@ void PlayScreen::enterStory(SDL_Renderer* r, const std::string& p1, const std::s
     if (a >= 0) pick_[0] = a;
     const int b = findFighter(p2);
     if (b >= 0) pick_[1] = b;
+    // Story picks a fighter, not a colour: the colours the last Training / Versus match took from its Character Select belong to another
+    // fighter (a Filia palette on Parasoul came out blue and blonde), so both sides start from their default colours
+    palPath_[0].clear();
+    palPath_[1].clear();
     if (!p1.empty() && a < 0) std::printf("[play] story: fighter '%s' is not in the mounted data\n", p1.c_str());
     if (!p2.empty() && b < 0) std::printf("[play] story: fighter '%s' is not in the mounted data\n", p2.c_str());
     stageAsked_ = level;
